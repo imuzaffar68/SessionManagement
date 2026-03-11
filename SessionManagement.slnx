@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="SessionAdmin/SessionAdmin.csproj" />
+  <Project Path="SessionClient/SessionClient.csproj" />
+  <Project Path="SessionManagement.Shared/SessionManagement.Shared.csproj" />
+  <Project Path="SessionServer/SessionServer.csproj" />
+</Solution>
