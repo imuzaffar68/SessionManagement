@@ -1,6 +1,6 @@
 <Solution>
-  <Project Path="SessionAdmin/SessionAdmin.csproj" />
-  <Project Path="SessionClient/SessionClient.csproj" />
-  <Project Path="SessionManagement.Shared/SessionManagement.Shared.csproj" />
-  <Project Path="SessionServer/SessionServer.csproj" />
+  <Project Path="SessionAdmin/SessionAdmin.csproj" Id="5656f488-28ac-4ae7-bbe6-7f6c6a8c1791" />
+  <Project Path="SessionClient/SessionClient.csproj" Id="7aba6ccb-f28c-4b2f-9222-75c63ec52826" />
+  <Project Path="SessionManagement.Shared/SessionManagement.Shared.csproj" Id="9aac8b31-cec4-43cf-8a15-dcecc69b87c2" />
+  <Project Path="SessionServer/SessionServer.csproj" Id="ccb41cc7-bba2-4d4e-99f8-555713a8a7e7" />
 </Solution>

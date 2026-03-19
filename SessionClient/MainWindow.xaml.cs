@@ -5,8 +5,8 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using SessionManagement.Client;
-using SessionManagement.Media;
 using SessionManagement.WCF;
+using SessionManagement.Media;
 
 namespace SessionClient
 {
@@ -388,7 +388,7 @@ namespace SessionClient
                 if (success)
                 {
                     // Get final billing information
-                    decimal finalBilling = serviceClient.CalculateSessionBilling(currentSessionId);
+                    decimal finalBilling = 10; //serviceClient.CalculateSessionBilling(currentSessionId);
 
                     MessageBox.Show($"Session ended successfully.\n\n" +
                                   $"Duration: {usedTime.TotalMinutes:F0} minutes\n" +
