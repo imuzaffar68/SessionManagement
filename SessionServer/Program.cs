@@ -1,163 +1,76 @@
 ﻿using System;
-using System.ServiceModel;
-using SessionManagement.WCF;
 using System.Configuration;
+using System.ServiceModel;
+using System.ServiceModel.Description;
+using SessionManagement.Security;
+using SessionManagement.WCF;
 
 class Program
 {
     static void Main(string[] args)
     {
-        string conn = ConfigurationManager.ConnectionStrings["SessionManagementDB"]?.ConnectionString
-                      ?? throw new ConfigurationErrorsException("Missing SessionManagementDB");
-        // Use the service type, add endpoints programmatically
-        // The service contract requires a duplex (callback) channel. BasicHttpBinding does not support duplex.
-        // Use a duplex-capable binding like NetTcpBinding (recommended for intranet) or WSDualHttpBinding for HTTP duplex.
-        var baseAddress = new Uri("net.tcp://localhost:8001/SessionService");
-        using (var host = new ServiceHost(typeof(SessionService), baseAddress))
+        try
         {
-            var binding = new NetTcpBinding(SecurityMode.None);
-            // configure binding for sessions/duplex if needed
-            binding.ReceiveTimeout = TimeSpan.FromMinutes(10);
-            binding.SendTimeout = TimeSpan.FromMinutes(10);
+            string connString = ConfigurationManager.ConnectionStrings["SessionManagementDB"]?.ConnectionString
+                          ?? throw new ConfigurationErrorsException("Missing SessionManagementDB");
 
-            host.AddServiceEndpoint(typeof(ISessionService), binding, "");
-            host.Open();
-            Console.WriteLine("Session Management Service is running...");
-            Console.WriteLine("Press Enter to stop the service.");
-            Console.ReadLine();
-            host.Close();
+            var baseAddress = new Uri("net.tcp://localhost:8001/SessionService");
+            using (var host = new ServiceHost(typeof(SessionService), baseAddress))
+            {
+                var binding = new NetTcpBinding(SecurityMode.None);
+                binding.ReceiveTimeout = TimeSpan.FromMinutes(10);
+                binding.SendTimeout = TimeSpan.FromMinutes(10);
+
+                host.AddServiceEndpoint(typeof(ISessionService), binding, "");
+
+                // Enable detailed exception information for debugging
+                var debugBehavior = host.Description.Behaviors.Find<ServiceDebugBehavior>();
+                if (debugBehavior == null)
+                {
+                    debugBehavior = new ServiceDebugBehavior();
+                    host.Description.Behaviors.Add(debugBehavior);
+                }
+                debugBehavior.IncludeExceptionDetailInFaults = true;
+
+                // Generate and verify password hashes for all test users
+                string passwordAdmin = AuthenticationHelper.HashPassword("Admin@123456");
+                string passwordUser1 = AuthenticationHelper.HashPassword("User1@123456");
+                string passwordUser2 = AuthenticationHelper.HashPassword("User2@123456");
+                string passwordUser3 = AuthenticationHelper.HashPassword("User3@123456");
+
+                Console.WriteLine("\n=== TEST USER CREDENTIALS ===");
+                Console.WriteLine($"admin:     Admin@123456");
+                Console.WriteLine($"user1:     User1@123456");
+                Console.WriteLine($"user2:     User2@123456");
+                Console.WriteLine($"user3:     User3@123456");
+                Console.WriteLine("\n=== PASSWORD HASHES (Use these in database UPDATE statements) ===");
+                Console.WriteLine($"UPDATE tblUser SET PasswordHash = '{passwordAdmin}' WHERE Username = 'admin';");
+                Console.WriteLine($"UPDATE tblUser SET PasswordHash = '{passwordUser1}' WHERE Username = 'user1';");
+                Console.WriteLine($"UPDATE tblUser SET PasswordHash = '{passwordUser2}' WHERE Username = 'user2';");
+                Console.WriteLine($"UPDATE tblUser SET PasswordHash = '{passwordUser3}' WHERE Username = 'user3';");
+                Console.WriteLine("=== VERIFICATION TEST ===");
+                Console.WriteLine($"admin password verify: {AuthenticationHelper.VerifyPassword("Admin@123456", passwordAdmin)}");
+                Console.WriteLine($"user1 password verify: {AuthenticationHelper.VerifyPassword("User1@123456", passwordUser1)}");
+                Console.WriteLine($"user2 password verify: {AuthenticationHelper.VerifyPassword("User2@123456", passwordUser2)}");
+                Console.WriteLine($"user3 password verify: {AuthenticationHelper.VerifyPassword("User3@123456", passwordUser3)}");
+                Console.WriteLine("=====================================\n");
+
+                host.Open();
+                Console.WriteLine("Session Management Service is running on net.tcp://localhost:8001/SessionService");
+                //Console.WriteLine("passwordUser1" + passwordUser1);
+                //Console.WriteLine("passwordUser2" + passwordUser2);
+                //Console.WriteLine("passwordUser2" + passwordUser3);
+                //Console.WriteLine("passwordAdmin" + passwordAdmin);
+                Console.WriteLine("Press Enter to stop the service.");
+                Console.ReadLine();
+                host.Close();
+            }
         }
-    }
-}
-
-// C# - DatabaseHelper constructor (safe)
-public class DatabaseHelper
-{
-    private string connectionString;
-
-    public DatabaseHelper()
-    {
-        var cs = ConfigurationManager.ConnectionStrings["SessionManagementDB"];
-        if (cs == null)
-            throw new ConfigurationErrorsException("Missing connection string 'SessionManagementDB' in application configuration.");
-        connectionString = cs.ConnectionString;
-    }
-
-    public DatabaseHelper(string connectionString)
-    {
-        this.connectionString = connectionString;
-    }
-}
-
-// C# - new SessionService ctor
-public class SessionService : ISessionService
-{
-    private readonly DatabaseHelper dbHelper;
-
-    public SessionService()
-    {
-        var cs = ConfigurationManager.ConnectionStrings["SessionManagementDB"]?.ConnectionString;
-        if (string.IsNullOrEmpty(cs)) throw new ConfigurationErrorsException("Missing 'SessionManagementDB' connection string in host config.");
-        dbHelper = new DatabaseHelper(cs);
-    }
-
-    public SessionService(string connectionString)
-    {
-        dbHelper = new DatabaseHelper(connectionString);
-    }
-
-    public bool AcknowledgeAlert(int alertId, int adminUserId)
-    {
-        throw new NotImplementedException();
-    }
-
-    public AuthenticationResponse AuthenticateUser(string username, string password, string clientCode)
-    {
-        throw new NotImplementedException();
-    }
-
-    public decimal CalculateSessionBilling(int sessionId)
-    {
-        throw new NotImplementedException();
-    }
-
-    public string DownloadLoginImage(int sessionId)
-    {
-        throw new NotImplementedException();
-    }
-
-    public bool EndSession(int sessionId, string terminationType)
-    {
-        throw new NotImplementedException();
-    }
-
-    public SessionInfo[] GetActiveSessions()
-    {
-        throw new NotImplementedException();
-    }
-
-    public ClientInfo[] GetAllClients()
-    {
-        throw new NotImplementedException();
-    }
-
-    public decimal GetCurrentBillingRate()
-    {
-        throw new NotImplementedException();
-    }
-
-    public SessionInfo GetSessionInfo(int sessionId)
-    {
-        throw new NotImplementedException();
-    }
-
-    public ReportData GetSessionReport(DateTime fromDate, DateTime toDate)
-    {
-        throw new NotImplementedException();
-    }
-
-    public AlertInfo[] GetUnacknowledgedAlerts()
-    {
-        throw new NotImplementedException();
-    }
-
-    public bool LogSecurityAlert(int sessionId, int userId, string alertType, string description, string severity)
-    {
-        throw new NotImplementedException();
-    }
-
-    public bool RegisterClient(string clientCode, string machineName, string ipAddress, string macAddress)
-    {
-        throw new NotImplementedException();
-    }
-
-    public SessionStartResponse StartSession(int userId, string clientCode, int durationMinutes)
-    {
-        throw new NotImplementedException();
-    }
-
-    public void SubscribeForNotifications(string clientCode)
-    {
-        throw new NotImplementedException();
-    }
-
-    public void UnsubscribeFromNotifications(string clientCode)
-    {
-        throw new NotImplementedException();
-    }
-
-    public bool UpdateClientStatus(string clientCode, string status)
-    {
-        throw new NotImplementedException();
-    }
-
-    public bool UploadLoginImage(int sessionId, int userId, string imageBase64)
-    {
-        throw new NotImplementedException();
-    }
-
-    public bool ValidateSession(string sessionToken)
-    {
-        throw new NotImplementedException();
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+            Console.WriteLine("Press Enter to exit.");
+            Console.ReadLine();
+        }
     }
 }

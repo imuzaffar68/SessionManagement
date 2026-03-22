@@ -27,30 +27,49 @@ namespace SessionManagement.WCF
         {
             try
             {
-                // Hash the password
-                string passwordHash = AuthenticationHelper.HashPassword(password);
-
-                // Authenticate against database
-                DataRow userRow = dbHelper.AuthenticateUser(username, passwordHash);
+                // Get user from database by username (including password hash)
+                DataRow userRow = dbHelper.AuthenticateUser(username);
 
                 if (userRow != null)
                 {
-                    // Generate session token
-                    string sessionToken = AuthenticationHelper.GenerateSessionToken();
+                    // Verify password using BCrypt
+                    string storedHash = userRow["PasswordHash"].ToString();
+                    bool passwordVerified = AuthenticationHelper.VerifyPassword(password, storedHash);
 
-                    return new AuthenticationResponse
+                    // Log verification attempt for debugging
+                    System.Diagnostics.Debug.WriteLine($"[AUTH] User: {username}, Verified: {passwordVerified}, Role: {userRow["Role"]}");
+
+                    if (passwordVerified)
                     {
-                        IsAuthenticated = true,
-                        UserId = Convert.ToInt32(userRow["UserId"]),
-                        Username = userRow["Username"].ToString(),
-                        FullName = userRow["FullName"].ToString(),
-                        UserType = userRow["UserType"].ToString(),
-                        SessionToken = sessionToken,
-                        ErrorMessage = null
-                    };
+                        // Password is correct - generate session token
+                        string sessionToken = AuthenticationHelper.GenerateSessionToken();
+
+                        return new AuthenticationResponse
+                        {
+                            IsAuthenticated = true,
+                            UserId = Convert.ToInt32(userRow["UserId"]),
+                            Username = userRow["Username"].ToString(),
+                            FullName = userRow["FullName"].ToString(),
+                            UserType = userRow["Role"].ToString(),
+                            SessionToken = sessionToken,
+                            ErrorMessage = null
+                        };
+                    }
+                    else
+                    {
+                        // Password doesn't match
+                        System.Diagnostics.Debug.WriteLine($"[AUTH] Password verification failed for user: {username}");
+                        return new AuthenticationResponse
+                        {
+                            IsAuthenticated = false,
+                            ErrorMessage = "Invalid username or password"
+                        };
+                    }
                 }
                 else
                 {
+                    // User not found
+                    System.Diagnostics.Debug.WriteLine($"[AUTH] User not found: {username}");
                     return new AuthenticationResponse
                     {
                         IsAuthenticated = false,
@@ -60,6 +79,7 @@ namespace SessionManagement.WCF
             }
             catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[AUTH] Exception for user {username}: {ex.Message}");
                 dbHelper.LogSystemEvent(null, null, null, "AuthenticationError",
                     $"Error authenticating user {username}: {ex.Message}", "Error");
 
@@ -87,8 +107,11 @@ namespace SessionManagement.WCF
             {
                 // Get client ID
                 int clientId = dbHelper.GetClientIdByCode(clientCode);
+                System.Diagnostics.Debug.WriteLine($"[SESSION] StartSession - ClientCode: {clientCode}, ClientId: {clientId}, UserId: {userId}");
+
                 if (clientId == 0)
                 {
+                    System.Diagnostics.Debug.WriteLine($"[SESSION] ERROR - Client not found for code: {clientCode}");
                     return new SessionStartResponse
                     {
                         Success = false,
@@ -98,6 +121,7 @@ namespace SessionManagement.WCF
 
                 // Start session in database
                 int sessionId = dbHelper.StartSession(userId, clientId, durationMinutes);
+                System.Diagnostics.Debug.WriteLine($"[SESSION] StartSession - SessionId: {sessionId}");
 
                 if (sessionId > 0)
                 {
