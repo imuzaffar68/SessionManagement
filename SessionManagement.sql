@@ -167,7 +167,9 @@ CREATE TABLE dbo.tblSessionImage (
     CONSTRAINT UQ_tblSessionImage_Session UNIQUE (SessionId)
 );
 GO
-
+ALTER TABLE dbo.tblSessionImage
+alter column ImagePath          NVARCHAR(500) NULL;
+go
 ALTER TABLE dbo.tblSessionImage
 ADD CONSTRAINT FK_tblSessionImage_tblSession
 FOREIGN KEY (SessionId) REFERENCES dbo.tblSession(SessionId)

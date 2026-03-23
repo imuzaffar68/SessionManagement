@@ -174,7 +174,7 @@ namespace SessionManagement.WCF
                     if (sessionRow != null)
                     {
                         int userId = Convert.ToInt32(sessionRow["UserId"]);
-                        int clientId = Convert.ToInt32(sessionRow["ClientId"]);
+                        int clientId = Convert.ToInt32(sessionRow["ClientMachineId"]);
                         string clientCode = sessionRow["ClientCode"].ToString();
 
                         dbHelper.LogSystemEvent(sessionId, userId, clientId, "SessionEnd",
@@ -239,9 +239,9 @@ namespace SessionManagement.WCF
 
         private SessionInfo MapToSessionInfo(DataRow row)
         {
-            DateTime startTime = Convert.ToDateTime(row["StartTime"]);
-            DateTime expectedEndTime = Convert.ToDateTime(row["ExpectedEndTime"]);
-            int selectedDuration = Convert.ToInt32(row["SelectedDuration"]);
+            DateTime startTime = Convert.ToDateTime(row["StartedAt"]);
+            DateTime expectedEndTime = Convert.ToDateTime(row["ExpectedEndAt"]);
+            int selectedDuration = Convert.ToInt32(row["SelectedDurationMinutes"]);
 
             // Calculate remaining minutes
             TimeSpan remaining = expectedEndTime - DateTime.Now;
@@ -263,7 +263,7 @@ namespace SessionManagement.WCF
                 StartTime = startTime,
                 SelectedDuration = selectedDuration,
                 ExpectedEndTime = expectedEndTime,
-                SessionStatus = row["SessionStatus"].ToString(),
+                SessionStatus = row["Status"].ToString(),
                 RemainingMinutes = remainingMinutes,
                 CurrentBilling = currentBilling
             };
@@ -385,14 +385,14 @@ namespace SessionManagement.WCF
                 {
                     clients.Add(new ClientInfo
                     {
-                        ClientId = Convert.ToInt32(row["ClientId"]),
+                        ClientId = Convert.ToInt32(row["ClientMachineId"]),
                         ClientCode = row["ClientCode"].ToString(),
                         MachineName = row["MachineName"].ToString(),
                         IpAddress = row["IpAddress"].ToString(),
                         MacAddress = row["MacAddress"]?.ToString(),
                         Status = row["Status"].ToString(),
-                        LastActiveTime = row["LastActiveTime"] != DBNull.Value
-                            ? Convert.ToDateTime(row["LastActiveTime"])
+                        LastActiveTime = row["LastSeenAt"] != DBNull.Value
+                            ? Convert.ToDateTime(row["LastSeenAt"])
                             : (DateTime?)null
                     });
                 }
@@ -541,9 +541,9 @@ namespace SessionManagement.WCF
                         totalRevenue += Convert.ToDecimal(row["BillingAmount"]);
                     }
 
-                    if (row["ActualDuration"] != DBNull.Value)
+                    if (row["ActualDurationMinutes"] != DBNull.Value)
                     {
-                        totalHours += Convert.ToInt32(row["ActualDuration"]) / 60.0;
+                        totalHours += Convert.ToInt32(row["ActualDurationMinutes"]) / 60.0;
                     }
 
                     // Add session to list (simplified)
