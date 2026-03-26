@@ -27,30 +27,49 @@ namespace SessionManagement.WCF
         {
             try
             {
-                // Hash the password
-                string passwordHash = AuthenticationHelper.HashPassword(password);
-
-                // Authenticate against database
-                DataRow userRow = dbHelper.AuthenticateUser(username, passwordHash);
+                // Get user from database by username (including password hash)
+                DataRow userRow = dbHelper.AuthenticateUser(username);
 
                 if (userRow != null)
                 {
-                    // Generate session token
-                    string sessionToken = AuthenticationHelper.GenerateSessionToken();
+                    // Verify password using BCrypt
+                    string storedHash = userRow["PasswordHash"].ToString();
+                    bool passwordVerified = AuthenticationHelper.VerifyPassword(password, storedHash);
 
-                    return new AuthenticationResponse
+                    // Log verification attempt for debugging
+                    System.Diagnostics.Debug.WriteLine($"[AUTH] User: {username}, Verified: {passwordVerified}, Role: {userRow["Role"]}");
+
+                    if (passwordVerified)
                     {
-                        IsAuthenticated = true,
-                        UserId = Convert.ToInt32(userRow["UserId"]),
-                        Username = userRow["Username"].ToString(),
-                        FullName = userRow["FullName"].ToString(),
-                        UserType = userRow["UserType"].ToString(),
-                        SessionToken = sessionToken,
-                        ErrorMessage = null
-                    };
+                        // Password is correct - generate session token
+                        string sessionToken = AuthenticationHelper.GenerateSessionToken();
+
+                        return new AuthenticationResponse
+                        {
+                            IsAuthenticated = true,
+                            UserId = Convert.ToInt32(userRow["UserId"]),
+                            Username = userRow["Username"].ToString(),
+                            FullName = userRow["FullName"].ToString(),
+                            UserType = userRow["Role"].ToString(),
+                            SessionToken = sessionToken,
+                            ErrorMessage = null
+                        };
+                    }
+                    else
+                    {
+                        // Password doesn't match
+                        System.Diagnostics.Debug.WriteLine($"[AUTH] Password verification failed for user: {username}");
+                        return new AuthenticationResponse
+                        {
+                            IsAuthenticated = false,
+                            ErrorMessage = "Invalid username or password"
+                        };
+                    }
                 }
                 else
                 {
+                    // User not found
+                    System.Diagnostics.Debug.WriteLine($"[AUTH] User not found: {username}");
                     return new AuthenticationResponse
                     {
                         IsAuthenticated = false,
@@ -60,6 +79,7 @@ namespace SessionManagement.WCF
             }
             catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[AUTH] Exception for user {username}: {ex.Message}");
                 dbHelper.LogSystemEvent(null, null, null, "AuthenticationError",
                     $"Error authenticating user {username}: {ex.Message}", "Error");
 
@@ -87,8 +107,11 @@ namespace SessionManagement.WCF
             {
                 // Get client ID
                 int clientId = dbHelper.GetClientIdByCode(clientCode);
+                System.Diagnostics.Debug.WriteLine($"[SESSION] StartSession - ClientCode: {clientCode}, ClientId: {clientId}, UserId: {userId}");
+
                 if (clientId == 0)
                 {
+                    System.Diagnostics.Debug.WriteLine($"[SESSION] ERROR - Client not found for code: {clientCode}");
                     return new SessionStartResponse
                     {
                         Success = false,
@@ -98,6 +121,7 @@ namespace SessionManagement.WCF
 
                 // Start session in database
                 int sessionId = dbHelper.StartSession(userId, clientId, durationMinutes);
+                System.Diagnostics.Debug.WriteLine($"[SESSION] StartSession - SessionId: {sessionId}");
 
                 if (sessionId > 0)
                 {
@@ -150,7 +174,7 @@ namespace SessionManagement.WCF
                     if (sessionRow != null)
                     {
                         int userId = Convert.ToInt32(sessionRow["UserId"]);
-                        int clientId = Convert.ToInt32(sessionRow["ClientId"]);
+                        int clientId = Convert.ToInt32(sessionRow["ClientMachineId"]);
                         string clientCode = sessionRow["ClientCode"].ToString();
 
                         dbHelper.LogSystemEvent(sessionId, userId, clientId, "SessionEnd",
@@ -215,9 +239,9 @@ namespace SessionManagement.WCF
 
         private SessionInfo MapToSessionInfo(DataRow row)
         {
-            DateTime startTime = Convert.ToDateTime(row["StartTime"]);
-            DateTime expectedEndTime = Convert.ToDateTime(row["ExpectedEndTime"]);
-            int selectedDuration = Convert.ToInt32(row["SelectedDuration"]);
+            DateTime startTime = Convert.ToDateTime(row["StartedAt"]);
+            DateTime expectedEndTime = Convert.ToDateTime(row["ExpectedEndAt"]);
+            int selectedDuration = Convert.ToInt32(row["SelectedDurationMinutes"]);
 
             // Calculate remaining minutes
             TimeSpan remaining = expectedEndTime - DateTime.Now;
@@ -239,7 +263,7 @@ namespace SessionManagement.WCF
                 StartTime = startTime,
                 SelectedDuration = selectedDuration,
                 ExpectedEndTime = expectedEndTime,
-                SessionStatus = row["SessionStatus"].ToString(),
+                SessionStatus = row["Status"].ToString(),
                 RemainingMinutes = remainingMinutes,
                 CurrentBilling = currentBilling
             };
@@ -361,14 +385,14 @@ namespace SessionManagement.WCF
                 {
                     clients.Add(new ClientInfo
                     {
-                        ClientId = Convert.ToInt32(row["ClientId"]),
+                        ClientId = Convert.ToInt32(row["ClientMachineId"]),
                         ClientCode = row["ClientCode"].ToString(),
                         MachineName = row["MachineName"].ToString(),
                         IpAddress = row["IpAddress"].ToString(),
                         MacAddress = row["MacAddress"]?.ToString(),
                         Status = row["Status"].ToString(),
-                        LastActiveTime = row["LastActiveTime"] != DBNull.Value
-                            ? Convert.ToDateTime(row["LastActiveTime"])
+                        LastActiveTime = row["LastSeenAt"] != DBNull.Value
+                            ? Convert.ToDateTime(row["LastSeenAt"])
                             : (DateTime?)null
                     });
                 }
@@ -517,9 +541,9 @@ namespace SessionManagement.WCF
                         totalRevenue += Convert.ToDecimal(row["BillingAmount"]);
                     }
 
-                    if (row["ActualDuration"] != DBNull.Value)
+                    if (row["ActualDurationMinutes"] != DBNull.Value)
                     {
-                        totalHours += Convert.ToInt32(row["ActualDuration"]) / 60.0;
+                        totalHours += Convert.ToInt32(row["ActualDurationMinutes"]) / 60.0;
                     }
 
                     // Add session to list (simplified)

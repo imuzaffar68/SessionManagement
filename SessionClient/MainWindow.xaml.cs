@@ -80,7 +80,9 @@ namespace SessionClient
         private void btnLogin_Click(object sender, RoutedEventArgs e)
         {
             string username = txtUsername.Text.Trim();
-            string password = txtPassword.Password;
+            string password = txtPassword.Visibility == Visibility.Visible 
+                ? txtPassword.Password 
+                : txtPasswordPlain.Text;
 
             lblLoginError.Visibility = Visibility.Collapsed;
 
@@ -130,6 +132,27 @@ namespace SessionClient
             {
                 btnLogin.IsEnabled = true;
                 btnLogin.Content = "Login";
+            }
+        }
+
+        private void btnShowPassword_Click(object sender, RoutedEventArgs e)
+        {
+            // Toggle between PasswordBox and TextBox for password visibility
+            if (txtPassword.Visibility == Visibility.Visible)
+            {
+                // Hide password - switch to PasswordBox
+                txtPasswordPlain.Text = txtPassword.Password;
+                txtPassword.Visibility = Visibility.Visible;
+                txtPasswordPlain.Visibility = Visibility.Collapsed;
+                btnShowPassword.Content = "👁";
+            }
+            else
+            {
+                // Show password - switch to TextBox
+                txtPasswordPlain.Text = txtPassword.Password;
+                txtPassword.Visibility = Visibility.Collapsed;
+                txtPasswordPlain.Visibility = Visibility.Visible;
+                btnShowPassword.Content = "🙈";
             }
         }
 
@@ -217,6 +240,7 @@ namespace SessionClient
             LoginPanel.Visibility = Visibility.Visible;
             txtUsername.Clear();
             txtPassword.Clear();
+            txtPasswordPlain.Clear();
             currentUser = null;
         }
 
