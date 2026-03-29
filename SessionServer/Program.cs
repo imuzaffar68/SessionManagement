@@ -3,6 +3,7 @@ using System.Configuration;
 using System.ServiceModel;
 using System.ServiceModel.Description;
 using SessionManagement.WCF;
+using SessionManagement.Security;
 
 /// <summary>
 /// SessionServer — WCF service host.
@@ -24,6 +25,30 @@ class Program
         // ── Verify DB connection before opening WCF ───────────────
         try
         {
+            var passwords = new[]
+            {
+                new { Username = "admin", Password = "Admin@123456" },
+                new { Username = "user1", Password = "User1@123456" },
+                new { Username = "user2", Password = "User2@123456" },
+                new { Username = "user3", Password = "User3@123456" }
+            };
+
+            Console.WriteLine("Password Hash Generation for SessionManagement Database");
+            Console.WriteLine("========================================================\n");
+
+            foreach (var user in passwords)
+            {
+                var hash = AuthenticationHelper.HashPassword(user.Password);
+                Console.WriteLine($"Username: {user.Username}");
+                Console.WriteLine($"Password: {user.Password}");
+                Console.WriteLine($"Hash: {hash}");
+                Console.WriteLine($"SQL: ('{user.Username}', '{hash}', ...)");
+                Console.WriteLine();
+            }
+
+            Console.WriteLine("\nCopy the hashes above and update the SQL seed data in SessionManagement.sql");
+            Console.WriteLine("Press any key to exit...");
+            Console.ReadKey();
             string cs = ConfigurationManager
                 .ConnectionStrings["SessionManagementDB"]?.ConnectionString
                 ?? throw new ConfigurationErrorsException(
