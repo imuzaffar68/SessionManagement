@@ -619,15 +619,23 @@ namespace SessionManagement.WCF
         {
             try
             {
-                int n = _db.AutoExpireOverdueSessions();
-                if (n > 0)
+                var expiredIds = _db.AutoExpireOverdueSessionsWithIds();
+                if (expiredIds.Count > 0)
                 {
+                    foreach (var sessionId in expiredIds)
+                    {
+                        var row = _db.GetSessionById(sessionId);
+                        int? userId = row != null ? (int?)Convert.ToInt32(row["UserId"]) : null;
+                        int? machineId = row != null ? (int?)Convert.ToInt32(row["ClientMachineId"]) : null;
+                        _db.WriteSystemLog(sessionId, userId, machineId, null,
+                            "Session", "AutoExpiry",
+                            $"Session {sessionId} auto-expired by server", "Server");
+                    }
                     _db.WriteSystemLog(null, null, null, null,
                         "Session", "AutoExpiry",
-                        $"{n} session(s) auto-expired by server", "Server");
-
+                        $"{expiredIds.Count} session(s) auto-expired by server", "Server");
                     Broadcast(cb => cb.OnServerMessage(
-                        $"{n} session(s) auto-expired. Refresh dashboard."));
+                        $"{expiredIds.Count} session(s) auto-expired. Refresh dashboard."));
                 }
             }
             catch (Exception ex)
