@@ -58,6 +58,7 @@ namespace SessionManagement.WCF
         {
             // SEQ-01 step 1: resolve machine id (needed for LoginAttempt row)
             int machineId = _db.GetClientMachineIdByCode(clientCode);
+            bool isAdminLogin = string.Equals(clientCode, "ADMIN", StringComparison.OrdinalIgnoreCase);
 
             try
             {
@@ -66,12 +67,12 @@ namespace SessionManagement.WCF
 
                 if (user == null)
                 {
-                    // SEQ-01 step 4 (failure path): write LoginAttempt
-                    _db.InsertLoginAttempt(machineId, null, username,
-                        false, "UnknownUser");
+                    // Only log login attempt if not admin login and machineId is valid
+                    if (!isAdminLogin && machineId != 0)
+                        _db.InsertLoginAttempt(machineId, null, username, false, "UnknownUser");
 
-                    // SEQ-01 step 5: log Auth event
-                    _db.WriteSystemLog(null, null, machineId, null,
+                    // Log Auth event (set clientMachineId to null for admin login)
+                    _db.WriteSystemLog(null, null, isAdminLogin ? (int?)null : machineId, null,
                         "Auth", "LoginFailed",
                         $"Unknown user '{username}' from client {clientCode}", "Server");
 
@@ -88,24 +89,27 @@ namespace SessionManagement.WCF
 
                 if (!verified)
                 {
-                    _db.InsertLoginAttempt(machineId, userId, username,
-                        false, "InvalidPassword");
+                    if (!isAdminLogin && machineId != 0)
+                        _db.InsertLoginAttempt(machineId, userId, username, false, "InvalidPassword");
 
-                    _db.WriteSystemLog(null, userId, machineId, null,
+                    _db.WriteSystemLog(null, userId, isAdminLogin ? (int?)null : machineId, null,
                         "Auth", "LoginFailed",
                         $"Bad password for '{username}'", "Server");
 
                     // FR-12: check for repeated failures → alert
-                    int fails = _db.CountRecentFailedLogins(machineId, withinMinutes: 10);
-                    if (fails >= 3)
+                    if (!isAdminLogin && machineId != 0)
                     {
-                        _db.InsertSecurityAlert("RepeatedLoginFailure", null,
-                            machineId, userId,
-                            $"{fails} failed attempts in 10 min on {clientCode}", "High");
+                        int fails = _db.CountRecentFailedLogins(machineId, withinMinutes: 10);
+                        if (fails >= 3)
+                        {
+                            _db.InsertSecurityAlert("RepeatedLoginFailure", null,
+                                machineId, userId,
+                                $"{fails} failed attempts in 10 min on {clientCode}", "High");
 
-                        // FR-14: push real-time alert to all admins
-                        Broadcast(cb => cb.OnServerMessage(
-                            $"[High] ALERT: RepeatedLoginFailure on {clientCode} — {fails} attempts"));
+                            // FR-14: push real-time alert to all admins
+                            Broadcast(cb => cb.OnServerMessage(
+                                $"[High] ALERT: RepeatedLoginFailure on {clientCode} — {fails} attempts"));
+                        }
                     }
 
                     return Fail("Invalid username or password.");
@@ -114,9 +118,9 @@ namespace SessionManagement.WCF
                 // SEQ-01 step 3c: status checks
                 if (userStatus == "Blocked")
                 {
-                    _db.InsertLoginAttempt(machineId, userId, username,
-                        false, "BlockedUser");
-                    _db.WriteSystemLog(null, userId, machineId, null,
+                    if (!isAdminLogin && machineId != 0)
+                        _db.InsertLoginAttempt(machineId, userId, username, false, "BlockedUser");
+                    _db.WriteSystemLog(null, userId, isAdminLogin ? (int?)null : machineId, null,
                         "Auth", "LoginBlocked",
                         $"Blocked user '{username}' attempted login", "Server");
                     return Fail("Your account has been blocked. Contact the administrator.");
@@ -124,17 +128,18 @@ namespace SessionManagement.WCF
 
                 if (userStatus == "Disabled")
                 {
-                    _db.InsertLoginAttempt(machineId, userId, username,
-                        false, "BlockedUser");
+                    if (!isAdminLogin && machineId != 0)
+                        _db.InsertLoginAttempt(machineId, userId, username, false, "BlockedUser");
                     return Fail("Your account is disabled.");
                 }
 
                 // SEQ-01 step 4 (success): write LoginAttempt + update LastLoginAt
-                _db.InsertLoginAttempt(machineId, userId, username, true);
+                if (!isAdminLogin && machineId != 0)
+                    _db.InsertLoginAttempt(machineId, userId, username, true);
                 _db.UpdateLastLogin(userId);
 
                 // SEQ-01 step 5: Auth log
-                _db.WriteSystemLog(null, userId, machineId, null,
+                _db.WriteSystemLog(null, userId, isAdminLogin ? (int?)null : machineId, null,
                     "Auth", "LoginSuccess",
                     $"User '{username}' authenticated on {clientCode}", "Server");
 
@@ -150,7 +155,7 @@ namespace SessionManagement.WCF
             }
             catch (Exception ex)
             {
-                _db.WriteSystemLog(null, null, machineId, null,
+                _db.WriteSystemLog(null, null, isAdminLogin ? (int?)null : machineId, null,
                     "Auth", "LoginError", ex.Message, "Server");
                 return Fail("Authentication service error. Please try again.");
             }
