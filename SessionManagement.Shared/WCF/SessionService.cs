@@ -191,15 +191,15 @@ namespace SessionManagement.WCF
                 DateTime start = DateTime.Now;
                 DateTime end   = start.AddMinutes(durationMinutes);
 
-                // SEQ-02 step 4: Session log
-                _db.WriteSystemLog(sessionId, userId, machineId, null,
-                    "Session", "SessionStarted",
-                    $"Session {sessionId} started — {durationMinutes} min on {clientCode}",
-                    "Server");
+                // SEQ-02 step 4: Session log //commented due to duplicate log in procedure
+                //_db.WriteSystemLog(sessionId, userId, machineId, null,
+                //    "Session", "SessionStarted",
+                //    $"Session {sessionId} started — {durationMinutes} min on {clientCode}",
+                //    "Server");
 
                 // SEQ-02 step 5: push to all subscribed admins (FR-06 real-time monitor)
-                Broadcast(cb => cb.OnServerMessage(
-                    $"New session: {clientCode} | {durationMinutes} min | SessionId={sessionId}"));
+                //Broadcast(cb => cb.OnServerMessage(
+                //    $"New session: {clientCode} | {durationMinutes} min | SessionId={sessionId}"));
 
                 return new SessionStartResponse
                 {
@@ -631,9 +631,6 @@ namespace SessionManagement.WCF
                             "Session", "AutoExpiry",
                             $"Session {sessionId} auto-expired by server", "Server");
                     }
-                    _db.WriteSystemLog(null, null, null, null,
-                        "Session", "AutoExpiry",
-                        $"{expiredIds.Count} session(s) auto-expired by server", "Server");
                     Broadcast(cb => cb.OnServerMessage(
                         $"{expiredIds.Count} session(s) auto-expired. Refresh dashboard."));
                 }

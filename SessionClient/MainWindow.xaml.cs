@@ -277,8 +277,23 @@ namespace SessionClient
                 // SEQ-05: client packages image+sessionId → server saves to disk → writes tblSessionImage
                 if (!string.IsNullOrEmpty(_pendingImage))
                 {
-                    _svc.UploadLoginImage(_sessionId, _userId, _pendingImage);
+                    var sessionId = _sessionId;
+                    var userId = _userId;
+                    var image = _pendingImage;
                     _pendingImage = null;
+                    System.Threading.Tasks.Task.Run(() =>
+                    {
+                        try
+                        {
+                            bool ok = _svc.UploadLoginImage(sessionId, userId, image);
+                            if (!ok)
+                                System.Diagnostics.Debug.WriteLine("[ImageUpload] Failed to upload login image.");
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine("[ImageUpload] Exception: " + ex.Message);
+                        }
+                    });
                 }
 
                 // Mark machine Active
@@ -286,7 +301,7 @@ namespace SessionClient
 
                 // FR-12: start proxy/illegal-activity detection
                 //StartProxyDetection();
-
+                
                 // UC-02 step 3: start local countdown synced to server times
                 StartCountdown(minutes, resp.StartTime, resp.ExpectedEndTime);
             }
