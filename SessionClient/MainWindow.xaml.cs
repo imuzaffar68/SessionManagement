@@ -33,6 +33,7 @@ namespace SessionClient
         private string  _pendingImage;      // Base64 captured at login; sent after session starts
         private bool    _passwordVisible;
         private int     _failCount;
+        private bool    _manualLogout;      // Track if logout was user-initiated
 
         private const int MAX_ATTEMPTS = 3;
 
@@ -395,6 +396,7 @@ namespace SessionClient
                 "Confirm Exit", MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (r != MessageBoxResult.Yes) return;
 
+            _manualLogout = true; // Set flag for manual logout
             _timer.Stop();
             StopProxyDetection();
             FinalizeSession("Manual");
@@ -468,9 +470,13 @@ namespace SessionClient
             {
                 _timer.Stop();
                 StopProxyDetection();
-                MessageBox.Show(
-                    $"Your session has been terminated by the administrator.\nReason: {e.Reason}",
-                    "Session Terminated", MessageBoxButton.OK, MessageBoxImage.Warning);
+                if (!_manualLogout) // Only show admin message if not manual logout
+                {
+                    MessageBox.Show(
+                        $"Your session has been terminated by the administrator.\nReason: {e.Reason}",
+                        "Session Terminated", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+                _manualLogout = false; // Reset flag
                 ResetToLogin();
             });
         }

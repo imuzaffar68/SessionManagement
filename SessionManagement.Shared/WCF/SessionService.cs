@@ -198,8 +198,10 @@ namespace SessionManagement.WCF
                 //    "Server");
 
                 // SEQ-02 step 5: push to all subscribed admins (FR-06 real-time monitor)
-                //Broadcast(cb => cb.OnServerMessage(
-                //    $"New session: {clientCode} | {durationMinutes} min | SessionId={sessionId}"));
+                // SEQ-02 step 5: push to all subscribed admins (FR-06 real-time monitor)
+                System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+                    Broadcast(cb => cb.OnServerMessage(
+                        $"New session: {clientCode} | {durationMinutes} min | SessionId={sessionId}")));
 
                 return new SessionStartResponse
                 {
@@ -248,7 +250,8 @@ namespace SessionManagement.WCF
                     $"Session {sessionId} ended — reason: {reason}", "Server");
 
                 // SEQ-14 step 5: push termination to the client machine (WCF callback)
-                Notify(code, cb => cb.OnSessionTerminated(sessionId, reason));
+                System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+                    Notify(code, cb => cb.OnSessionTerminated(sessionId, reason)));
 
                 return true;
             }
@@ -631,8 +634,9 @@ namespace SessionManagement.WCF
                             "Session", "AutoExpiry",
                             $"Session {sessionId} auto-expired by server", "Server");
                     }
+                    System.Threading.ThreadPool.QueueUserWorkItem(__ =>
                     Broadcast(cb => cb.OnServerMessage(
-                        $"{expiredIds.Count} session(s) auto-expired. Refresh dashboard."));
+                        $"{expiredIds.Count} session(s) auto-expired. Refresh dashboard.")));
                 }
             }
             catch (Exception ex)

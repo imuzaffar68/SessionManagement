@@ -133,7 +133,7 @@ namespace SessionAdmin
                 lblAdminUser.Text   = $"Admin: {_adminUsername}";
 
                 // SEQ-09 step 4: subscribe for real-time push (FR-14)
-                _svc.SubscribeForNotifications("ADMIN_" + _adminUserId);
+                _svc.SubscribeForNotifications("ADMIN");
 
                 ShowDashboard();
                 LoadAll();
@@ -457,23 +457,37 @@ namespace SessionAdmin
             }
         }
 
+        // ─────────────────────────────────────────────────────────
+        //  FR-14: Real-time server push notification handler
+        // ─────────────────────────────────────────────────────────
+        private void OnServerMessage(object sender, ServerMessageEventArgs e)
+        {
+            // Show as popup (or you can append to a log/alert panel)
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                MessageBox.Show(e.Message, "Server Notification", MessageBoxButton.OK, MessageBoxImage.Information);
+                // Optionally, add to alerts/logs:
+                // _alerts.Add(new AlertVM { Message = e.Message, Timestamp = e.Timestamp });
+            }));
+        }
+
         /// <summary>
         /// FR-14: WCF server callback — new alert pushed in real time.
         /// Refresh the alerts tab immediately.
         /// </summary>
-        private void OnServerMessage(object sender, ServerMessageEventArgs e)
-        {
-            Dispatcher.Invoke(() =>
-            {
-                // Any server message that contains "ALERT" triggers an alert refresh
-                if (e.Message.Contains("ALERT") || e.Message.Contains("alert"))
-                    LoadAlerts();
+        //private void OnServerMessage(object sender, ServerMessageEventArgs e)
+        //{
+        //    Dispatcher.Invoke(() =>
+        //    {
+        //        // Any server message that contains "ALERT" triggers an alert refresh
+        //        if (e.Message.Contains("ALERT") || e.Message.Contains("alert"))
+        //            LoadAlerts();
 
-                // Session changes trigger a session refresh
-                if (e.Message.Contains("session") || e.Message.Contains("Session"))
-                    LoadActiveSessions();
-            });
-        }
+        //        // Session changes trigger a session refresh
+        //        if (e.Message.Contains("session") || e.Message.Contains("Session"))
+        //            LoadActiveSessions();
+        //    });
+        //}
 
         // ═══════════════════════════════════════════════════════════
         //  UC-18  —  GENERATE REPORTS

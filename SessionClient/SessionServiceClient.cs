@@ -1,6 +1,7 @@
 using System;
 using System.Configuration;
 using System.ServiceModel;
+using System.ServiceModel.Description;
 using SessionManagement.WCF;
 
 namespace SessionManagement.Client
@@ -41,6 +42,13 @@ namespace SessionManagement.Client
                 var ctx = new InstanceContext(_handler);
                 _factory = new DuplexChannelFactory<ISessionService>(
                     ctx, "SessionServiceEndpoint");
+
+                // Ensure callbacks do not marshal to UI thread
+                foreach (var op in _factory.Endpoint.Contract.Operations)
+                {
+                    var attr = op.Behaviors.Find<CallbackBehaviorAttribute>();
+                    if (attr != null) attr.UseSynchronizationContext = false;
+                }
 
                 _proxy = _factory.CreateChannel();
                 ((IClientChannel)_proxy).Open();
@@ -292,7 +300,7 @@ namespace SessionManagement.Client
 
     // ── Callback handler ──────────────────────────────────────────
 
-    [CallbackBehavior(ConcurrencyMode = ConcurrencyMode.Reentrant)]
+    [CallbackBehavior(ConcurrencyMode = ConcurrencyMode.Reentrant, UseSynchronizationContext = false)]
     internal sealed class SessionCallbackHandler : ISessionServiceCallback
     {
         public event EventHandler<SessionTerminatedEventArgs> SessionTerminated;
@@ -310,8 +318,21 @@ namespace SessionManagement.Client
                    RemainingMinutes = remainingMinutes, Timestamp = DateTime.Now });
 
         public void OnServerMessage(string message)
-            => ServerMessage?.Invoke(this,
-               new ServerMessageEventArgs { Message = message, Timestamp = DateTime.Now });
+        {
+            // Always marshal to UI thread if needed
+            if (System.Windows.Application.Current != null &&
+                !System.Windows.Application.Current.Dispatcher.CheckAccess())
+            {
+                System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                    ServerMessage?.Invoke(this,
+                        new ServerMessageEventArgs { Message = message, Timestamp = DateTime.Now }));
+            }
+            else
+            {
+                ServerMessage?.Invoke(this,
+                   new ServerMessageEventArgs { Message = message, Timestamp = DateTime.Now });
+            }
+        }
     }
 
     // ── Event args ────────────────────────────────────────────────

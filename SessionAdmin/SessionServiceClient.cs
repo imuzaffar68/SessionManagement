@@ -1,6 +1,7 @@
 using System;
 using System.Configuration;
 using System.ServiceModel;
+using System.ServiceModel.Description;
 using SessionManagement.WCF;
 
 namespace SessionManagement.Client
@@ -292,7 +293,7 @@ namespace SessionManagement.Client
 
     // ── Callback handler ──────────────────────────────────────────
 
-    [CallbackBehavior(ConcurrencyMode = ConcurrencyMode.Reentrant)]
+    [CallbackBehavior(ConcurrencyMode = ConcurrencyMode.Reentrant, UseSynchronizationContext = false)]
     internal sealed class SessionCallbackHandler : ISessionServiceCallback
     {
         public event EventHandler<SessionTerminatedEventArgs> SessionTerminated;
@@ -310,8 +311,21 @@ namespace SessionManagement.Client
                    RemainingMinutes = remainingMinutes, Timestamp = DateTime.Now });
 
         public void OnServerMessage(string message)
-            => ServerMessage?.Invoke(this,
-               new ServerMessageEventArgs { Message = message, Timestamp = DateTime.Now });
+        {
+            // Always marshal to UI thread if needed
+            if (System.Windows.Application.Current != null &&
+                !System.Windows.Application.Current.Dispatcher.CheckAccess())
+            {
+                System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                    ServerMessage?.Invoke(this,
+                        new ServerMessageEventArgs { Message = message, Timestamp = DateTime.Now }));
+            }
+            else
+            {
+                ServerMessage?.Invoke(this,
+                    new ServerMessageEventArgs { Message = message, Timestamp = DateTime.Now });
+            }
+        }
     }
 
     // ── Event args ────────────────────────────────────────────────
