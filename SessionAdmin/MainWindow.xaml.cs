@@ -662,6 +662,7 @@ namespace SessionAdmin
 
             DashboardPanel.Visibility = Visibility.Collapsed;
             LoginPanel.Visibility     = Visibility.Visible;
+            AdminHeaderPanel.Visibility = Visibility.Collapsed;
         }
 
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
@@ -687,6 +688,7 @@ namespace SessionAdmin
         {
             LoginPanel.Visibility     = Visibility.Collapsed;
             DashboardPanel.Visibility = Visibility.Visible;
+            AdminHeaderPanel.Visibility = Visibility.Visible;
         }
 
         private void ShowLoginError(string msg)
