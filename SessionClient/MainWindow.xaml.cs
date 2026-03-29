@@ -1,10 +1,13 @@
-﻿using System;
+using System;
 using System.Configuration;
 using System.Drawing;
+using System.Net;
+using System.Net.NetworkInformation;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
 using SessionManagement.Client;
+using SessionManagement.Security;
 using SessionManagement.WCF;
 using SessionManagement.Media;
 
@@ -12,530 +15,603 @@ namespace SessionClient
 {
     public partial class MainWindow : Window
     {
-        private DispatcherTimer sessionTimer;
-        private TimeSpan remainingTime;
-        private TimeSpan totalDuration;
-        private string currentUser;
-        private int currentUserId;
-        private int currentSessionId;
-        private SessionServiceClient serviceClient;
-        private WebcamHelper webcamHelper;
-        private string clientCode;
+        // ── fields ───────────────────────────────────────────────
+        private DispatcherTimer       _timer;
+        private TimeSpan              _remaining;
+        private TimeSpan              _total;
 
+        private string  _username;
+        private int     _userId;
+        private int     _sessionId;
+        private string  _clientCode;
+        private int     _machineId;         // returned by RegisterClient
+
+        private SessionServiceClient  _svc;
+        private WebcamHelper          _cam;
+        private ProxyDetectionService _proxy;
+
+        private string  _pendingImage;      // Base64 captured at login; sent after session starts
+        private bool    _passwordVisible;
+        private int     _failCount;
+
+        private const int MAX_ATTEMPTS = 3;
+
+        // ─────────────────────────────────────────────────────────
         public MainWindow()
         {
             InitializeComponent();
-            InitializeServices();
-            InitializeTimer();
+            _timer          = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _timer.Tick    += Timer_Tick;
+            _clientCode     = ConfigurationManager.AppSettings["ClientCode"] ?? "CL001";
+            Loaded         += OnLoaded;
         }
 
-        private void InitializeServices()
+        // ─────────────────────────────────────────────────────────
+        //  STARTUP  (call RegisterClient + subscribe)
+        // ─────────────────────────────────────────────────────────
+
+        private void OnLoaded(object sender, RoutedEventArgs e)
         {
             try
             {
-                // Initialize WCF service client
-                serviceClient = new SessionServiceClient();
+                _svc = new SessionServiceClient();
+                _svc.SessionTerminated += OnSessionTerminated;
+                _svc.TimeWarning       += OnTimeWarning;
+                _svc.ServerMessage     += OnServerMessage;
 
-                // Subscribe to server events
-                serviceClient.SessionTerminated += ServiceClient_SessionTerminated;
-                serviceClient.TimeWarning += ServiceClient_TimeWarning;
-                serviceClient.ServerMessage += ServiceClient_ServerMessage;
-
-                // Get client code from configuration
-                clientCode = ServiceConfiguration.ClientCode;
-
-                // Connect to server
-                if (!serviceClient.Connect())
+                if (!_svc.Connect())
                 {
-                    MessageBox.Show("Unable to connect to server. Please check network connection and try again.",
-                                  "Connection Error", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
-                else
-                {
-                    // Subscribe for server notifications
-                    serviceClient.SubscribeForNotifications(clientCode);
-
-                    // Update client status to Online
-                    serviceClient.UpdateClientStatus(clientCode, "Online");
+                    ShowError("Cannot connect to server. Check network and restart.");
+                    return;
                 }
 
-                // Initialize webcam helper
-                webcamHelper = new WebcamHelper();
-                webcamHelper.CaptureError += Webcam_CaptureError;
+                // UC-10/11: register this machine so it appears in admin dashboard
+                string machine  = ConfigurationManager.AppSettings["ClientMachineName"]
+                                  ?? Environment.MachineName;
+                string ip       = GetLocalIp();
+                string mac      = GetMac();
+
+                bool registered = _svc.RegisterClient(_clientCode, machine, ip, mac);
+                if (!registered)
+                    System.Diagnostics.Debug.WriteLine(
+                        "[Client] Machine registration failed — may already exist.");
+
+                // Subscribe for WCF callbacks (time warnings, forced termination)
+                _svc.SubscribeForNotifications(_clientCode);
+
+                // Mark machine Online/Idle in dashboard
+                _svc.UpdateClientStatus(_clientCode, "Idle");
+
+                // Init webcam
+                _cam              = new WebcamHelper();
+                _cam.CaptureError += (s, ev) =>
+                    System.Diagnostics.Debug.WriteLine($"[Cam] {ev.ErrorMessage}");
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Initialization error: {ex.Message}", "Error",
-                              MessageBoxButton.OK, MessageBoxImage.Error);
+                ShowError($"Initialization error: {ex.Message}");
             }
         }
 
-        private void InitializeTimer()
-        {
-            sessionTimer = new DispatcherTimer();
-            sessionTimer.Interval = TimeSpan.FromSeconds(1);
-            sessionTimer.Tick += SessionTimer_Tick;
-        }
+        // ─────────────────────────────────────────────────────────
+        //  UC-01  ─  LOGIN
+        //  SEQ-01: User → Client → Server → DB → Server → Client
+        // ─────────────────────────────────────────────────────────
 
         private void btnLogin_Click(object sender, RoutedEventArgs e)
         {
-            string username = txtUsername.Text.Trim();
-            string password = txtPassword.Visibility == Visibility.Visible 
-                ? txtPassword.Password 
-                : txtPasswordPlain.Text;
+            string user = txtUsername.Text.Trim();
+            string pass = _passwordVisible
+                          ? txtPasswordPlain.Text
+                          : txtPassword.Password;
 
-            lblLoginError.Visibility = Visibility.Collapsed;
+            HideLoginError();
 
-            // Validate input
-            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+            // Basic client-side validation
+            if (string.IsNullOrEmpty(user) || string.IsNullOrEmpty(pass))
+            { ShowLoginError("Please enter both username and password."); return; }
+
+            // Lockout after MAX_ATTEMPTS consecutive failures
+            if (_failCount >= MAX_ATTEMPTS)
             {
-                lblLoginError.Text = "Please enter both username and password";
-                lblLoginError.Visibility = Visibility.Visible;
+                ShowLoginError($"Too many failed attempts. Please wait before trying again.");
                 return;
             }
 
-            // Disable login button to prevent multiple clicks
             btnLogin.IsEnabled = false;
-            btnLogin.Content = "Authenticating...";
+            btnLogin.Content   = "Authenticating…";
 
             try
             {
-                // Call WCF service for authentication
-                var response = serviceClient.AuthenticateUser(username, password, clientCode);
+                // SEQ-01 step 2: client sends to server
+                var resp = _svc.AuthenticateUser(user, pass, _clientCode);
 
-                if (response.IsAuthenticated)
+                if (resp.IsAuthenticated)
                 {
-                    // Store user information
-                    currentUser = response.Username;
-                    currentUserId = response.UserId;
+                    _failCount = 0;
+                    _username  = resp.Username;
+                    _userId    = resp.UserId;
 
-                    // UC-04: Capture User Image
-                    CaptureUserImage();
+                    // UC-04 step 1: capture image immediately after successful login
+                    CaptureImageAsync();
 
-                    // Show duration selection panel
-                    ShowDurationPanel();
+                    // Move to duration screen
+                    ShowPanel(DurationPanel);
                 }
                 else
                 {
-                    lblLoginError.Text = response.ErrorMessage ?? "Invalid credentials. Please try again.";
-                    lblLoginError.Visibility = Visibility.Visible;
+                    _failCount++;
+                    ShowLoginError(resp.ErrorMessage ?? "Invalid credentials.");
                 }
             }
             catch (Exception ex)
             {
-                lblLoginError.Text = "Connection error. Please check server connection.";
-                lblLoginError.Visibility = Visibility.Visible;
-                MessageBox.Show($"Authentication error: {ex.Message}", "Error",
-                              MessageBoxButton.OK, MessageBoxImage.Error);
+                ShowLoginError("Connection error. Check server connection.");
+                System.Diagnostics.Debug.WriteLine($"[Login] {ex.Message}");
             }
             finally
             {
                 btnLogin.IsEnabled = true;
-                btnLogin.Content = "Login";
+                btnLogin.Content   = "Login";
             }
         }
 
+        // Password show/hide toggle
         private void btnShowPassword_Click(object sender, RoutedEventArgs e)
         {
-            // Toggle between PasswordBox and TextBox for password visibility
-            if (txtPassword.Visibility == Visibility.Visible)
+            _passwordVisible = !_passwordVisible;
+            if (_passwordVisible)
             {
-                // Hide password - switch to PasswordBox
-                txtPasswordPlain.Text = txtPassword.Password;
-                txtPassword.Visibility = Visibility.Visible;
-                txtPasswordPlain.Visibility = Visibility.Collapsed;
-                btnShowPassword.Content = "👁";
+                txtPasswordPlain.Text         = txtPassword.Password;
+                txtPassword.Visibility        = Visibility.Collapsed;
+                txtPasswordPlain.Visibility   = Visibility.Visible;
+                btnShowPassword.Content       = "🙈";
             }
             else
             {
-                // Show password - switch to TextBox
-                txtPasswordPlain.Text = txtPassword.Password;
-                txtPassword.Visibility = Visibility.Collapsed;
-                txtPasswordPlain.Visibility = Visibility.Visible;
-                btnShowPassword.Content = "🙈";
+                txtPassword.Password          = txtPasswordPlain.Text;
+                txtPasswordPlain.Visibility   = Visibility.Collapsed;
+                txtPassword.Visibility        = Visibility.Visible;
+                btnShowPassword.Content       = "👁";
             }
         }
 
-        private void CaptureUserImage()
+        // ─────────────────────────────────────────────────────────
+        //  UC-04  ─  CAPTURE USER IMAGE (async, retries once)
+        //  SEQ-04: Login success → activate webcam → capture → store locally
+        // ─────────────────────────────────────────────────────────
+
+        private void CaptureImageAsync()
         {
-            // UC-04: Capture User Image
-            try
+            System.Threading.ThreadPool.QueueUserWorkItem(_ =>
             {
-                if (!webcamHelper.IsDeviceAvailable)
+                bool retried = false;
+            TryCapture:
+                try
                 {
-                    MessageBox.Show("No webcam detected. Session will continue without image capture.",
-                                  "Webcam Unavailable", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    if (!_cam.IsDeviceAvailable)
+                    {
+                        // SEQ-04 alt path A1: camera unavailable
+                        _svc.LogSecurityAlert(0, _userId,
+                            "CameraUnavailable", "No webcam at login", "Low");
+                        return;
+                    }
 
-                    // Log to server that camera is unavailable
-                    serviceClient.LogSecurityAlert(0, currentUserId, "CameraUnavailable",
-                                                  "Webcam not detected during login", "Low");
-                    return;
+                    Bitmap img = _cam.CaptureImage();
+
+                    if (img == null && !retried)
+                    {
+                        // SEQ-04 exception: retry once
+                        retried = true;
+                        System.Threading.Thread.Sleep(500);
+                        goto TryCapture;
+                    }
+
+                    if (img == null)
+                    {
+                        // SEQ-04: retry failed → log failure
+                        _svc.LogSecurityAlert(0, _userId,
+                            "ImageCaptureFailed", "Webcam capture failed after retry", "Low");
+                        return;
+                    }
+
+                    // Store locally until we have a sessionId
+                    _pendingImage = WebcamHelper.BitmapToBase64(
+                        img, System.Drawing.Imaging.ImageFormat.Jpeg);
+                    img.Dispose();
                 }
-
-                // Capture image from webcam
-                Bitmap capturedImage = webcamHelper.CaptureImage();
-
-                if (capturedImage != null)
+                catch (Exception ex)
                 {
-                    // UC-05: Send Image to Server
-                    SendImageToServer(capturedImage);
+                    System.Diagnostics.Debug.WriteLine($"[Cam] {ex.Message}");
+                    if (!retried) { retried = true; goto TryCapture; }
                 }
-                else
-                {
-                    MessageBox.Show("Failed to capture image. Session will continue.",
-                                  "Capture Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Image capture error: {ex.Message}", "Error",
-                              MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
-        }
-
-        private void SendImageToServer(Bitmap image)
-        {
-            // UC-05: Send Image to Server
-            try
-            {
-                // Convert bitmap to Base64
-                string imageBase64 = WebcamHelper.BitmapToBase64(image, System.Drawing.Imaging.ImageFormat.Jpeg);
-
-                if (!string.IsNullOrEmpty(imageBase64))
-                {
-                    // Upload to server (will be saved after session starts)
-                    // For now, store temporarily - will be uploaded after session creation
-                    this.Tag = imageBase64; // Temporary storage
-
-                    MessageBox.Show("Image captured successfully", "Success",
-                                  MessageBoxButton.OK, MessageBoxImage.Information);
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Error sending image: {ex.Message}", "Upload Error",
-                              MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
-        }
-
-        private void Webcam_CaptureError(object sender, WebcamErrorEventArgs e)
-        {
-            Dispatcher.Invoke(() =>
-            {
-                MessageBox.Show($"Webcam error: {e.ErrorMessage}", "Webcam Error",
-                              MessageBoxButton.OK, MessageBoxImage.Warning);
             });
         }
 
-        private void ShowDurationPanel()
+        // ─────────────────────────────────────────────────────────
+        //  UC-03  ─  SELECT SESSION DURATION
+        // ─────────────────────────────────────────────────────────
+
+        private void cboDuration_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            LoginPanel.Visibility = Visibility.Collapsed;
-            DurationPanel.Visibility = Visibility.Visible;
+            if (CustomDurationPanel == null) return;
+            CustomDurationPanel.Visibility =
+                cboDuration.SelectedIndex == 4 ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void btnCancelDuration_Click(object sender, RoutedEventArgs e)
         {
-            // Return to login screen
-            DurationPanel.Visibility = Visibility.Collapsed;
-            LoginPanel.Visibility = Visibility.Visible;
-            txtUsername.Clear();
-            txtPassword.Clear();
-            txtPasswordPlain.Clear();
-            currentUser = null;
+            _pendingImage = null;
+            _username     = null;
+            ResetLoginFields();
+            ShowPanel(LoginPanel);
         }
+
+        // ─────────────────────────────────────────────────────────
+        //  UC-02  ─  START SESSION
+        //  SEQ-02: duration confirmed → server creates session → timer starts
+        // ─────────────────────────────────────────────────────────
 
         private void btnStartSession_Click(object sender, RoutedEventArgs e)
         {
-            int durationMinutes = 0;
+            if (!TryGetDuration(out int minutes)) return;
 
-            // Validate duration selection
-            if (cboDuration.SelectedIndex == 4) // Custom
-            {
-                if (!int.TryParse(txtCustomDuration.Text, out durationMinutes) || durationMinutes <= 0)
-                {
-                    MessageBox.Show("Please enter a valid duration in minutes", "Invalid Duration",
-                                  MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
-
-                // Check duration limits
-                int minDuration = int.Parse(ConfigurationManager.AppSettings["MinSessionDuration"] ?? "15");
-                int maxDuration = int.Parse(ConfigurationManager.AppSettings["MaxSessionDuration"] ?? "480");
-
-                if (durationMinutes < minDuration || durationMinutes > maxDuration)
-                {
-                    MessageBox.Show($"Duration must be between {minDuration} and {maxDuration} minutes",
-                                  "Invalid Duration", MessageBoxButton.OK, MessageBoxImage.Warning);
-                    return;
-                }
-            }
-            else
-            {
-                string selected = (cboDuration.SelectedItem as ComboBoxItem)?.Content.ToString();
-                durationMinutes = int.Parse(selected.Split(' ')[0]);
-            }
-
-            // Disable button during operation
             btnStartSession.IsEnabled = false;
-            btnStartSession.Content = "Starting Session...";
+            btnStartSession.Content   = "Starting…";
 
             try
             {
-                // UC-02: Start Session on server
-                var response = serviceClient.StartSession(currentUserId, clientCode, durationMinutes);
+                // SEQ-02 step 1: send StartSession to server
+                var resp = _svc.StartSession(_userId, _clientCode, minutes);
 
-                if (response.Success)
+                if (!resp.Success)
                 {
-                    currentSessionId = response.SessionId;
-
-                    // Upload captured image if available
-                    if (this.Tag != null && this.Tag is string imageBase64)
-                    {
-                        serviceClient.UploadLoginImage(currentSessionId, currentUserId, imageBase64);
-                        this.Tag = null; // Clear temporary storage
-                    }
-
-                    // Start local session timer
-                    StartSession(durationMinutes, response.StartTime, response.ExpectedEndTime);
+                    MessageBox.Show(resp.ErrorMessage ?? "Failed to start session.",
+                        "Session Start Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
                 }
-                else
+
+                _sessionId = resp.SessionId;
+
+                // UC-05: upload the captured image now that we have a sessionId
+                // SEQ-05: client packages image+sessionId → server saves to disk → writes tblSessionImage
+                if (!string.IsNullOrEmpty(_pendingImage))
                 {
-                    MessageBox.Show(response.ErrorMessage ?? "Failed to start session. Please try again.",
-                                  "Session Start Failed", MessageBoxButton.OK, MessageBoxImage.Error);
+                    _svc.UploadLoginImage(_sessionId, _userId, _pendingImage);
+                    _pendingImage = null;
                 }
+
+                // Mark machine Active
+                _svc.UpdateClientStatus(_clientCode, "Active");
+
+                // FR-12: start proxy/illegal-activity detection
+                //StartProxyDetection();
+
+                // UC-02 step 3: start local countdown synced to server times
+                StartCountdown(minutes, resp.StartTime, resp.ExpectedEndTime);
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Error starting session: {ex.Message}", "Error",
-                              MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show($"Error starting session: {ex.Message}",
+                    "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
             finally
             {
                 btnStartSession.IsEnabled = true;
-                btnStartSession.Content = "Start Session";
+                btnStartSession.Content   = "Start Session";
             }
         }
 
-        private void StartSession(int durationMinutes, DateTime startTime, DateTime expectedEndTime)
+        // ─────────────────────────────────────────────────────────
+        //  UC-06  ─  VIEW REMAINING TIME  (countdown)
+        //  SEQ-06: countdown ticks every second, display updates, 5-min warning
+        // ─────────────────────────────────────────────────────────
+
+        private void StartCountdown(int minutes, DateTime serverStart, DateTime serverEnd)
         {
-            totalDuration = TimeSpan.FromMinutes(durationMinutes);
+            _total     = TimeSpan.FromMinutes(minutes);
+            _remaining = serverEnd - DateTime.Now;
+            if (_remaining.TotalSeconds < 0) _remaining = _total;
 
-            // Calculate remaining time based on server time
-            remainingTime = expectedEndTime - DateTime.Now;
-            if (remainingTime.TotalSeconds < 0)
-                remainingTime = totalDuration;
+            lblSessionUser.Text     = _username;
+            lblSessionDuration.Text = $"{minutes} min";
+            UpdateTimerUI();
 
-            // Update UI
-            lblSessionUser.Text = currentUser;
-            lblSessionDuration.Text = $"{durationMinutes} minutes";
-            lblTimeRemaining.Text = remainingTime.ToString(@"hh\:mm\:ss");
-            progressBar.Value = 100;
-
-            // Show session panel
-            DurationPanel.Visibility = Visibility.Collapsed;
-            SessionPanel.Visibility = Visibility.Visible;
-
-            // Start timer
-            sessionTimer.Start();
-
-            // Subscribe for server notifications
-            serviceClient.SubscribeForNotifications(clientCode);
+            ShowPanel(SessionPanel);
+            _timer.Start();
         }
 
-        private void SessionTimer_Tick(object sender, EventArgs e)
+        private void Timer_Tick(object sender, EventArgs e)
         {
-            remainingTime = remainingTime.Subtract(TimeSpan.FromSeconds(1));
+            _remaining = _remaining.Subtract(TimeSpan.FromSeconds(1));
+            UpdateTimerUI();
 
-            // UC-06: View Remaining Time
-            lblTimeRemaining.Text = remainingTime.ToString(@"hh\:mm\:ss");
+            // Colour warning at ≤ 5 minutes (SEQ-06)
+            lblTimeRemaining.Foreground =
+                _remaining.TotalMinutes <= 5
+                ? System.Windows.Media.Brushes.OrangeRed
+                : System.Windows.Media.Brushes.DarkSlateBlue;
 
-            // Update progress bar
-            double percentage = (remainingTime.TotalSeconds / totalDuration.TotalSeconds) * 100;
-            progressBar.Value = percentage;
-
-            // Change color when time is running low
-            if (remainingTime.TotalMinutes <= 5)
-            {
-                lblTimeRemaining.Foreground = System.Windows.Media.Brushes.Red;
-            }
-
-            // UC-07: End Session Automatically
-            if (remainingTime.TotalSeconds <= 0)
-            {
-                EndSessionAutomatically();
-            }
+            // UC-07: auto-terminate when timer reaches zero
+            if (_remaining.TotalSeconds <= 0)
+                EndSessionAuto();
         }
 
-        private void EndSessionAutomatically()
+        private void UpdateTimerUI()
         {
-            sessionTimer.Stop();
+            lblTimeRemaining.Text = _remaining.ToString(@"hh\:mm\:ss");
+
+            // Show running billing (FR-07 / FR-08)
+            decimal rate    = _svc.GetCurrentBillingRate();
+            double  elapsed = (_total - _remaining).TotalMinutes;
+            lblCurrentBilling.Text = $"${(decimal)elapsed * rate:F2}";
+
+            double pct = _total.TotalSeconds > 0
+                         ? _remaining.TotalSeconds / _total.TotalSeconds * 100
+                         : 0;
+            progressBar.Value = Math.Max(0, pct);
+        }
+
+        // ─────────────────────────────────────────────────────────
+        //  UC-07  ─  AUTO SESSION TERMINATION
+        //  SEQ-07: timer expired → end session → finalize billing → reset UI
+        // ─────────────────────────────────────────────────────────
+
+        private void EndSessionAuto()
+        {
+            _timer.Stop();
+            StopProxyDetection();
 
             MessageBox.Show("Your session has expired.", "Session Ended",
-                          MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBoxButton.OK, MessageBoxImage.Information);
 
-            // UC-07: End session on server
-            FinalizeBillingAndLogs("Auto");
-
-            // Return to login
+            FinalizeSession("Auto");
             ResetToLogin();
         }
 
+        // ─────────────────────────────────────────────────────────
+        //  UC-08  ─  MANUAL LOGOUT
+        //  SEQ-08: user clicks End → confirm → end session → finalize billing → reset UI
+        // ─────────────────────────────────────────────────────────
+
         private void btnEndSession_Click(object sender, RoutedEventArgs e)
         {
-            // UC-08: Logout / Exit Session
-            var result = MessageBox.Show("Are you sure you want to end this session?",
-                                       "Confirm Exit",
-                                       MessageBoxButton.YesNo,
-                                       MessageBoxImage.Question);
+            var r = MessageBox.Show("Are you sure you want to end this session?",
+                "Confirm Exit", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            if (r != MessageBoxResult.Yes) return;
 
-            if (result == MessageBoxResult.Yes)
-            {
-                sessionTimer.Stop();
-
-                // End session on server
-                FinalizeBillingAndLogs("Manual");
-
-                ResetToLogin();
-            }
+            _timer.Stop();
+            StopProxyDetection();
+            FinalizeSession("Manual");
+            ResetToLogin();
         }
 
-        private void FinalizeBillingAndLogs(string terminationType)
+        // ─────────────────────────────────────────────────────────
+        //  Common session finalize (used by both UC-07 and UC-08)
+        // ─────────────────────────────────────────────────────────
+
+        private void FinalizeSession(string type)
         {
             try
             {
-                // Calculate actual usage time
-                TimeSpan usedTime = totalDuration.Subtract(remainingTime);
+                bool ok = _svc.EndSession(_sessionId, type);
 
-                // Call server to end session and finalize billing
-                bool success = serviceClient.EndSession(currentSessionId, terminationType);
+                decimal rate    = _svc.GetCurrentBillingRate();
+                double  elapsed = (_total - _remaining).TotalMinutes;
+                decimal amount  = (decimal)elapsed * rate;
 
-                if (success)
-                {
-                    // Get final billing information
-                    decimal finalBilling = 10; //serviceClient.CalculateSessionBilling(currentSessionId);
+                string summary = ok
+                    ? $"Session ended.\n\nDuration: {(int)elapsed} min\nAmount: ${amount:F2}"
+                    : "Session ended locally. Server sync may be pending.";
 
-                    MessageBox.Show($"Session ended successfully.\n\n" +
-                                  $"Duration: {usedTime.TotalMinutes:F0} minutes\n" +
-                                  $"Amount: ${finalBilling:F2}",
-                                  "Session Summary",
-                                  MessageBoxButton.OK,
-                                  MessageBoxImage.Information);
-                }
-                else
-                {
-                    MessageBox.Show("Session ended locally. Server sync may be pending.",
-                                  "Session End",
-                                  MessageBoxButton.OK,
-                                  MessageBoxImage.Warning);
-                }
+                MessageBox.Show(summary, "Session Summary",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Error finalizing session: {ex.Message}",
-                              "Error",
-                              MessageBoxButton.OK,
-                              MessageBoxImage.Error);
+                    "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
 
-        private void ServiceClient_SessionTerminated(object sender, SessionTerminatedEventArgs e)
+        // ─────────────────────────────────────────────────────────
+        //  FR-12  ─  PROXY / ILLEGAL ACTIVITY DETECTION
+        // ─────────────────────────────────────────────────────────
+
+        private void StartProxyDetection()
         {
-            // Server has terminated the session
+            int interval = int.Parse(
+                ConfigurationManager.AppSettings["ProxyCheckInterval"] ?? "60");
+            _proxy = new ProxyDetectionService(_sessionId, _userId, interval);
+            _proxy.AlertDetected += OnAlertDetected;
+        }
+
+        private void StopProxyDetection()
+        {
+            if (_proxy == null) return;
+            _proxy.AlertDetected -= OnAlertDetected;
+            _proxy.Stop();
+            _proxy.Dispose();
+            _proxy = null;
+        }
+
+        private void OnAlertDetected(object sender, SecurityAlertEventArgs e)
+        {
+            // FR-13: transmit alert to server → server logs + notifies admin
+            _svc.LogSecurityAlert(
+                e.SessionId, e.UserId, e.AlertType, e.Description, e.Severity);
+        }
+
+        // ─────────────────────────────────────────────────────────
+        //  WCF CALLBACKS  (server → client)
+        // ─────────────────────────────────────────────────────────
+
+        private void OnSessionTerminated(object sender, SessionTerminatedEventArgs e)
+        {
+            if (e.SessionId != _sessionId) return;
             Dispatcher.Invoke(() =>
             {
-                if (e.SessionId == currentSessionId)
-                {
-                    sessionTimer.Stop();
-
-                    MessageBox.Show($"Your session has been terminated by administrator.\n\nReason: {e.Reason}",
-                                  "Session Terminated",
-                                  MessageBoxButton.OK,
-                                  MessageBoxImage.Warning);
-
-                    ResetToLogin();
-                }
+                _timer.Stop();
+                StopProxyDetection();
+                MessageBox.Show(
+                    $"Your session has been terminated by the administrator.\nReason: {e.Reason}",
+                    "Session Terminated", MessageBoxButton.OK, MessageBoxImage.Warning);
+                ResetToLogin();
             });
         }
 
-        private void ServiceClient_TimeWarning(object sender, TimeWarningEventArgs e)
+        private void OnTimeWarning(object sender, TimeWarningEventArgs e)
         {
-            // Server warning about remaining time
+            if (e.SessionId != _sessionId) return;
             Dispatcher.Invoke(() =>
             {
-                if (e.SessionId == currentSessionId)
-                {
-                    MessageBox.Show($"Warning: Only {e.RemainingMinutes} minutes remaining in your session.",
-                                  "Time Warning",
-                                  MessageBoxButton.OK,
-                                  MessageBoxImage.Warning);
-                }
+                // Sync remaining time with server value (NFR-03)
+                _remaining = TimeSpan.FromMinutes(e.RemainingMinutes);
+                MessageBox.Show(
+                    $"Warning: Only {e.RemainingMinutes} minute(s) remaining.",
+                    "Time Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
             });
         }
 
-        private void ServiceClient_ServerMessage(object sender, ServerMessageEventArgs e)
+        private void OnServerMessage(object sender, ServerMessageEventArgs e)
+            => Dispatcher.Invoke(() =>
+                System.Diagnostics.Debug.WriteLine($"[Server] {e.Message}"));
+
+        // ─────────────────────────────────────────────────────────
+        //  UI helpers
+        // ─────────────────────────────────────────────────────────
+
+        private void ShowPanel(UIElement p)
         {
-            // General server message
-            Dispatcher.Invoke(() =>
-            {
-                MessageBox.Show(e.Message, "Server Message",
-                              MessageBoxButton.OK,
-                              MessageBoxImage.Information);
-            });
+            LoginPanel.Visibility    = p == LoginPanel    ? Visibility.Visible : Visibility.Collapsed;
+            DurationPanel.Visibility = p == DurationPanel ? Visibility.Visible : Visibility.Collapsed;
+            SessionPanel.Visibility  = p == SessionPanel  ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void ShowLoginError(string msg)
+        {
+            lblLoginError.Text       = msg;
+            lblLoginError.Visibility = Visibility.Visible;
+        }
+
+        private void HideLoginError() => lblLoginError.Visibility = Visibility.Collapsed;
+
+        private void ShowError(string msg)
+            => MessageBox.Show(msg, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+
+        private void ResetLoginFields()
+        {
+            txtUsername.Clear();
+            txtPassword.Clear();
+            txtPasswordPlain.Clear();
         }
 
         private void ResetToLogin()
         {
-            SessionPanel.Visibility = Visibility.Collapsed;
-            LoginPanel.Visibility = Visibility.Visible;
+            _svc?.UpdateClientStatus(_clientCode, "Idle");
+            _username     = null;
+            _sessionId    = 0;
+            _pendingImage = null;
+            _failCount    = 0;
 
-            txtUsername.Clear();
-            txtPassword.Clear();
+            ResetLoginFields();
             txtCustomDuration.Clear();
-            cboDuration.SelectedIndex = 0;
-            lblTimeRemaining.Foreground = System.Windows.Media.Brushes.Black;
+            cboDuration.SelectedIndex      = 0;
+            lblTimeRemaining.Foreground    = System.Windows.Media.Brushes.DarkSlateBlue;
+            lblCurrentBilling.Text         = "$0.00";
 
-            currentUser = null;
+            ShowPanel(LoginPanel);
         }
+
+        private bool TryGetDuration(out int minutes)
+        {
+            minutes = 0;
+            if (cboDuration.SelectedIndex == 4) // Custom
+            {
+                if (!int.TryParse(txtCustomDuration.Text, out minutes) || minutes <= 0)
+                {
+                    MessageBox.Show("Please enter a valid duration in minutes.",
+                        "Invalid Duration", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return false;
+                }
+                int min = int.Parse(ConfigurationManager.AppSettings["MinSessionDuration"] ?? "15");
+                int max = int.Parse(ConfigurationManager.AppSettings["MaxSessionDuration"] ?? "480");
+                if (minutes < min || minutes > max)
+                {
+                    MessageBox.Show($"Duration must be between {min} and {max} minutes.",
+                        "Invalid Duration", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return false;
+                }
+                return true;
+            }
+
+            string sel = (cboDuration.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "";
+            if (int.TryParse(sel.Split(' ')[0], out minutes)) return true;
+
+            MessageBox.Show("Please select a duration.", "Duration Required",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+            return false;
+        }
+
+        // ─────────────────────────────────────────────────────────
+        //  CLOSING
+        // ─────────────────────────────────────────────────────────
 
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
-            if (sessionTimer.IsEnabled)
+            if (_timer.IsEnabled)
             {
-                var result = MessageBox.Show("You have an active session. Are you sure you want to exit?",
-                                           "Confirm Exit",
-                                           MessageBoxButton.YesNo,
-                                           MessageBoxImage.Warning);
+                var r = MessageBox.Show("Active session running. Exit anyway?",
+                    "Confirm Exit", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+                if (r == MessageBoxResult.No) { e.Cancel = true; return; }
 
-                if (result == MessageBoxResult.No)
-                {
-                    e.Cancel = true;
-                    return;
-                }
-
-                sessionTimer.Stop();
-                FinalizeBillingAndLogs("Manual");
+                _timer.Stop();
+                FinalizeSession("Manual");
             }
 
-            // Cleanup
+            StopProxyDetection();
+
             try
             {
-                // Unsubscribe from notifications
-                if (serviceClient != null && serviceClient.IsConnected)
+                if (_svc?.IsConnected == true)
                 {
-                    serviceClient.UpdateClientStatus(clientCode, "Offline");
-                    serviceClient.UnsubscribeFromNotifications(clientCode);
-                    serviceClient.Disconnect();
+                    _svc.UpdateClientStatus(_clientCode, "Offline");
+                    _svc.UnsubscribeFromNotifications(_clientCode);
+                    _svc.Disconnect();
                 }
-
-                // Dispose webcam
-                webcamHelper?.Dispose();
+                _cam?.Dispose();
             }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Cleanup error: {ex.Message}");
-            }
+            catch { /* best-effort cleanup */ }
 
             base.OnClosing(e);
+        }
+
+        // ─────────────────────────────────────────────────────────
+        //  Network helpers
+        // ─────────────────────────────────────────────────────────
+
+        private static string GetLocalIp()
+        {
+            try
+            {
+                foreach (var ip in Dns.GetHostEntry(Dns.GetHostName()).AddressList)
+                    if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
+                        return ip.ToString();
+            }
+            catch { }
+            return "127.0.0.1";
+        }
+
+        private static string GetMac()
+        {
+            try
+            {
+                foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+                    if (nic.OperationalStatus == OperationalStatus.Up)
+                        return nic.GetPhysicalAddress().ToString();
+            }
+            catch { }
+            return null;
         }
     }
 }
