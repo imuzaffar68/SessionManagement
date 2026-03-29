@@ -71,10 +71,33 @@ namespace SessionAdmin
         //  SEQ-09: admin enters creds → AuthenticateUser (Role=Admin) → dashboard
         // ═══════════════════════════════════════════════════════════
 
+        private bool _adminPasswordVisible;
+
+        private void btnShowAdminPassword_Click(object sender, RoutedEventArgs e)
+        {
+            _adminPasswordVisible = !_adminPasswordVisible;
+            if (_adminPasswordVisible)
+            {
+                txtAdminPasswordPlain.Text       = txtAdminPassword.Password;
+                txtAdminPassword.Visibility     = Visibility.Collapsed;
+                txtAdminPasswordPlain.Visibility= Visibility.Visible;
+                btnShowAdminPassword.Content    = "🙈";
+            }
+            else
+            {
+                txtAdminPassword.Password       = txtAdminPasswordPlain.Text;
+                txtAdminPasswordPlain.Visibility= Visibility.Collapsed;
+                txtAdminPassword.Visibility     = Visibility.Visible;
+                btnShowAdminPassword.Content    = "👁";
+            }
+        }
+
         private void btnAdminLogin_Click(object sender, RoutedEventArgs e)
         {
             string user = txtAdminUsername.Text.Trim();
-            string pass = txtAdminPassword.Password;
+            string pass = _adminPasswordVisible
+                          ? txtAdminPasswordPlain.Text
+                          : txtAdminPassword.Password;
 
             lblAdminLoginError.Visibility = Visibility.Collapsed;
 

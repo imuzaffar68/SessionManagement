@@ -40,7 +40,22 @@
                 <TextBox x:Name="txtAdminUsername" Height="34" FontSize="13" Padding="8,4"/>
 
                 <TextBlock Text="Password:" FontSize="13" Margin="0,14,0,4"/>
-                <PasswordBox x:Name="txtAdminPassword" Height="34" FontSize="13" Padding="8,4"/>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="40"/>
+                    </Grid.ColumnDefinitions>
+                    <PasswordBox x:Name="txtAdminPassword" Grid.Column="0"
+                                 Height="34" FontSize="13" Padding="8,4"/>
+                    <TextBox    x:Name="txtAdminPasswordPlain" Grid.Column="0"
+                                Height="34" FontSize="13" Padding="8,4"
+                                Visibility="Collapsed"/>
+                    <Button x:Name="btnShowAdminPassword" Grid.Column="1"
+                            Content="👁" FontSize="15"
+                            Background="Transparent" BorderThickness="0"
+                            Foreground="#3498DB" Margin="4,0,0,0"
+                            Click="btnShowAdminPassword_Click"/>
+                </Grid>
 
                 <TextBlock x:Name="lblAdminLoginError" Foreground="Red" FontSize="11"
                            Margin="0,8,0,0" Visibility="Collapsed" TextWrapping="Wrap"/>
