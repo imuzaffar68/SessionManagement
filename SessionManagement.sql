@@ -31,6 +31,8 @@ IF OBJECT_ID('dbo.sp_FinalizeSessionBilling', 'P') IS NOT NULL DROP PROCEDURE db
 GO
 IF OBJECT_ID('dbo.sp_RegisterClient', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_RegisterClient;
 GO
+IF OBJECT_ID('dbo.sp_RegisterClientUser', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_RegisterClientUser;
+GO
 
 -- Drop views
 IF OBJECT_ID('dbo.vw_SessionReport', 'V') IS NOT NULL DROP VIEW dbo.vw_SessionReport;
@@ -752,6 +754,76 @@ BEGIN
         SELECT 0 AS ClientMachineId;
     END CATCH
 END;
+GO
+--sp_RegisterClientUser
+CREATE OR ALTER PROCEDURE dbo.sp_RegisterClientUser
+    @Username NVARCHAR(50),
+    @PasswordHash NVARCHAR(255),
+    @FullName NVARCHAR(100) = NULL,
+    @Phone NVARCHAR(30) = NULL,
+    @Address NVARCHAR(200) = NULL,
+    @AdminUserId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @UserId INT;
+
+    BEGIN TRY
+        -- Insert user
+        INSERT INTO dbo.tblUser
+        (
+            Username, PasswordHash, FullName, Role, Status,
+            Phone, Address, CreatedByUserId
+        )
+        VALUES
+        (
+            @Username, @PasswordHash, @FullName,
+            'ClientUser', 'Active',
+            @Phone, @Address, @AdminUserId
+        );
+
+        SET @UserId = SCOPE_IDENTITY();
+
+        -- Return new user id
+        SELECT @UserId AS UserId;
+    END TRY
+    BEGIN CATCH
+        -- Duplicate username
+        IF ERROR_NUMBER() IN (2627, 2601)
+        BEGIN
+            SELECT -1 AS UserId;
+
+            INSERT INTO dbo.tblSystemLog
+            (
+                Category, Type, Message, Source
+            )
+            VALUES
+            (
+                'User',
+                'Duplicate',
+                'Duplicate username attempt: "' + @Username + '"',
+                'Server'
+            );
+        END
+        ELSE
+        BEGIN
+            SELECT 0 AS UserId;
+
+            INSERT INTO dbo.tblSystemLog
+            (
+                Category, Type, Message, Source
+            )
+            VALUES
+            (
+                'System',
+                'Error',
+                'sp_RegisterClientUser: ' + ERROR_MESSAGE(),
+                'Server'
+            );
+        END
+    END CATCH
+END
 GO
 
 

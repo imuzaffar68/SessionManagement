@@ -20,6 +20,7 @@ namespace SessionClient
         private TimeSpan              _remaining;
         private TimeSpan              _total;
 
+        private string _fullname; 
         private string  _username;
         private int     _userId;
         private int     _sessionId;
@@ -130,6 +131,7 @@ namespace SessionClient
                 if (resp.IsAuthenticated)
                 {
                     _failCount = 0;
+                    _fullname = resp.FullName; 
                     _username  = resp.Username;
                     _userId    = resp.UserId;
 
@@ -244,6 +246,7 @@ namespace SessionClient
         {
             _pendingImage = null;
             _username     = null;
+            _fullname = null;
             ResetLoginFields();
             ShowPanel(LoginPanel);
         }
@@ -329,7 +332,7 @@ namespace SessionClient
             _remaining = serverEnd - DateTime.Now;
             if (_remaining.TotalSeconds < 0) _remaining = _total;
 
-            lblSessionUser.Text     = _username;
+            lblSessionUser.Text     = _fullname;
             lblSessionDuration.Text = $"{minutes} min";
             UpdateTimerUI();
 
@@ -530,7 +533,8 @@ namespace SessionClient
         private void ResetToLogin()
         {
             _svc?.UpdateClientStatus(_clientCode, "Idle");
-            _username     = null;
+            _username = null;
+            _fullname = null;
             _sessionId    = 0;
             _pendingImage = null;
             _failCount    = 0;

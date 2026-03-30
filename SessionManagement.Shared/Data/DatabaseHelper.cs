@@ -509,7 +509,7 @@ namespace SessionManagement.Data
                 SELECT c.ClientMachineId, c.ClientCode, c.MachineName,
                        c.IPAddress, c.MACAddress, c.Location,
                        c.Status, c.LastSeenAt, c.IsActive,
-                       u.Username AS CurrentUsername
+                       u.Fullname +' (' +u.Username+')' AS CurrentUsername
                 FROM   dbo.tblClientMachine c
                 LEFT JOIN dbo.tblSession s
                        ON s.ClientMachineId = c.ClientMachineId AND s.Status = 'Active'
@@ -716,6 +716,69 @@ namespace SessionManagement.Data
                 }
             }
             catch (Exception ex) { LogError("GetSystemLogs", ex); return new DataTable(); }
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        //  UC-03  —  USER REGISTRATION (ADMIN)
+        // ═══════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// SEQ-03: Admin registers a new ClientUser.
+        /// Returns UserId if successful, 0 if username already exists or error.
+        /// </summary>
+        public int RegisterClientUser(string username, string fullName,
+    string passwordHash, string phone, string address, int adminUserId)
+        {
+            try
+            {
+                using (var c = Conn())
+                using (var cmd = new SqlCommand("dbo.sp_RegisterClientUser", c))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+
+                    cmd.Parameters.AddWithValue("@Username", username);
+                    cmd.Parameters.AddWithValue("@PasswordHash", passwordHash);
+                    cmd.Parameters.AddWithValue("@FullName", (object)fullName ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Phone", (object)phone ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Address", (object)address ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@AdminUserId", adminUserId);
+
+                    c.Open();
+
+                    var result = cmd.ExecuteScalar();
+
+                    return result != null ? Convert.ToInt32(result) : 0;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError("RegisterClientUser", ex);
+                return 0;
+            }
+        }
+
+        /// <summary>
+        /// Get all ClientUser accounts (exclude admins).
+        /// </summary>
+        public DataTable GetAllClientUsers()
+        {
+            const string sql = @"
+                SELECT UserId, Username, FullName, Phone, Address, Status, 
+                       Role, CreatedAt, LastLoginAt
+                FROM   dbo.tblUser
+                WHERE  Role = 'ClientUser'
+                ORDER  BY CreatedAt DESC";
+            try
+            {
+                using (var c = Conn()) using (var cmd = new SqlCommand(sql, c))
+                {
+                    c.Open();
+                    var dt = new DataTable();
+                    new SqlDataAdapter(cmd).Fill(dt);
+                    return dt;
+                }
+            }
+            catch (Exception ex) { LogError("GetAllClientUsers", ex); return new DataTable(); }
         }
 
         // ═══════════════════════════════════════════════════════════

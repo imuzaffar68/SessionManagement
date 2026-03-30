@@ -193,6 +193,33 @@ namespace SessionManagement.Client
         }
 
         // ─────────────────────────────────────────────────────────
+        //  UC-03  —  User Registration
+        // ─────────────────────────────────────────────────────────
+
+        public UserRegistrationResponse RegisterClientUser(
+            string username, string fullName, string password,
+            string phone, string address, int adminUserId)
+        {
+            if (!EnsureConnection())
+                return new UserRegistrationResponse
+                { Success = false, ErrorMessage = "Not connected to server." };
+            try
+            { return _proxy.RegisterClientUser(username, fullName, password, phone, address, adminUserId); }
+            catch (Exception ex)
+            { Log($"RegisterClientUser: {ex.Message}");
+              return new UserRegistrationResponse
+              { Success = false, ErrorMessage = $"Connection error: {ex.Message}" }; }
+        }
+
+        public UserInfo[] GetAllClientUsers()
+        {
+            if (!EnsureConnection()) return Array.Empty<UserInfo>();
+            try { return _proxy.GetAllClientUsers(); }
+            catch (Exception ex)
+            { Log($"GetAllClientUsers: {ex.Message}"); return Array.Empty<UserInfo>(); }
+        }
+
+        // ─────────────────────────────────────────────────────────
         //  UC-16 / UC-17  —  Alerts
         // ─────────────────────────────────────────────────────────
 

@@ -66,6 +66,18 @@ namespace SessionManagement.WCF
         [OperationContract]
         ClientInfo[] GetAllClients();
 
+        // ── UC-03  User Registration ├──────────────────────────────
+
+        /// <summary>SEQ-03: Admin registers a new ClientUser with password.</summary>
+        [OperationContract]
+        UserRegistrationResponse RegisterClientUser(string username, string fullName,
+                                                     string password, string phone, 
+                                                     string address, int adminUserId);
+
+        /// <summary>Get all registered client users.</summary>
+        [OperationContract]
+        UserInfo[] GetAllClientUsers();
+
         // ── UC-16 / UC-17  Security Alerts ───────────────────────
 
         /// <summary>SEQ-16: Log alert + push real-time notification to admins (FR-14).</summary>
@@ -182,6 +194,8 @@ namespace SessionManagement.WCF
         [DataMember] public string    MachineName    { get; set; }
         [DataMember] public string    IpAddress      { get; set; }
         [DataMember] public string    MacAddress     { get; set; }
+        [DataMember] public string    Location { get; set; }
+        [DataMember] public bool      IsActive { get; set; }
         [DataMember] public string    Status         { get; set; }
         [DataMember] public DateTime? LastActiveTime { get; set; }
         [DataMember] public string    CurrentUser    { get; set; }
@@ -224,5 +238,28 @@ namespace SessionManagement.WCF
         [DataMember] public SessionInfo[] Sessions      { get; set; }
         [DataMember] public DateTime      FromDate      { get; set; }
         [DataMember] public DateTime      ToDate        { get; set; }
+    }
+
+    [DataContract]
+    public class UserRegistrationResponse
+    {
+        [DataMember] public bool   Success      { get; set; }
+        [DataMember] public int    UserId       { get; set; }
+        [DataMember] public string Username     { get; set; }
+        [DataMember] public string ErrorMessage { get; set; }
+    }
+
+    [DataContract]
+    public class UserInfo
+    {
+        [DataMember] public int      UserId        { get; set; }
+        [DataMember] public string   Username      { get; set; }
+        [DataMember] public string   FullName      { get; set; }
+        [DataMember] public string   Phone         { get; set; }
+        [DataMember] public string   Address       { get; set; }
+        [DataMember] public string   Status        { get; set; }
+        [DataMember] public string   Role          { get; set; }
+        [DataMember] public DateTime CreatedAt     { get; set; }
+        [DataMember] public DateTime? LastLoginAt  { get; set; }
     }
 }

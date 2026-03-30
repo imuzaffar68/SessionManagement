@@ -17,6 +17,7 @@ namespace SessionAdmin
         private SessionServiceClient _svc;
         private DispatcherTimer      _refreshTimer;
 
+        private string _adminFullname; 
         private string _adminUsername;
         private int    _adminUserId;
 
@@ -25,6 +26,7 @@ namespace SessionAdmin
         private ObservableCollection<ClientVM> _clients = new ObservableCollection<ClientVM>();
         private ObservableCollection<AlertVM> _alerts = new ObservableCollection<AlertVM>();
         private ObservableCollection<LogVM> _logs = new ObservableCollection<LogVM>();
+        private ObservableCollection<UserVM> _users = new ObservableCollection<UserVM>();
 
         // ─────────────────────────────────────────────────────────
         public MainWindow()
@@ -35,6 +37,7 @@ namespace SessionAdmin
             dgClients.ItemsSource        = _clients;
             dgAlerts.ItemsSource         = _alerts;
             dgLogs.ItemsSource           = _logs;
+            dgUsers.ItemsSource          = _users;
 
             dpFromDate.SelectedDate = DateTime.Today.AddMonths(-1);
             dpToDate.SelectedDate   = DateTime.Today;
@@ -128,9 +131,10 @@ namespace SessionAdmin
                     return;
                 }
 
+                _adminFullname      = resp.FullName; 
                 _adminUsername      = resp.Username;
                 _adminUserId        = resp.UserId;
-                lblAdminUser.Text   = $"Admin: {_adminUsername}";
+                lblAdminUser.Text   = $"Admin: {_adminFullname}";
 
                 // SEQ-09 step 4: subscribe for real-time push (FR-14)
                 _svc.SubscribeForNotifications("ADMIN");
@@ -204,6 +208,9 @@ namespace SessionAdmin
                         ClientId    = c.ClientCode,
                         MachineName = c.MachineName,
                         IpAddress   = c.IpAddress,
+                        MacAddress  = c.MacAddress,
+                        Location    = c.Location,
+                        IsActive = c.IsActive,
                         Status      = c.Status,
                         CurrentUser = c.CurrentUser ?? "—",
                         LastActive  = c.LastActiveTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "Never"
@@ -638,6 +645,7 @@ namespace SessionAdmin
             LoadActiveSessions();
             LoadClients();
             LoadAlerts();
+            LoadClientUsers();
         }
 
         private void AutoRefresh()
@@ -656,6 +664,135 @@ namespace SessionAdmin
                 MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
+        // ═══════════════════════════════════════════════════════════
+        //  UC-03  —  USER REGISTRATION
+        //  SEQ-03: Admin enters user details → validate → register → log
+        // ═══════════════════════════════════════════════════════════
+
+        private void btnRegisterUser_Click(object sender, RoutedEventArgs e)
+        {
+            string username = txtUsername.Text.Trim();
+            string fullName = txtFullName.Text.Trim();
+            string password = txtPassword.Password;
+            string phone = txtPhone.Text.Trim();
+            string address = txtAddress.Text.Trim();
+
+            lblRegError.Visibility = Visibility.Collapsed;
+            lblRegSuccess.Visibility = Visibility.Collapsed;
+
+            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
+            {
+                ShowRegError("Username and password are required.");
+                return;
+            }
+
+            btnRegisterUser.IsEnabled = false;
+            btnRegisterUser.Content = "Registering…";
+
+            try
+            {
+                // SEQ-03 step 2: call server to register user
+                var resp = _svc.RegisterClientUser(username, fullName, password, phone, address, _adminUserId);
+
+                if (!resp.Success)
+                {
+                    ShowRegError(resp.ErrorMessage ?? "Registration failed.");
+                    return;
+                }
+
+                // Success
+                ShowRegSuccess($"User '{username}' registered successfully (ID: {resp.UserId})");
+
+                // Clear form
+                ClearRegistrationForm();
+
+                // Refresh user list
+                LoadClientUsers();
+            }
+            catch (Exception ex)
+            {
+                ShowRegError($"Connection error: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[RegisterUser] {ex.Message}");
+            }
+            finally
+            {
+                btnRegisterUser.IsEnabled = true;
+                btnRegisterUser.Content = "Register User";
+            }
+        }
+
+        private void btnClearForm_Click(object sender, RoutedEventArgs e)
+        {
+            ClearRegistrationForm();
+        }
+
+        private void btnGeneratePassword_Click(object sender, RoutedEventArgs e)
+        {
+            txtPassword.Password = "User@123456";
+            MessageBox.Show("Default password set: User@123456\n\nMake sure the user changes it on first login.",
+                "Default Password", MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void btnRefreshUsers_Click(object sender, RoutedEventArgs e)
+        {
+            LoadClientUsers();
+            MessageBox.Show("User list refreshed.", "Refresh",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void LoadClientUsers()
+        {
+            try
+            {
+                _users.Clear();
+                var list = _svc.GetAllClientUsers();
+
+                foreach (var u in list)
+                {
+                    _users.Add(new UserVM
+                    {
+                        UserId = u.UserId,
+                        Username = u.Username,
+                        FullName = u.FullName,
+                        Phone = u.Phone,
+                        Address = u.Address,
+                        Status = u.Status,
+                        CreatedAt = u.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss"),
+                        LastLogin = u.LastLoginAt?.ToString("yyyy-MM-dd HH:mm:ss") ?? "Never"
+                    });
+                }
+
+                lblUserCount.Text = _users.Count.ToString();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LoadUsers] {ex.Message}");
+            }
+        }
+
+        private void ClearRegistrationForm()
+        {
+            txtUsername.Clear();
+            txtFullName.Clear();
+            txtPassword.Clear();
+            txtPhone.Clear();
+            txtAddress.Clear();
+            lblRegError.Visibility = Visibility.Collapsed;
+            lblRegSuccess.Visibility = Visibility.Collapsed;
+        }
+
+        private void ShowRegError(string msg)
+        {
+            lblRegError.Text = msg;
+            lblRegError.Visibility = Visibility.Visible;
+        }
+
+        private void ShowRegSuccess(string msg)
+        {
+            lblRegSuccess.Text = msg;
+            lblRegSuccess.Visibility = Visibility.Visible;
+        }
+
         // ─────────────────────────────────────────────────────────
         //  LOGOUT / CLOSE
         // ─────────────────────────────────────────────────────────
@@ -672,6 +809,7 @@ namespace SessionAdmin
             _sessions.Clear(); _clients.Clear(); _alerts.Clear(); _logs.Clear();
             txtAdminUsername.Clear();
             txtAdminPassword.Clear();
+            txtAdminPasswordPlain.Clear();
             lblAdminUser.Text = "Admin: —";
 
             DashboardPanel.Visibility = Visibility.Collapsed;
@@ -754,6 +892,9 @@ namespace SessionAdmin
         public string ClientId    { get; set; }
         public string MachineName { get; set; }
         public string IpAddress   { get; set; }
+        public string MacAddress  { get; set; }
+        public string Location    { get; set; }
+        public bool   IsActive    { get; set; }
         public string Status      { get; set; }
         public string CurrentUser { get; set; }
         public string LastActive  { get; set; }
@@ -779,5 +920,17 @@ namespace SessionAdmin
         public string ClientCode { get; set; }
         public string Username   { get; set; }
         public string Message    { get; set; }
+    }
+
+    public class UserVM
+    {
+        public int    UserId      { get; set; }
+        public string Username    { get; set; }
+        public string FullName    { get; set; }
+        public string Phone       { get; set; }
+        public string Address     { get; set; }
+        public string Status      { get; set; }
+        public string CreatedAt   { get; set; }
+        public string LastLogin   { get; set; }
     }
 }

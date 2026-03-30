@@ -409,6 +409,8 @@ namespace SessionManagement.WCF
                         MachineName   = r["MachineName"].ToString(),
                         IpAddress     = r["IPAddress"].ToString(),
                         MacAddress    = r["MACAddress"]?.ToString(),
+                        Location      = r["Location"]?.ToString(),
+                        IsActive      = (bool)r["IsActive"],
                         Status        = r["Status"].ToString(),
                         LastActiveTime= r["LastSeenAt"] != DBNull.Value
                                         ? Convert.ToDateTime(r["LastSeenAt"])
@@ -693,6 +695,127 @@ namespace SessionManagement.WCF
                 return Array.Empty<SystemLogInfo>();
             }
         }
+        // ═══════════════════════════════════════════════════════════
+        //  UC-03  —  USER REGISTRATION (ADMIN)
+        //  SEQ-03: Admin enters user details + password → validate → 
+        //          hash password → insert user record → log
+        // ═══════════════════════════════════════════════════════════
+
+        public UserRegistrationResponse RegisterClientUser(
+            string username, string fullName, string password, 
+            string phone, string address, int adminUserId)
+        {
+            try
+            {
+                // SEQ-03 step 1: validate inputs
+                if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+                {
+                    return new UserRegistrationResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Username and password are required."
+                    };
+                }
+
+                if (username.Length < 3 || username.Length > 50)
+                {
+                    return new UserRegistrationResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Username must be between 3 and 50 characters."
+                    };
+                }
+
+                if (password.Length < 6)
+                {
+                    return new UserRegistrationResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Password must be at least 6 characters."
+                    };
+                }
+
+                // SEQ-03 step 2: check for duplicate username
+                DataRow existing = _db.GetUserByUsername(username);
+                if (existing != null)
+                {
+                    return new UserRegistrationResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Username already exists. Please choose a different username."
+                    };
+                }
+
+                // SEQ-03 step 3: hash password using BCrypt
+                string passwordHash = AuthenticationHelper.HashPassword(password);
+
+                // SEQ-03 step 4: insert user into database
+                int userId = _db.RegisterClientUser(username, fullName, passwordHash, 
+                    phone, address, adminUserId);
+
+                if (userId <= 0)
+                {
+                    return new UserRegistrationResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Failed to register user. Please try again."
+                    };
+                }
+
+                // SEQ-03 step 5: log the registration
+                _db.WriteSystemLog(null, userId, null, adminUserId,
+                    "Auth", "UserRegistered",
+                    $"New ClientUser '{username}' registered by admin {adminUserId}", "Server");
+
+                return new UserRegistrationResponse
+                {
+                    Success = true,
+                    UserId = userId,
+                    Username = username
+                };
+            }
+            catch (Exception ex)
+            {
+                _db.LogSystemEvent(null, null, null, "UserRegisterErr", ex.Message, "Error");
+                return new UserRegistrationResponse
+                {
+                    Success = false,
+                    ErrorMessage = "User registration failed. Please try again."
+                };
+            }
+        }
+
+        public UserInfo[] GetAllClientUsers()
+        {
+            try
+            {
+                DataTable dt = _db.GetAllClientUsers();
+                var list = new List<UserInfo>();
+                foreach (DataRow r in dt.Rows)
+                {
+                    list.Add(new UserInfo
+                    {
+                        UserId = Convert.ToInt32(r["UserId"]),
+                        Username = r["Username"].ToString(),
+                        FullName = r["FullName"]?.ToString() ?? "",
+                        Phone = r["Phone"]?.ToString() ?? "",
+                        Address = r["Address"]?.ToString() ?? "",
+                        Status = r["Status"].ToString(),
+                        Role = r["Role"].ToString(),
+                        CreatedAt = Convert.ToDateTime(r["CreatedAt"]),
+                        LastLoginAt = r["LastLoginAt"] != DBNull.Value
+                                      ? (DateTime?)Convert.ToDateTime(r["LastLoginAt"]) : null
+                    });
+                }
+                return list.ToArray();
+            }
+            catch (Exception ex)
+            {
+                _db.LogSystemEvent(null, null, null, "GetUsersErr", ex.Message, "Error");
+                return Array.Empty<UserInfo>();
+            }
+        }
+
         // ═══════════════════════════════════════════════════════════
         //  PRIVATE HELPERS
         // ═══════════════════════════════════════════════════════════
