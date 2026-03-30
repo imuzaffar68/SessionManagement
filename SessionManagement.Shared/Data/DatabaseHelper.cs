@@ -57,6 +57,30 @@ namespace SessionManagement.Data
         }
 
         /// <summary>
+        /// Fetch user row by UserId.
+        /// Returns null when user does not exist.
+        /// </summary>
+        public DataRow GetUserById(int userId)
+        {
+            const string sql = @"
+                SELECT UserId, Username, PasswordHash, FullName, Role, Status, Phone, Address, CreatedAt, LastLoginAt
+                FROM   dbo.tblUser
+                WHERE  UserId = @UserId";
+            try
+            {
+                using (var c = Conn()) using (var cmd = new SqlCommand(sql, c))
+                {
+                    cmd.Parameters.AddWithValue("@UserId", userId);
+                    c.Open();
+                    var dt = new DataTable();
+                    new SqlDataAdapter(cmd).Fill(dt);
+                    return dt.Rows.Count > 0 ? dt.Rows[0] : null;
+                }
+            }
+            catch (Exception ex) { LogError("GetUserById", ex); return null; }
+        }
+
+        /// <summary>
         /// SEQ-01 step 4b: stamp LastLoginAt after successful login.
         /// </summary>
         public void UpdateLastLogin(int userId)
@@ -457,6 +481,24 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("GetClientMachineIdByCode", ex); return 0; }
         }
 
+
+        /// <summary>Check if a client machine is active (IsActive = 1).</summary>
+        public bool IsClientMachineActive(int clientMachineId)
+        {
+            const string sql = "SELECT IsActive FROM dbo.tblClientMachine WHERE ClientMachineId = @Id";
+            try
+            {
+                using (var c = Conn()) using (var cmd = new SqlCommand(sql, c))
+                {
+                    cmd.Parameters.AddWithValue("@Id", clientMachineId);
+                    c.Open();
+                    var r = cmd.ExecuteScalar();
+                    return r != null && Convert.ToBoolean(r);
+                }
+            }
+            catch (Exception ex) { LogError("IsClientMachineActive", ex); return false; }
+        }
+
         /// <summary>
         /// sp_RegisterClient: upserts the machine row and returns its ClientMachineId.
         /// Called at client startup so the machine appears in the admin dashboard immediately.
@@ -480,6 +522,26 @@ namespace SessionManagement.Data
                 return GetClientMachineIdByCode(clientCode);
             }
             catch (Exception ex) { LogError("RegisterOrUpdateClient", ex); return 0; }
+        }
+
+        /// <summary>Update IsActive status on a client machine row.</summary>
+        public bool UpdateClientMachineIsActive(int clientMachineId, bool isActive)
+        {
+            const string sql = @"
+                UPDATE dbo.tblClientMachine
+                SET    IsActive = @IsActive
+                WHERE  ClientMachineId = @Id";
+            try
+            {
+                using (var c = Conn()) using (var cmd = new SqlCommand(sql, c))
+                {
+                    cmd.Parameters.AddWithValue("@Id", clientMachineId);
+                    cmd.Parameters.AddWithValue("@IsActive", isActive);
+                    c.Open();
+                    return cmd.ExecuteNonQuery() > 0;
+                }
+            }
+            catch (Exception ex) { LogError("UpdateClientMachineIsActive", ex); return false; }
         }
 
         /// <summary>Update Status + LastSeenAt on a client machine row.</summary>
@@ -779,6 +841,82 @@ namespace SessionManagement.Data
                 }
             }
             catch (Exception ex) { LogError("GetAllClientUsers", ex); return new DataTable(); }
+        }
+
+        /// <summary>
+        /// Update ClientUser details (FullName, Phone, Address).
+        /// </summary>
+        public bool UpdateClientUser(int userId, string fullName, string phone, string address)
+        {
+            const string sql = @"
+                UPDATE dbo.tblUser
+                SET    FullName = @FullName,
+                       Phone = @Phone,
+                       Address = @Address
+                WHERE  UserId = @UserId AND Role = 'ClientUser'";
+            try
+            {
+                using (var c = Conn())
+                using (var cmd = new SqlCommand(sql, c))
+                {
+                    cmd.Parameters.AddWithValue("@UserId", userId);
+                    cmd.Parameters.AddWithValue("@FullName", (object)fullName ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Phone", (object)phone ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@Address", (object)address ?? DBNull.Value);
+                    c.Open();
+                    int rowsAffected = cmd.ExecuteNonQuery();
+                    return rowsAffected > 0;
+                }
+            }
+            catch (Exception ex) { LogError("UpdateClientUser", ex); return false; }
+        }
+
+        /// <summary>
+        /// Reset user password to a new hash.
+        /// </summary>
+        public bool ResetUserPassword(int userId, string newPasswordHash)
+        {
+            const string sql = @"
+                UPDATE dbo.tblUser
+                SET    PasswordHash = @PasswordHash
+                WHERE  UserId = @UserId AND Role = 'ClientUser'";
+            try
+            {
+                using (var c = Conn())
+                using (var cmd = new SqlCommand(sql, c))
+                {
+                    cmd.Parameters.AddWithValue("@UserId", userId);
+                    cmd.Parameters.AddWithValue("@PasswordHash", newPasswordHash);
+                    c.Open();
+                    int rowsAffected = cmd.ExecuteNonQuery();
+                    return rowsAffected > 0;
+                }
+            }
+            catch (Exception ex) { LogError("ResetUserPassword", ex); return false; }
+        }
+
+        /// <summary>
+        /// Update user account status (Active, Blocked, Disabled).
+        /// </summary>
+        public bool UpdateUserStatus(int userId, string newStatus)
+        {
+            const string sql = @"
+                UPDATE dbo.tblUser
+                SET    Status = @Status
+                WHERE  UserId = @UserId AND Role = 'ClientUser'";
+            try
+            {
+                using (var c = Conn())
+                using (var cmd = new SqlCommand(sql, c))
+                {
+                    cmd.Parameters.AddWithValue("@UserId", userId);
+                    cmd.Parameters.AddWithValue("@Status", newStatus);
+                    c.Open();
+                    int rowsAffected = cmd.ExecuteNonQuery();
+                    return rowsAffected > 0;
+                }
+            }
+            catch (Exception ex) { LogError("UpdateUserStatus", ex); return false; }
         }
 
         // ═══════════════════════════════════════════════════════════

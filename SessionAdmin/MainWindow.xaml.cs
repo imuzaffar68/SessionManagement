@@ -211,6 +211,7 @@ namespace SessionAdmin
                         MacAddress  = c.MacAddress,
                         Location    = c.Location,
                         IsActive = c.IsActive,
+                        ClientMachineStatus = c.IsActive ? "Active" : "In-Active",
                         Status      = c.Status,
                         CurrentUser = c.CurrentUser ?? "—",
                         LastActive  = c.LastActiveTime?.ToString("yyyy-MM-dd HH:mm:ss") ?? "Never"
@@ -220,6 +221,66 @@ namespace SessionAdmin
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[LoadClients] {ex.Message}");
+            }
+        }
+
+        private void btnEnableClient_Click(object sender, RoutedEventArgs e)
+        {
+            var btn = sender as Button;
+            var client = btn?.DataContext as ClientVM;
+            if (client == null) return;
+
+            try
+            {
+                bool ok = _svc.UpdateClientMachineIsActive(client.ClientId, true);
+                if (ok)
+                {
+                    client.IsActive = true;
+                    MessageBox.Show(
+                        $"Client '{client.ClientId}' enabled successfully.",
+                        "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                    LoadClients();
+                }
+                else
+                {
+                    MessageBox.Show("Failed to enable client. Please try again.",
+                        "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error: {ex.Message}", "Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void btnDisableClient_Click(object sender, RoutedEventArgs e)
+        {
+            var btn = sender as Button;
+            var client = btn?.DataContext as ClientVM;
+            if (client == null) return;
+
+            try
+            {
+                bool ok = _svc.UpdateClientMachineIsActive(client.ClientId, false);
+                if (ok)
+                {
+                    client.IsActive = false;
+                    MessageBox.Show(
+                        $"Client '{client.ClientId}' disabled successfully.",
+                        "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+                    LoadClients();
+                }
+                else
+                {
+                    MessageBox.Show("Failed to disable client. Please try again.",
+                        "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error: {ex.Message}", "Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -793,6 +854,141 @@ namespace SessionAdmin
             lblRegSuccess.Visibility = Visibility.Visible;
         }
 
+        // ═══════════════════════════════════════════════════════════
+        //  USER MANAGEMENT - EDIT, RESET PASSWORD, TOGGLE STATUS
+        // ═══════════════════════════════════════════════════════════
+
+        private void btnEditUserInline_Click(object sender, RoutedEventArgs e)
+        {
+            var btn = sender as Button;
+            var selected = btn?.DataContext as UserVM;
+            if (selected == null)
+            {
+                ShowUserActionError("Unable to get user data.");
+                return;
+            }
+
+            // Show edit dialog
+            var editWindow = new EditUserWindow(selected);
+            if (editWindow.ShowDialog() == true)
+            {
+                try
+                {
+                    var resp = _svc.UpdateClientUser(
+                        selected.UserId,
+                        editWindow.FullName,
+                        editWindow.Phone,
+                        editWindow.Address,
+                        _adminUserId);
+
+                    if (!resp.Success)
+                    {
+                        ShowUserActionError(resp.ErrorMessage ?? "Failed to update user.");
+                        return;
+                    }
+
+                    ShowUserActionSuccess($"User '{selected.Username}' updated successfully.");
+                    LoadClientUsers();
+                }
+                catch (Exception ex)
+                {
+                    ShowUserActionError($"Error: {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"[EditUser] {ex.Message}");
+                }
+            }
+        }
+
+        private void btnResetPasswordInline_Click(object sender, RoutedEventArgs e)
+        {
+            var btn = sender as Button;
+            var selected = btn?.DataContext as UserVM;
+            if (selected == null)
+            {
+                ShowUserActionError("Unable to get user data.");
+                return;
+            }
+
+            // Show reset password dialog
+            var resetWindow = new ResetPasswordWindow(selected.Username);
+            if (resetWindow.ShowDialog() == true)
+            {
+                try
+                {
+                    var resp = _svc.ResetClientUserPassword(
+                        selected.UserId,
+                        resetWindow.NewPassword,
+                        _adminUserId);
+
+                    if (!resp.Success)
+                    {
+                        ShowUserActionError(resp.ErrorMessage ?? "Failed to reset password.");
+                        return;
+                    }
+
+                    ShowUserActionSuccess($"Password for user '{selected.Username}' reset to: {resetWindow.NewPassword}");
+                    LoadClientUsers();
+                }
+                catch (Exception ex)
+                {
+                    ShowUserActionError($"Error: {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"[ResetPassword] {ex.Message}");
+                }
+            }
+        }
+
+        private void btnToggleStatusInline_Click(object sender, RoutedEventArgs e)
+        {
+            var btn = sender as Button;
+            var selected = btn?.DataContext as UserVM;
+            if (selected == null)
+            {
+                ShowUserActionError("Unable to get user data.");
+                return;
+            }
+
+            string newStatus = selected.Status == "Active" ? "Disabled" : "Active";
+            var result = MessageBox.Show(
+                $"Change user '{selected.Username}' status from {selected.Status} to {newStatus}?",
+                "Confirm Status Change",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result != MessageBoxResult.Yes) return;
+
+            try
+            {
+                var resp = _svc.ToggleUserStatus(selected.UserId, _adminUserId);
+
+                if (!resp.Success)
+                {
+                    ShowUserActionError(resp.ErrorMessage ?? "Failed to update user status.");
+                    return;
+                }
+
+                ShowUserActionSuccess($"User '{selected.Username}' status changed to {resp.NewStatus}.");
+                LoadClientUsers();
+            }
+            catch (Exception ex)
+            {
+                ShowUserActionError($"Error: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[ToggleStatus] {ex.Message}");
+            }
+        }
+
+        private void ShowUserActionError(string msg)
+        {
+            lblUserActionError.Text = msg;
+            lblUserActionError.Visibility = Visibility.Visible;
+            lblUserActionSuccess.Visibility = Visibility.Collapsed;
+        }
+
+        private void ShowUserActionSuccess(string msg)
+        {
+            lblUserActionSuccess.Text = msg;
+            lblUserActionSuccess.Visibility = Visibility.Visible;
+            lblUserActionError.Visibility = Visibility.Collapsed;
+        }
+
         // ─────────────────────────────────────────────────────────
         //  LOGOUT / CLOSE
         // ─────────────────────────────────────────────────────────
@@ -812,8 +1008,8 @@ namespace SessionAdmin
             txtAdminPasswordPlain.Clear();
             lblAdminUser.Text = "Admin: —";
 
-            DashboardPanel.Visibility = Visibility.Collapsed;
-            LoginPanel.Visibility     = Visibility.Visible;
+            DashboardPanel.Visibility     = Visibility.Collapsed;
+            LoginPanel.Visibility         = Visibility.Visible;
             AdminHeaderPanel.Visibility = Visibility.Collapsed;
         }
 
@@ -895,6 +1091,7 @@ namespace SessionAdmin
         public string MacAddress  { get; set; }
         public string Location    { get; set; }
         public bool   IsActive    { get; set; }
+        public string ClientMachineStatus { get; set; }
         public string Status      { get; set; }
         public string CurrentUser { get; set; }
         public string LastActive  { get; set; }

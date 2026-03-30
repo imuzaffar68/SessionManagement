@@ -126,6 +126,10 @@ namespace SessionManagement.WCF
                     return Fail("Your account has been blocked. Contact the administrator.");
                 }
 
+                // Check if machine is active (blocked machines cannot start sessions)
+                if (!_db.IsClientMachineActive(machineId) && !isAdminLogin && machineId != 0)
+                    return Fail("This machine is not available for use. Please contact your administrator.");
+
                 if (userStatus == "Disabled")
                 {
                     if (!isAdminLogin && machineId != 0)
@@ -178,6 +182,10 @@ namespace SessionManagement.WCF
                 if (machineId == 0)
                     return new SessionStartResponse
                     { Success = false, ErrorMessage = "Client machine not registered." };
+                // Check if machine is active (blocked machines cannot start sessions)
+                if (!_db.IsClientMachineActive(machineId))
+                    return new SessionStartResponse
+                    { Success = false, ErrorMessage = "This machine is not available for use. Please contact your administrator." };
 
                 // SEQ-02 step 2: INSERT tblSession (sp_StartSession also writes SystemLog)
                 int sessionId = _db.StartSession(userId, machineId, durationMinutes);
@@ -197,7 +205,6 @@ namespace SessionManagement.WCF
                 //    $"Session {sessionId} started — {durationMinutes} min on {clientCode}",
                 //    "Server");
 
-                // SEQ-02 step 5: push to all subscribed admins (FR-06 real-time monitor)
                 // SEQ-02 step 5: push to all subscribed admins (FR-06 real-time monitor)
                 System.Threading.ThreadPool.QueueUserWorkItem(_ =>
                     Broadcast(cb => cb.OnServerMessage(
@@ -390,6 +397,21 @@ namespace SessionManagement.WCF
             catch (Exception ex)
             {
                 _db.LogSystemEvent(null, null, null, "UpdateClientStatusErr", ex.Message, "Error");
+                return false;
+            }
+        }
+
+        public bool UpdateClientMachineIsActive(string clientCode, bool isActive)
+        {
+            try
+            {
+                int id = _db.GetClientMachineIdByCode(clientCode);
+                if (id == 0) return false;
+                return _db.UpdateClientMachineIsActive(id, isActive);
+            }
+            catch (Exception ex)
+            {
+                _db.LogSystemEvent(null, null, null, "UpdateClientIsActiveErr", ex.Message, "Error");
                 return false;
             }
         }
@@ -813,6 +835,138 @@ namespace SessionManagement.WCF
             {
                 _db.LogSystemEvent(null, null, null, "GetUsersErr", ex.Message, "Error");
                 return Array.Empty<UserInfo>();
+            }
+        }
+
+        public UserUpdateResponse UpdateClientUser(int userId, string fullName, 
+            string phone, string address, int adminUserId)
+        {
+            try
+            {
+                bool ok = _db.UpdateClientUser(userId, fullName, phone, address);
+                if (!ok)
+                {
+                    return new UserUpdateResponse
+                    {
+                        Success = false,
+                        UserId = userId,
+                        ErrorMessage = "Failed to update user. User may not exist."
+                    };
+                }
+
+                _db.WriteSystemLog(null, userId, null, adminUserId,
+                    "Auth", "UserUpdated",
+                    $"ClientUser {userId} updated by admin {adminUserId}", "Server");
+
+                return new UserUpdateResponse
+                {
+                    Success = true,
+                    UserId = userId
+                };
+            }
+            catch (Exception ex)
+            {
+                _db.LogSystemEvent(null, null, null, "UserUpdateErr", ex.Message, "Error");
+                return new UserUpdateResponse
+                {
+                    Success = false,
+                    UserId = userId,
+                    ErrorMessage = "User update failed. Please try again."
+                };
+            }
+        }
+
+        public PasswordResetResponse ResetClientUserPassword(int userId, 
+            string newPassword, int adminUserId)
+        {
+            try
+            {
+                // Hash the new password
+                string passwordHash = AuthenticationHelper.HashPassword(newPassword);
+
+                bool ok = _db.ResetUserPassword(userId, passwordHash);
+                if (!ok)
+                {
+                    return new PasswordResetResponse
+                    {
+                        Success = false,
+                        UserId = userId,
+                        ErrorMessage = "Failed to reset password. User may not exist."
+                    };
+                }
+
+                _db.WriteSystemLog(null, userId, null, adminUserId,
+                    "Auth", "PasswordReset",
+                    $"ClientUser {userId} password reset by admin {adminUserId}", "Server");
+
+                return new PasswordResetResponse
+                {
+                    Success = true,
+                    UserId = userId
+                };
+            }
+            catch (Exception ex)
+            {
+                _db.LogSystemEvent(null, null, null, "PasswordResetErr", ex.Message, "Error");
+                return new PasswordResetResponse
+                {
+                    Success = false,
+                    UserId = userId,
+                    ErrorMessage = "Password reset failed. Please try again."
+                };
+            }
+        }
+
+        public UserStatusToggleResponse ToggleUserStatus(int userId, int adminUserId)
+        {
+            try
+            {
+                // Get current user status
+                DataRow user = _db.GetUserById(userId);
+                if (user == null)
+                {
+                    return new UserStatusToggleResponse
+                    {
+                        Success = false,
+                        UserId = userId,
+                        ErrorMessage = "User not found."
+                    };
+                }
+
+                string currentStatus = user["Status"].ToString();
+                string newStatus = currentStatus == "Active" ? "Disabled" : "Active";
+
+                bool ok = _db.UpdateUserStatus(userId, newStatus);
+                if (!ok)
+                {
+                    return new UserStatusToggleResponse
+                    {
+                        Success = false,
+                        UserId = userId,
+                        ErrorMessage = "Failed to update user status."
+                    };
+                }
+
+                _db.WriteSystemLog(null, userId, null, adminUserId,
+                    "Auth", "UserStatusChanged",
+                    $"ClientUser {userId} status changed to {newStatus} by admin {adminUserId}", "Server");
+
+                return new UserStatusToggleResponse
+                {
+                    Success = true,
+                    UserId = userId,
+                    NewStatus = newStatus
+                };
+            }
+            catch (Exception ex)
+            {
+                _db.LogSystemEvent(null, null, null, "StatusToggleErr", ex.Message, "Error");
+                return new UserStatusToggleResponse
+                {
+                    Success = false,
+                    UserId = userId,
+                    ErrorMessage = "Status update failed. Please try again."
+                };
             }
         }
 

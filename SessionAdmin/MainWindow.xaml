@@ -145,9 +145,52 @@
                                 <DataGridTextColumn Header="MAC Address"  Binding="{Binding MacAddress}"  Width="130"/>
                                 <DataGridTextColumn Header="Location"     Binding="{Binding Location}"    Width="130"/>
                                 <DataGridTextColumn Header="Session Status"       Binding="{Binding Status}"      Width="90"/>
-                                <DataGridTextColumn Header="Machine Status"       Binding="{Binding IsActive}"      Width="90"/>
+                                <DataGridTextColumn Header="Machine Status" Binding="{Binding ClientMachineStatus}" Width="90"/>
                                 <DataGridTextColumn Header="Current User" Binding="{Binding CurrentUser}" Width="140"/>
                                 <DataGridTextColumn Header="Last Seen"    Binding="{Binding LastActive}"  Width="*"/>
+                                <DataGridTemplateColumn Header="Actions" Width="160">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" Margin="2">
+                                                <!-- Enable Button -->
+                                                <Button Content="Enable"
+                                                    Background="#27AE60" Foreground="White"
+                                                    Padding="6,2" Margin="2"
+                                                    Click="btnEnableClient_Click">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                            <Style.Triggers>
+                                                                <!-- If Active → Hide Enable -->
+                                                                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
+
+                                                <!-- Disable Button -->
+                                                <Button Content="Disable"
+                                                    Background="#E74C3C" Foreground="White"
+                                                    Padding="6,2" Margin="2"
+                                                    Click="btnDisableClient_Click">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                            <Style.Triggers>
+                                                                <!-- If NOT Active → Hide Disable -->
+                                                                <DataTrigger Binding="{Binding IsActive}" Value="False">
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
                             </DataGrid.Columns>
                         </DataGrid>
                     </Grid>
@@ -232,6 +275,7 @@
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
                             <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
                                 <TextBlock Text="Registered Client Users" FontSize="16" 
@@ -244,7 +288,8 @@
                                         Click="btnRefreshUsers_Click"/>
                             </StackPanel>
                             <DataGrid Grid.Row="1" x:Name="dgUsers"
-                                      AutoGenerateColumns="False" IsReadOnly="True">
+                                      AutoGenerateColumns="False" IsReadOnly="True"
+                                      SelectionMode="Single">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="User ID"     Binding="{Binding UserId}"    Width="70"/>
                                     <DataGridTextColumn Header="Username"    Binding="{Binding Username}"  Width="130"/>
@@ -254,8 +299,41 @@
                                     <DataGridTextColumn Header="Status"      Binding="{Binding Status}"    Width="80"/>
                                     <DataGridTextColumn Header="Created"     Binding="{Binding CreatedAt}" Width="150"/>
                                     <DataGridTextColumn Header="Last Login"  Binding="{Binding LastLogin}" Width="150"/>
+                                    <DataGridTemplateColumn Header="Actions" Width="180">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal" Margin="4,2">
+                                                    <!-- Edit Button -->
+                                                    <Button Content="✎" Height="28" Width="28"
+                                                            Background="#3498DB" Foreground="White"
+                                                            Click="btnEditUserInline_Click"
+                                                            ToolTip="Edit User Details"/>
+                                                    <!-- Reset Password Button -->
+                                                    <Button Content="🔑" Height="28" Width="28" Margin="4,0,0,0"
+                                                            Background="#9B59B6" Foreground="White"
+                                                            Click="btnResetPasswordInline_Click"
+                                                            ToolTip="Reset Password"/>
+                                                    <!-- Toggle Status Button -->
+                                                    <Button Content="⊕" Height="28" Width="28" Margin="4,0,0,0"
+                                                            Background="#27AE60" Foreground="White"
+                                                            Click="btnToggleStatusInline_Click"
+                                                            ToolTip="Toggle User Status (Active/Disabled)"/>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
                                 </DataGrid.Columns>
                             </DataGrid>
+
+                            <!-- User Actions Status Panel -->
+                            <Border Grid.Row="2" Background="#ECF0F1" Padding="16" Margin="0,12,0,0">
+                                <StackPanel>
+                                    <TextBlock x:Name="lblUserActionError" Foreground="Red" FontSize="11"
+                                               Margin="0,0,0,0" Visibility="Collapsed" TextWrapping="Wrap"/>
+                                    <TextBlock x:Name="lblUserActionSuccess" Foreground="Green" FontSize="11"
+                                               Margin="0,0,0,0" Visibility="Collapsed" TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
                         </Grid>
                     </Grid>
                 </TabItem>

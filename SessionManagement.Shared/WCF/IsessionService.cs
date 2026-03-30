@@ -62,6 +62,10 @@ namespace SessionManagement.WCF
         [OperationContract]
         bool UpdateClientStatus(string clientCode, string status);
 
+        /// <summary>Update IsActive status of a client machine.</summary>
+        [OperationContract]
+        bool UpdateClientMachineIsActive(string clientCode, bool isActive);
+
         /// <summary>SEQ-11: All machines with current session user.</summary>
         [OperationContract]
         ClientInfo[] GetAllClients();
@@ -77,6 +81,18 @@ namespace SessionManagement.WCF
         /// <summary>Get all registered client users.</summary>
         [OperationContract]
         UserInfo[] GetAllClientUsers();
+
+        /// <summary>Update ClientUser profile information (FullName, Phone, Address).</summary>
+        [OperationContract]
+        UserUpdateResponse UpdateClientUser(int userId, string fullName, string phone, string address, int adminUserId);
+
+        /// <summary>Reset ClientUser password to a new value.</summary>
+        [OperationContract]
+        PasswordResetResponse ResetClientUserPassword(int userId, string newPassword, int adminUserId);
+
+        /// <summary>Toggle ClientUser account status (Active ↔ Disabled).</summary>
+        [OperationContract]
+        UserStatusToggleResponse ToggleUserStatus(int userId, int adminUserId);
 
         // ── UC-16 / UC-17  Security Alerts ───────────────────────
 
@@ -261,5 +277,30 @@ namespace SessionManagement.WCF
         [DataMember] public string   Role          { get; set; }
         [DataMember] public DateTime CreatedAt     { get; set; }
         [DataMember] public DateTime? LastLoginAt  { get; set; }
+    }
+
+    [DataContract]
+    public class UserUpdateResponse
+    {
+        [DataMember] public bool   Success      { get; set; }
+        [DataMember] public int    UserId       { get; set; }
+        [DataMember] public string ErrorMessage { get; set; }
+    }
+
+    [DataContract]
+    public class PasswordResetResponse
+    {
+        [DataMember] public bool   Success      { get; set; }
+        [DataMember] public int    UserId       { get; set; }
+        [DataMember] public string ErrorMessage { get; set; }
+    }
+
+    [DataContract]
+    public class UserStatusToggleResponse
+    {
+        [DataMember] public bool   Success      { get; set; }
+        [DataMember] public int    UserId       { get; set; }
+        [DataMember] public string NewStatus    { get; set; }
+        [DataMember] public string ErrorMessage { get; set; }
     }
 }

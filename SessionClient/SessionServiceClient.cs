@@ -191,6 +191,13 @@ namespace SessionManagement.Client
             catch (Exception ex) { Log($"UpdateClientStatus: {ex.Message}"); return false; }
         }
 
+        public bool UpdateClientMachineIsActive(string clientCode, bool isActive)
+        {
+            if (!EnsureConnection()) return false;
+            try { return _proxy.UpdateClientMachineIsActive(clientCode, isActive); }
+            catch (Exception ex) { Log($"UpdateClientMachineIsActive: {ex.Message}"); return false; }
+        }
+
         public ClientInfo[] GetAllClients()
         {
             if (!EnsureConnection()) return Array.Empty<ClientInfo>();

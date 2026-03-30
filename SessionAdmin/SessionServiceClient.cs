@@ -184,6 +184,13 @@ namespace SessionManagement.Client
             catch (Exception ex) { Log($"UpdateClientStatus: {ex.Message}"); return false; }
         }
 
+        public bool UpdateClientMachineIsActive(string clientCode, bool isActive)
+        {
+            if (!EnsureConnection()) return false;
+            try { return _proxy.UpdateClientMachineIsActive(clientCode, isActive); }
+            catch (Exception ex) { Log($"UpdateClientMachineIsActive: {ex.Message}"); return false; }
+        }
+
         public ClientInfo[] GetAllClients()
         {
             if (!EnsureConnection()) return Array.Empty<ClientInfo>();
@@ -217,6 +224,47 @@ namespace SessionManagement.Client
             try { return _proxy.GetAllClientUsers(); }
             catch (Exception ex)
             { Log($"GetAllClientUsers: {ex.Message}"); return Array.Empty<UserInfo>(); }
+        }
+
+        public UserUpdateResponse UpdateClientUser(int userId, string fullName, 
+            string phone, string address, int adminUserId)
+        {
+            if (!EnsureConnection())
+                return new UserUpdateResponse
+                { Success = false, ErrorMessage = "Not connected to server." };
+            try
+            { return _proxy.UpdateClientUser(userId, fullName, phone, address, adminUserId); }
+            catch (Exception ex)
+            { Log($"UpdateClientUser: {ex.Message}");
+              return new UserUpdateResponse
+              { Success = false, ErrorMessage = $"Connection error: {ex.Message}" }; }
+        }
+
+        public PasswordResetResponse ResetClientUserPassword(int userId, 
+            string newPassword, int adminUserId)
+        {
+            if (!EnsureConnection())
+                return new PasswordResetResponse
+                { Success = false, ErrorMessage = "Not connected to server." };
+            try
+            { return _proxy.ResetClientUserPassword(userId, newPassword, adminUserId); }
+            catch (Exception ex)
+            { Log($"ResetClientUserPassword: {ex.Message}");
+              return new PasswordResetResponse
+              { Success = false, ErrorMessage = $"Connection error: {ex.Message}" }; }
+        }
+
+        public UserStatusToggleResponse ToggleUserStatus(int userId, int adminUserId)
+        {
+            if (!EnsureConnection())
+                return new UserStatusToggleResponse
+                { Success = false, ErrorMessage = "Not connected to server." };
+            try
+            { return _proxy.ToggleUserStatus(userId, adminUserId); }
+            catch (Exception ex)
+            { Log($"ToggleUserStatus: {ex.Message}");
+              return new UserStatusToggleResponse
+              { Success = false, ErrorMessage = $"Connection error: {ex.Message}" }; }
         }
 
         // ─────────────────────────────────────────────────────────
