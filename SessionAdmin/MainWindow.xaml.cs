@@ -528,16 +528,16 @@ namespace SessionAdmin
         // ─────────────────────────────────────────────────────────
         //  FR-14: Real-time server push notification handler
         // ─────────────────────────────────────────────────────────
-        private void OnServerMessage(object sender, ServerMessageEventArgs e)
-        {
-            // Show as popup (or you can append to a log/alert panel)
-            Dispatcher.BeginInvoke(new Action(() =>
-            {
-                MessageBox.Show(e.Message, "Server Notification", MessageBoxButton.OK, MessageBoxImage.Information);
-                // Optionally, add to alerts/logs:
-                // _alerts.Add(new AlertVM { Message = e.Message, Timestamp = e.Timestamp });
-            }));
-        }
+        //private void OnServerMessage(object sender, ServerMessageEventArgs e)
+        //{
+        //    // Show as popup (or you can append to a log/alert panel)
+        //    Dispatcher.BeginInvoke(new Action(() =>
+        //    {
+        //        MessageBox.Show(e.Message, "Server Notification", MessageBoxButton.OK, MessageBoxImage.Information);
+        //        // Optionally, add to alerts/logs:
+        //        // _alerts.Add(new AlertVM { Message = e.Message, Timestamp = e.Timestamp });
+        //    }));
+        //}
 
         /// <summary>
         /// FR-14: WCF server callback — new alert pushed in real time.
@@ -556,7 +556,70 @@ namespace SessionAdmin
         //            LoadActiveSessions();
         //    });
         //}
+        // ═══════════════════════════════════════════════════════════════
+        //  PASTE THIS REPLACEMENT into SessionAdmin/MainWindow.xaml.cs
+        //
+        //  Replaces the OnServerMessage method and adds the auto-refresh
+        //  helper so FR-14 real-time alert delivery works correctly.
+        //
+        //  UC-16 / UC-17:
+        //    When ProxyDetectionService fires on a client machine, the WCF
+        //    server pushes OnServerMessage to ALL admin subscribers.
+        //    This handler parses that push and auto-refreshes the correct tab
+        //    WITHOUT showing a modal dialog box for every security event.
+        // ═══════════════════════════════════════════════════════════════
 
+        // ── Replace the existing OnServerMessage method ───────────────
+
+        /// <summary>
+        /// FR-14: WCF server callback — fired whenever the server has something
+        /// to push (new alert, session change, auto-expiry, etc.)
+        ///
+        /// SEQ-17 Step 2: Server sends alert to admin dashboard.
+        /// We act on keyword hints in the message to decide which tab to refresh.
+        /// We NEVER show a modal MessageBox here — that would block the UI thread
+        /// and prevent further callbacks from being processed.
+        /// </summary>
+        private void OnServerMessage(object sender, ServerMessageEventArgs e)
+        {
+            // Always dispatch to the UI thread (callback arrives on thread-pool)
+            Dispatcher.BeginInvoke(new Action(delegate ()
+            {
+                try
+                {
+                    string msg = e.Message ?? "";
+
+                    // UC-17: Any ALERT message → refresh Security Alerts tab immediately
+                    if (msg.IndexOf("ALERT", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        msg.IndexOf("alert", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        LoadAlerts();
+                        // Show a non-blocking notification in the status bar rather than a popup
+                        lblLastUpdate.Text = "Alert received: " + DateTime.Now.ToString("HH:mm:ss")
+                                             + "  — " + TruncateMessage(msg, 80);
+                    }
+
+                    // UC-02 / UC-07: Session changes → refresh Active Sessions tab
+                    if (msg.IndexOf("session", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                        msg.IndexOf("expired", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        LoadActiveSessions();
+                    }
+
+                    System.Diagnostics.Debug.WriteLine("[FR-14 Push] " + msg);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine("[OnServerMessage] " + ex.Message);
+                }
+            }));
+        }
+
+        private static string TruncateMessage(string msg, int maxLen)
+        {
+            if (msg == null) return "";
+            return msg.Length <= maxLen ? msg : msg.Substring(0, maxLen) + "…";
+        }
         // ═══════════════════════════════════════════════════════════
         //  UC-18  —  GENERATE REPORTS
         //  SEQ-18: admin selects type+range → GetSessionReport → format → display

@@ -1,95 +1,192 @@
 <Window x:Class="SessionClient.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Session Management - Client" Height="520" Width="820"
-        WindowStartupLocation="CenterScreen" ResizeMode="NoResize">
+        Title="Session Management"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        WindowStyle="None"
+        WindowState="Maximized"
+        Topmost="True"
+        ShowInTaskbar="True"
+        AllowsTransparency="False"
+        Background="#1A252F">
+
+    <!--
+    ═══════════════════════════════════════════════════════════════════════
+    RESTRICTION DESIGN (aligned with project statement + SRS)
+    ═══════════════════════════════════════════════════════════════════════
+
+    Project statement: "Users must log in using valid credentials to
+    ACCESS THE SYSTEM" — in an internet café, "the system" = the PC.
+
+    SRS Assumption: "Client application may remain in foreground before
+    session start and after session end to restrict misuse."
+
+    FR-09: "lock/logout the client user" after session ends.
+
+    Implementation:
+      BEFORE session (Login + Duration screens):
+        • WindowStyle="None"  → no title bar, no close/minimize/maximize
+        • WindowState="Maximized" + Topmost="True" → covers full screen
+        • Cannot be minimized, moved, or closed without admin permission
+        → User CANNOT access the desktop or any application without paying
+
+      DURING active session:
+        • WindowStyle="SingleBorderWindow" → normal window with title bar
+        • WindowState="Normal" → standard size, user can work freely
+        • Topmost="False" → user can Alt-Tab to browser, apps
+        → User has full access to PC for the duration they paid for
+
+      AFTER session ends:
+        • Immediately restores to Maximized + WindowStyle=None + Topmost
+        • Covers the screen before user can do anything
+        → Prevents free use after session expires
+    ═══════════════════════════════════════════════════════════════════════
+    -->
+
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- Header -->
-        <Border Grid.Row="0" Background="#2C3E50" Padding="20">
-            <TextBlock Text="Client Session Management System"
-                       Foreground="White" FontSize="22" FontWeight="Bold"
-                       HorizontalAlignment="Center"/>
+        <!-- Header bar — visible on login/duration screens, hidden during session -->
+        <Border x:Name="HeaderBar" Grid.Row="0" Background="#2C3E50" Padding="20,14">
+            <Grid>
+                <TextBlock Text="Internet Café — Session Management System"
+                           Foreground="White" FontSize="18" FontWeight="Bold"
+                           VerticalAlignment="Center"/>
+                <!-- Status indicator shown to admin for identification -->
+                <TextBlock x:Name="lblMachineCode"
+                           HorizontalAlignment="Right" VerticalAlignment="Center"
+                           Foreground="#95A5A6" FontSize="12"/>
+            </Grid>
         </Border>
 
-        <Grid Grid.Row="1" Margin="20">
+        <Grid Grid.Row="1">
 
-            <!-- ── LOGIN PANEL ─────────────────────────────── -->
-            <StackPanel x:Name="LoginPanel" VerticalAlignment="Center"
-                        HorizontalAlignment="Center" Width="380">
-                <TextBlock Text="User Login" FontSize="26" FontWeight="Bold"
-                           Margin="0,0,0,24" HorizontalAlignment="Center"/>
+            <!-- ══ LOGIN PANEL ══════════════════════════════════════ -->
+            <Grid x:Name="LoginPanel" Background="#1A252F">
+                <Border Background="#2C3E50" CornerRadius="10" Padding="48"
+                        Width="420" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <StackPanel>
+                        <TextBlock Text="🖥" FontSize="48" HorizontalAlignment="Center"
+                                   Margin="0,0,0,8"/>
+                        <TextBlock Text="User Login" FontSize="28" FontWeight="Bold"
+                                   Foreground="White" HorizontalAlignment="Center"
+                                   Margin="0,0,0,28"/>
 
-                <TextBlock Text="Username:" FontSize="13" Margin="0,0,0,4"/>
-                <TextBox x:Name="txtUsername" Height="34" FontSize="13" Padding="8,4"/>
+                        <TextBlock Text="Username" Foreground="#BDC3C7" FontSize="13"
+                                   Margin="0,0,0,6"/>
+                        <TextBox x:Name="txtUsername" Height="38" FontSize="14"
+                                 Padding="10,4" Background="#34495E" Foreground="White"
+                                 BorderBrush="#5D6D7E" BorderThickness="1"/>
 
-                <TextBlock Text="Password:" FontSize="13" Margin="0,16,0,4"/>
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="40"/>
-                    </Grid.ColumnDefinitions>
-                    <PasswordBox x:Name="txtPassword" Grid.Column="0"
-                                 Height="34" FontSize="13" Padding="8,4"/>
-                    <TextBox    x:Name="txtPasswordPlain" Grid.Column="0"
-                                Height="34" FontSize="13" Padding="8,4"
-                                Visibility="Collapsed"/>
-                    <Button x:Name="btnShowPassword" Grid.Column="1"
-                            Content="👁" FontSize="15"
-                            Background="Transparent" BorderThickness="0"
-                            Foreground="#3498DB" Margin="4,0,0,0"
-                            Click="btnShowPassword_Click"/>
-                </Grid>
+                        <TextBlock Text="Password" Foreground="#BDC3C7" FontSize="13"
+                                   Margin="0,16,0,6"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="44"/>
+                            </Grid.ColumnDefinitions>
+                            <PasswordBox x:Name="txtPassword" Grid.Column="0"
+                                         Height="38" FontSize="14" Padding="10,4"
+                                         Background="#34495E" Foreground="White"
+                                         BorderBrush="#5D6D7E" BorderThickness="1"/>
+                            <TextBox x:Name="txtPasswordPlain" Grid.Column="0"
+                                     Height="38" FontSize="14" Padding="10,4"
+                                     Background="#34495E" Foreground="White"
+                                     BorderBrush="#5D6D7E" BorderThickness="1"
+                                     Visibility="Collapsed"/>
+                            <Button x:Name="btnShowPassword" Grid.Column="1"
+                                    Content="👁" FontSize="16"
+                                    Background="#34495E" BorderBrush="#5D6D7E"
+                                    Foreground="#BDC3C7" Margin="4,0,0,0"
+                                    Click="btnShowPassword_Click"/>
+                        </Grid>
 
-                <TextBlock x:Name="lblLoginError" Foreground="Red" FontSize="11"
-                           Margin="0,8,0,0" Visibility="Collapsed" TextWrapping="Wrap"/>
+                        <Border x:Name="pnlLoginError" Background="#2E1515"
+                                BorderBrush="#E74C3C" BorderThickness="1"
+                                CornerRadius="4" Padding="10,8"
+                                Margin="0,14,0,0" Visibility="Collapsed">
+                            <TextBlock x:Name="lblLoginError" Foreground="#E74C3C"
+                                       FontSize="12" TextWrapping="Wrap"/>
+                        </Border>
 
-                <Button x:Name="btnLogin" Content="Login" Height="38"
-                        Margin="0,24,0,0" Background="#3498DB" Foreground="White"
-                        FontSize="15" FontWeight="Bold" Click="btnLogin_Click"/>
-            </StackPanel>
+                        <Button x:Name="btnLogin" Content="LOGIN"
+                                Height="42" Margin="0,24,0,0"
+                                Background="#3498DB" Foreground="White"
+                                FontSize="15" FontWeight="Bold"
+                                BorderThickness="0"
+                                Click="btnLogin_Click"/>
 
-            <!-- ── DURATION PANEL ──────────────────────────── -->
-            <StackPanel x:Name="DurationPanel" VerticalAlignment="Center"
-                        HorizontalAlignment="Center" Width="380"
-                        Visibility="Collapsed">
-                <TextBlock Text="Select Session Duration" FontSize="24" FontWeight="Bold"
-                           Margin="0,0,0,24" HorizontalAlignment="Center"/>
+                        <TextBlock x:Name="lblLoginStatus" Foreground="#7F8C8D"
+                                   FontSize="11" HorizontalAlignment="Center"
+                                   Margin="0,14,0,0" Text="Connecting to server…"
+                                   Visibility="Collapsed"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
 
-                <TextBlock Text="Duration:" FontSize="13" Margin="0,0,0,8"/>
-                <ComboBox x:Name="cboDuration" Height="34" FontSize="13"
-                          SelectedIndex="0"
-                          SelectionChanged="cboDuration_SelectionChanged">
-                    <ComboBoxItem Content="15 minutes"/>
-                    <ComboBoxItem Content="30 minutes"/>
-                    <ComboBoxItem Content="60 minutes"/>
-                    <ComboBoxItem Content="120 minutes"/>
-                    <ComboBoxItem Content="Custom"/>
-                </ComboBox>
+            <!-- ══ DURATION PANEL ══════════════════════════════════ -->
+            <Grid x:Name="DurationPanel" Background="#1A252F" Visibility="Collapsed">
+                <Border Background="#2C3E50" CornerRadius="10" Padding="48"
+                        Width="460" VerticalAlignment="Center" HorizontalAlignment="Center">
+                    <StackPanel>
+                        <TextBlock Text="⏱" FontSize="48" HorizontalAlignment="Center"
+                                   Margin="0,0,0,8"/>
+                        <TextBlock Text="Select Session Duration"
+                                   FontSize="24" FontWeight="Bold" Foreground="White"
+                                   HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                        <TextBlock x:Name="lblWelcome" Text="Welcome"
+                                   FontSize="14" Foreground="#3498DB"
+                                   HorizontalAlignment="Center" Margin="0,0,0,28"/>
 
-                <StackPanel x:Name="CustomDurationPanel" Margin="0,10,0,0"
-                            Visibility="Collapsed">
-                    <TextBlock Text="Enter minutes:" FontSize="13" Margin="0,0,0,4"/>
-                    <TextBox x:Name="txtCustomDuration" Height="34"
-                             FontSize="13" Padding="8,4"/>
-                </StackPanel>
+                        <TextBlock Text="Duration:" Foreground="#BDC3C7"
+                                   FontSize="13" Margin="0,0,0,8"/>
+                        <ComboBox x:Name="cboDuration" Height="38" FontSize="14"
+                                  SelectedIndex="2"
+                                  SelectionChanged="cboDuration_SelectionChanged">
+                            <ComboBoxItem Content="15 minutes"/>
+                            <ComboBoxItem Content="30 minutes"/>
+                            <ComboBoxItem Content="60 minutes"/>
+                            <ComboBoxItem Content="120 minutes"/>
+                            <ComboBoxItem Content="Custom…"/>
+                        </ComboBox>
 
-                <Button x:Name="btnStartSession" Content="Start Session"
-                        Height="38" Margin="0,24,0,8"
-                        Background="#27AE60" Foreground="White"
-                        FontSize="15" FontWeight="Bold"
-                        Click="btnStartSession_Click"/>
-                <Button x:Name="btnCancelDuration" Content="Cancel"
-                        Height="32" Background="#95A5A6" Foreground="White"
-                        FontSize="13" Click="btnCancelDuration_Click"/>
-            </StackPanel>
+                        <StackPanel x:Name="CustomDurationPanel"
+                                    Margin="0,12,0,0" Visibility="Collapsed">
+                            <TextBlock Text="Enter minutes (15 – 480):"
+                                       Foreground="#BDC3C7" FontSize="13" Margin="0,0,0,6"/>
+                            <TextBox x:Name="txtCustomDuration" Height="38"
+                                     FontSize="14" Padding="10,4"
+                                     Background="#34495E" Foreground="White"
+                                     BorderBrush="#5D6D7E" BorderThickness="1"/>
+                        </StackPanel>
 
-            <!-- ── SESSION PANEL ───────────────────────────── -->
-            <Grid x:Name="SessionPanel" Visibility="Collapsed">
+                        <Button x:Name="btnStartSession" Content="START SESSION"
+                                Height="42" Margin="0,24,0,10"
+                                Background="#27AE60" Foreground="White"
+                                FontSize="15" FontWeight="Bold" BorderThickness="0"
+                                Click="btnStartSession_Click"/>
+                        <Button x:Name="btnCancelDuration" Content="← Back to Login"
+                                Height="34" Background="Transparent"
+                                Foreground="#7F8C8D" FontSize="12"
+                                BorderThickness="0"
+                                Click="btnCancelDuration_Click"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- ══ SESSION PANEL ════════════════════════════════════ -->
+            <!--
+                During an active session the window becomes a normal
+                compact window (not full-screen) so the user can use
+                the PC they paid for. It sits in the taskbar as a
+                persistent timer reminder.
+            -->
+            <Grid x:Name="SessionPanel" Visibility="Collapsed"
+                  Background="#F5F6FA">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
@@ -97,8 +194,7 @@
                 </Grid.RowDefinitions>
 
                 <!-- Info bar -->
-                <Border Grid.Row="0" Background="#ECF0F1" Padding="16"
-                        Margin="0,0,0,16">
+                <Border Grid.Row="0" Background="#2C3E50" Padding="16,12">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
@@ -106,47 +202,55 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0">
-                            <TextBlock Text="User" FontSize="11" Foreground="#7F8C8D"/>
-                            <TextBlock x:Name="lblSessionUser" FontSize="15"
-                                       FontWeight="Bold"/>
+                            <TextBlock Text="USER" FontSize="10"
+                                       Foreground="#95A5A6"/>
+                            <TextBlock x:Name="lblSessionUser" FontSize="14"
+                                       FontWeight="Bold" Foreground="White"/>
                         </StackPanel>
-                        <StackPanel Grid.Column="1">
-                            <TextBlock Text="Duration" FontSize="11" Foreground="#7F8C8D"/>
-                            <TextBlock x:Name="lblSessionDuration" FontSize="15"
-                                       FontWeight="Bold"/>
+                        <StackPanel Grid.Column="1" HorizontalAlignment="Center">
+                            <TextBlock Text="DURATION" FontSize="10"
+                                       Foreground="#95A5A6"/>
+                            <TextBlock x:Name="lblSessionDuration" FontSize="14"
+                                       FontWeight="Bold" Foreground="White"/>
                         </StackPanel>
-                        <StackPanel Grid.Column="2">
-                            <TextBlock Text="Current Billing" FontSize="11" Foreground="#7F8C8D"/>
+                        <StackPanel Grid.Column="2" HorizontalAlignment="Right">
+                            <TextBlock Text="BILLING" FontSize="10"
+                                       Foreground="#95A5A6"/>
                             <TextBlock x:Name="lblCurrentBilling" Text="$0.00"
-                                       FontSize="15" FontWeight="Bold"
-                                       Foreground="#E67E22"/>
+                                       FontSize="14" FontWeight="Bold"
+                                       Foreground="#F39C12"/>
                         </StackPanel>
                     </Grid>
                 </Border>
 
                 <!-- Timer -->
-                <Border Grid.Row="1" BorderBrush="#BDC3C7" BorderThickness="1"
-                        Padding="20">
+                <Border Grid.Row="1" Padding="24" Background="#F5F6FA">
                     <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="Time Remaining" FontSize="16"
-                                   HorizontalAlignment="Center" Margin="0,0,0,16"/>
-                        <TextBlock x:Name="lblTimeRemaining" Text="00:00:00"
-                                   FontSize="68" FontWeight="Bold"
+                        <TextBlock Text="Time Remaining" FontSize="15"
                                    HorizontalAlignment="Center"
-                                   Foreground="DarkSlateBlue"/>
-                        <ProgressBar x:Name="progressBar" Height="18"
-                                     Margin="0,24,0,0" Minimum="0" Maximum="100"
-                                     Value="100"/>
+                                   Foreground="#7F8C8D" Margin="0,0,0,12"/>
+                        <TextBlock x:Name="lblTimeRemaining" Text="00:00:00"
+                                   FontSize="60" FontWeight="Bold"
+                                   HorizontalAlignment="Center"
+                                   Foreground="#2C3E50"/>
+                        <ProgressBar x:Name="progressBar" Height="14"
+                                     Margin="0,20,0,0" Minimum="0" Maximum="100"
+                                     Value="100" Foreground="#27AE60"/>
+                        <TextBlock x:Name="lblWarning" Text=""
+                                   FontSize="13" HorizontalAlignment="Center"
+                                   Foreground="#E74C3C" Margin="0,10,0,0"
+                                   Visibility="Collapsed"/>
                     </StackPanel>
                 </Border>
 
-                <!-- End button -->
+                <!-- End Session button -->
                 <Button Grid.Row="2" x:Name="btnEndSession"
-                        Content="End Session" Height="42" Margin="0,16,0,0"
+                        Content="End Session" Height="44" Margin="16"
                         Background="#E74C3C" Foreground="White"
-                        FontSize="15" FontWeight="Bold"
+                        FontSize="14" FontWeight="Bold" BorderThickness="0"
                         Click="btnEndSession_Click"/>
             </Grid>
+
         </Grid>
     </Grid>
 </Window>

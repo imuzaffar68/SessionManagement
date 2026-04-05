@@ -85,7 +85,7 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Security\AuthenticationHelper.cs" />
     <Compile Include="Security\PasswordHashGenerator.cs" />
-    <Compile Include="Security\ProxyDetectionService.cs" />
+    <Compile Include="Security\IllegalActivityDetectionService.cs" />
     <Compile Include="WCF\IsessionService.cs" />
     <Compile Include="WCF\SessionService.cs" />
   </ItemGroup>

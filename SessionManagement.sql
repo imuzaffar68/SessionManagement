@@ -947,3 +947,227 @@ SELECT
     (SELECT COUNT(*) FROM dbo.tblBillingRate) AS TotalBillingRates,
     (SELECT COUNT(*) FROM dbo.tblActivityType) AS TotalActivityTypes;
 GO
+
+
+-- ============================================================
+-- PATCH: Fix sp_RegisterClientUser CHECK constraint violation
+-- The tblSystemLog.Category column only allows:
+--   Auth | Session | Billing | Security | System
+-- The existing procedure used 'User' which violates the CHECK.
+-- ============================================================
+
+USE ClientServerSessionDB;
+GO
+
+-- Also add the activity types needed for illegal activity detection
+-- if they are not already present
+IF NOT EXISTS (SELECT 1 FROM dbo.tblActivityType WHERE Name = 'ProxySettingsEnabled')
+    INSERT INTO dbo.tblActivityType (Name, Description, DefaultSeverity, IsActive)
+    VALUES ('ProxySettingsEnabled', 'System proxy settings were enabled during session', 'High', 1);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.tblActivityType WHERE Name = 'ProxyAutoConfigDetected')
+    INSERT INTO dbo.tblActivityType (Name, Description, DefaultSeverity, IsActive)
+    VALUES ('ProxyAutoConfigDetected', 'PAC/Auto-config proxy URL detected during session', 'Medium', 1);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.tblActivityType WHERE Name = 'BlacklistedProcessRunning')
+    INSERT INTO dbo.tblActivityType (Name, Description, DefaultSeverity, IsActive)
+    VALUES ('BlacklistedProcessRunning', 'A blacklisted proxy/VPN process was running during session', 'High', 1);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.tblActivityType WHERE Name = 'VpnAdapterActive')
+    INSERT INTO dbo.tblActivityType (Name, Description, DefaultSeverity, IsActive)
+    VALUES ('VpnAdapterActive', 'A VPN/tunneling network adapter was active during session', 'High', 1);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.tblActivityType WHERE Name = 'RepeatedLoginFailure')
+    INSERT INTO dbo.tblActivityType (Name, Description, DefaultSeverity, IsActive)
+    VALUES ('RepeatedLoginFailure', 'Repeated failed login attempts from a client machine', 'High', 1);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.tblActivityType WHERE Name = 'CameraUnavailable')
+    INSERT INTO dbo.tblActivityType (Name, Description, DefaultSeverity, IsActive)
+    VALUES ('CameraUnavailable', 'Webcam was not available at login time', 'Low', 1);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.tblActivityType WHERE Name = 'ImageCaptureFailed')
+    INSERT INTO dbo.tblActivityType (Name, Description, DefaultSeverity, IsActive)
+    VALUES ('ImageCaptureFailed', 'Webcam capture failed after retry', 'Low', 1);
+GO
+
+-- Fix the stored procedure: change Category from 'User' to 'Auth'
+-- (tblSystemLog.Category CHECK only allows Auth/Session/Billing/Security/System)
+ALTER PROCEDURE dbo.sp_RegisterClientUser
+    @Username     NVARCHAR(50),
+    @PasswordHash NVARCHAR(255),
+    @FullName     NVARCHAR(100) = NULL,
+    @Phone        NVARCHAR(30)  = NULL,
+    @Address      NVARCHAR(200) = NULL,
+    @AdminUserId  INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DECLARE @UserId INT;
+    BEGIN TRY
+        INSERT INTO dbo.tblUser
+            (Username, PasswordHash, FullName, Role, Status,
+             Phone, Address, CreatedByUserId)
+        VALUES
+            (@Username, @PasswordHash, @FullName, 'ClientUser', 'Active',
+             @Phone, @Address, @AdminUserId);
+
+        SET @UserId = SCOPE_IDENTITY();
+        SELECT @UserId AS UserId;
+    END TRY
+    BEGIN CATCH
+        IF ERROR_NUMBER() IN (2627, 2601)
+        BEGIN
+            SELECT -1 AS UserId;
+            INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+            VALUES ('Auth', 'DuplicateUser',           -- fixed: was 'User'
+                'Duplicate username attempt: "' + @Username + '"', 'Server');
+        END
+        ELSE
+        BEGIN
+            SELECT 0 AS UserId;
+            INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+            VALUES ('System', 'Error',
+                'sp_RegisterClientUser: ' + ERROR_MESSAGE(), 'Server');
+        END
+    END CATCH
+END
+GO
+
+-- Verification
+SELECT 'PATCH COMPLETE' AS Status;
+SELECT Name, DefaultSeverity FROM dbo.tblActivityType ORDER BY Name;
+GO
+
+
+-- ============================================================
+-- Detection Activity Types PATCH
+-- Run against ClientServerSessionDB after the main SQL script.
+-- Adds activity types for every new detection rule.
+-- ============================================================
+
+USE ClientServerSessionDB;
+GO
+
+-- ── Helper procedure to upsert an activity type ───────────────
+CREATE OR ALTER PROCEDURE dbo.sp_UpsertActivityType
+    @Name           NVARCHAR(100),
+    @Description    NVARCHAR(500),
+    @DefaultSeverity NVARCHAR(10)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF EXISTS (SELECT 1 FROM dbo.tblActivityType WHERE Name = @Name)
+        UPDATE dbo.tblActivityType
+        SET Description    = @Description,
+            DefaultSeverity = @DefaultSeverity,
+            IsActive        = 1
+        WHERE Name = @Name;
+    ELSE
+        INSERT INTO dbo.tblActivityType (Name, Description, DefaultSeverity, IsActive)
+        VALUES (@Name, @Description, @DefaultSeverity, 1);
+END
+GO
+
+-- ── FR-12 Rule 2 — Proxy ──────────────────────────────────────
+EXEC dbo.sp_UpsertActivityType
+    'ProxySettingsEnabled',
+    'WinINet system proxy settings were enabled during an active session',
+    'High';
+GO
+
+EXEC dbo.sp_UpsertActivityType
+    'WinHttpProxyEnabled',
+    'WinHTTP proxy configured (used by services and PowerShell) during session',
+    'High';
+GO
+
+EXEC dbo.sp_UpsertActivityType
+    'ProxyAutoConfigDetected',
+    'PAC / auto-config proxy script URL set during active session',
+    'Medium';
+GO
+
+-- ── FR-12 Rule 1 — VPN / Tunneling ───────────────────────────
+EXEC dbo.sp_UpsertActivityType
+    'VpnAdapterActive',
+    'A VPN, TAP, TUN, or Wintun network adapter was active during session',
+    'High';
+GO
+
+-- ── FR-12 Rule 3 — Blacklisted processes ─────────────────────
+EXEC dbo.sp_UpsertActivityType
+    'BlacklistedProcessRunning',
+    'A blacklisted proxy, VPN, Tor, or remote-access process was running',
+    'High';
+GO
+
+-- ── Rule 5 — Mobile hotspot ───────────────────────────────────
+EXEC dbo.sp_UpsertActivityType
+    'MobileHotspotDetected',
+    'Client connected via mobile hotspot instead of authorised LAN',
+    'High';
+GO
+
+-- ── Rule 6 — Network switching ────────────────────────────────
+EXEC dbo.sp_UpsertActivityType
+    'NetworkTypeSwitched',
+    'Network connection type changed during session (e.g. Ethernet to WiFi)',
+    'Medium';
+GO
+
+-- ── Rule 7 — Clock tamper ─────────────────────────────────────
+EXEC dbo.sp_UpsertActivityType
+    'SystemTimeTampered',
+    'System clock was moved forward or backward during an active session',
+    'High';
+GO
+
+-- ── Rule 8 — Remote Desktop ───────────────────────────────────
+EXEC dbo.sp_UpsertActivityType
+    'RemoteDesktopSessionDetected',
+    'Client application is running inside an RDP / Remote Desktop session',
+    'High';
+GO
+
+-- ── Rule 9 — Virtual webcam ───────────────────────────────────
+EXEC dbo.sp_UpsertActivityType
+    'VirtualCameraDetected',
+    'A virtual or fake webcam (OBS, DroidCam, ManyCam, etc.) was detected',
+    'Medium';
+GO
+
+-- ── FR-12 Rule 4 — Repeated login failures ────────────────────
+EXEC dbo.sp_UpsertActivityType
+    'RepeatedLoginFailure',
+    'Repeated failed login attempts from a client machine in a short window',
+    'High';
+GO
+
+-- ── Webcam availability ───────────────────────────────────────
+EXEC dbo.sp_UpsertActivityType
+    'CameraUnavailable',
+    'Webcam was not available at login time (camera not connected)',
+    'Low';
+GO
+
+EXEC dbo.sp_UpsertActivityType
+    'ImageCaptureFailed',
+    'Webcam image capture failed even after one retry',
+    'Low';
+GO
+
+-- ── Verify ────────────────────────────────────────────────────
+SELECT Name, DefaultSeverity, Description
+FROM   dbo.tblActivityType
+ORDER  BY DefaultSeverity DESC, Name;
+GO
+
+SELECT 'PATCH COMPLETE — ' + CAST(COUNT(*) AS VARCHAR) + ' activity types registered' AS Status
+FROM   dbo.tblActivityType;
+GO
