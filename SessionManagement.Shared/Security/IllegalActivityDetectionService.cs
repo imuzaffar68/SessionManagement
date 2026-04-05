@@ -702,29 +702,41 @@ namespace SessionManagement.Security
                     {
                         foreach (string subName in classKey.GetSubKeyNames())
                         {
-                            using (var dev = classKey.OpenSubKey(subName))
+                            try
                             {
-                                if (dev == null) continue;
-                                string friendly = (dev.GetValue("FriendlyName") ?? string.Empty).ToString().ToLowerInvariant();
-                                string driver = (dev.GetValue("DriverDesc") ?? string.Empty).ToString().ToLowerInvariant();
-                                string devId = (dev.GetValue("DeviceInstance") ?? string.Empty).ToString().ToLowerInvariant();
-
-                                foreach (string hint in virtualCamHints)
+                                using (var dev = classKey.OpenSubKey(subName))
                                 {
-                                    if (friendly.Contains(hint) || driver.Contains(hint) || devId.Contains(hint))
+                                    if (dev == null) continue;
+                                    string friendly = (dev.GetValue("FriendlyName") ?? string.Empty).ToString().ToLowerInvariant();
+                                    string driver = (dev.GetValue("DriverDesc") ?? string.Empty).ToString().ToLowerInvariant();
+                                    string devId = (dev.GetValue("DeviceInstance") ?? string.Empty).ToString().ToLowerInvariant();
+
+                                    foreach (string hint in virtualCamHints)
                                     {
-                                        string display = string.IsNullOrEmpty(friendly) ? driver : friendly;
-                                        Raise("VCAM:" + hint,
-                                            "VirtualCameraDetected",
-                                            "Virtual/fake webcam device found: " + display,
-                                            "Medium");
-                                        break;
+                                        if (friendly.Contains(hint) || driver.Contains(hint) || devId.Contains(hint))
+                                        {
+                                            string display = string.IsNullOrEmpty(friendly) ? driver : friendly;
+                                            Raise("VCAM:" + hint,
+                                                "VirtualCameraDetected",
+                                                "Virtual/fake webcam device found: " + display,
+                                                "Medium");
+                                            break;
+                                        }
                                     }
                                 }
+                            }
+                            catch (System.Security.SecurityException secEx)
+                            {
+                                Debug.WriteLine("[VCam registry: SecurityException] " + secEx.Message);
+                                continue;
                             }
                         }
                     }
                 }
+            }
+            catch (System.Security.SecurityException secEx)
+            {
+                Debug.WriteLine("[VCam registry: SecurityException] " + secEx.Message);
             }
             catch (Exception ex)
             {
