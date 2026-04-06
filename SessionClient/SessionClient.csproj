@@ -63,7 +63,13 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
+    <Compile Include="FloatingTimerWindow.xaml.cs">
+      <DependentUpon>FloatingTimerWindow.xaml</DependentUpon>
+    </Compile>
     <Compile Include="SessionServiceClient.cs" />
+    <Page Include="FloatingTimerWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
     <Page Include="MainWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>

@@ -12,6 +12,7 @@ using SessionManagement.Client;
 using SessionManagement.Security;
 using SessionManagement.WCF;
 using SessionManagement.Media;
+using SessionClient; // Add this for FloatingTimerWindow
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  BUGS FIXED IN THIS VERSION
@@ -45,7 +46,7 @@ using SessionManagement.Media;
 //         Grid row, so it stretched across the full maximized window before
 //         UnlockScreen completed. Fixed by reordering: UnlockScreen is fully
 //         applied before ShowPanel(SessionPanel).
-// ═══════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════
 
 namespace SessionClient
 {
@@ -79,6 +80,9 @@ namespace SessionClient
 
         // FIX BUG 6: read kiosk flag once, use everywhere
         private readonly bool _kioskMode;
+
+        private FloatingTimerWindow _floatingTimerWindow;
+        private bool _timerMinimizedByUser;
 
         // ── Win32 keyboard hook ───────────────────────────────────────────────
         private const int WH_KEYBOARD_LL = 13;
@@ -204,6 +208,7 @@ namespace SessionClient
                 Left = SystemParameters.WorkArea.Width - 500 - 20;
                 Top = 20;
                 HeaderBar.Visibility = Visibility.Collapsed;
+                ShowPanel(SessionPanel); //added here for test
                 Title = "Session Timer — " + durationMinutes + " min — " + _fullname;
             }), DispatcherPriority.Background);
         }
@@ -582,6 +587,7 @@ namespace SessionClient
         {
             _remaining = _remaining.Subtract(TimeSpan.FromSeconds(1));
             UpdateTimerUI();
+            UpdateFloatingTimerWindow();
 
             if (_remaining.TotalMinutes <= 5 && _remaining.TotalSeconds > 0)
             {
@@ -628,6 +634,12 @@ namespace SessionClient
                          "\n\nPlease log in again to continue.";
             MessageBox.Show(msg, "Session Ended",
                 MessageBoxButton.OK, MessageBoxImage.Information);
+
+            if (_floatingTimerWindow != null)
+            {
+                _floatingTimerWindow.Close();
+                _floatingTimerWindow = null;
+            }
 
             ResetToLogin();
         }
@@ -874,5 +886,58 @@ namespace SessionClient
             catch { }
             return null;
         }
+
+        private void MinimizeTimerWindow()
+        {
+            if (_floatingTimerWindow == null)
+            {
+                _floatingTimerWindow = new FloatingTimerWindow();
+                _floatingTimerWindow.RestoreRequested += FloatingTimerWindow_RestoreRequested;
+            }
+            _floatingTimerWindow.SetTime(lblTimeRemaining.Text);
+            _floatingTimerWindow.Left = SystemParameters.WorkArea.Right - _floatingTimerWindow.Width - 20;
+            _floatingTimerWindow.Top = SystemParameters.WorkArea.Bottom - _floatingTimerWindow.Height - 20;
+            _floatingTimerWindow.Show();
+            this.Hide();
+            _timerMinimizedByUser = true;
+        }
+
+        private void FloatingTimerWindow_RestoreRequested(object sender, EventArgs e)
+        {
+            this.Show();
+            this.WindowState = WindowState.Normal;
+            _floatingTimerWindow.Hide();
+            _timerMinimizedByUser = false;
+        }
+
+        // Call this from timer tick to update floating window if visible
+        private void UpdateFloatingTimerWindow()
+        {
+            if (_floatingTimerWindow != null && _floatingTimerWindow.IsVisible)
+            {
+                _floatingTimerWindow.SetTime(lblTimeRemaining.Text);
+            }
+        }
+
+        // Add a button or hotkey to minimize the timer window
+        private void btnMinimizeTimer_Click(object sender, RoutedEventArgs e)
+        {
+            MinimizeTimerWindow();
+        }
+
+        // Optionally, allow minimizing with standard window controls
+        protected override void OnStateChanged(EventArgs e)
+        {
+            base.OnStateChanged(e);
+            if (WindowState == WindowState.Minimized && _sessionActive)
+            {
+                MinimizeTimerWindow();
+            }
+        }
+
+        // Ensure timer logic runs on UI thread using DispatcherTimer (already used)
+        // If any blocking code is present in timer tick, move it to background thread or cache results
+        // (Already fixed as per comments in file)
     }
 }
+//}

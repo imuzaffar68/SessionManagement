@@ -249,6 +249,10 @@
                         Background="#E74C3C" Foreground="White"
                         FontSize="14" FontWeight="Bold" BorderThickness="0"
                         Click="btnEndSession_Click"/>
+                        <Button x:Name="btnMinimizeTimer" Content="_" Width="32" Height="32"
+                                HorizontalAlignment="Right" VerticalAlignment="Top"
+                                Margin="0,0,8,0" Click="btnMinimizeTimer_Click"
+                                ToolTip="Minimize to floating timer"/>
             </Grid>
 
         </Grid>
