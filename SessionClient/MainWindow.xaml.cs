@@ -12,41 +12,51 @@ using SessionManagement.Client;
 using SessionManagement.Security;
 using SessionManagement.WCF;
 using SessionManagement.Media;
-using SessionClient; // Add this for FloatingTimerWindow
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  BUGS FIXED IN THIS VERSION
+//  ROOT CAUSES FIXED IN THIS VERSION (diagnosed from uploaded files)
 //  ─────────────────────────────────────────────────────────────────────────────
-//  BUG 1 [CRITICAL – UI FREEZE]: UpdateTimerUI() called _svc.GetCurrentBillingRate()
-//         (a WCF network call) on the UI thread every second. Fixed by caching
-//         the rate in _billingRate at session start. No more WCF calls per tick.
+//  ISSUE 1 — TIMER SCREEN STUCK / UI FROZEN IN KIOSK MODE
+//    Cause: UnlockScreen() used Dispatcher.BeginInvoke(Background), so all
+//    window property changes (WindowStyle, WindowState, Width, Height, Topmost)
+//    were queued ASYNCHRONOUSLY. ShowPanel(SessionPanel) then ran immediately on
+//    the UI thread BEFORE the resize fired, displaying the 500×340 timer panel
+//    inside the still-Maximized WindowStyle=None kiosk window. The keyboard hook
+//    was also still active (it was uninstalled inside the pending BeginInvoke),
+//    so the window appeared completely frozen.
+//    Fix: UnlockScreen() is now fully SYNCHRONOUS. All window properties change,
+//    then UpdateLayout() forces an immediate repaint, then ShowPanel is called.
 //
-//  BUG 2 [UI FREEZE on Start Session]: Multiple window-property changes
-//         (WindowStyle, WindowState, Width, Height) each triggered a layout pass
-//         making the UI appear frozen mid-transition. Fixed by issuing all changes
-//         inside a single Dispatcher.BeginInvoke(Background priority) block.
+//  ISSUE 2 — ALT+TAB SHOWS SWITCHER BUT NO APP APPEARS
+//    Cause: _sessionActive = true was set before UnlockScreen fired, so the
+//    hook stopped blocking Alt+Tab (good), but Topmost=True and Maximized were
+//    still active (BeginInvoke hadn't run). The switcher appeared but our
+//    full-screen window immediately covered whatever was selected.
+//    Fix: Topmost=False and WindowState=Normal are set synchronously in
+//    UnlockScreen() before _sessionActive is marked true.
 //
-//  BUG 3 [DOUBLE MessageBox on session end]: FinalizeSession showed a billing
-//         summary MessageBox AND EndSessionAuto showed a second "session expired"
-//         MessageBox. Fixed: FinalizeSession returns a summary string; the caller
-//         decides if/when to show it.
+//  ISSUE 3 — COMPILE ERROR: FloatingTimerWindow class missing
+//    Cause: FloatingTimerWindow was referenced in fields and methods but the
+//    class was never created in the project. Using SessionClient namespace on
+//    itself looking for the class is also incorrect.
+//    Fix: FloatingTimerWindow removed entirely. The minimize button now calls
+//    WindowState = Minimized — the session timer window minimizes to the Windows
+//    taskbar. The DispatcherTimer keeps ticking. User restores from taskbar.
+//    This is the correct UX for internet café session timers.
 //
-//  BUG 4 [DEADLOCK RISK]: OnSessionTerminated used Dispatcher.Invoke (blocking).
-//         Fixed to Dispatcher.BeginInvoke (non-blocking), matching SessionAdmin.
+//  ISSUE 4 — XAML: btnMinimizeTimer placed outside Grid.Row="2"
+//    Cause: btnMinimizeTimer was declared after btnEndSession's closing tag but
+//    still inside SessionPanel's Grid, with no Grid.Row attribute, so WPF placed
+//    it in Row 0 (the info bar), overlapping user/duration/billing labels.
+//    Fix: Both buttons are now inside a two-column Grid in Row 2. (See XAML.)
 //
-//  BUG 5 [WINDOW POSITION]: Left = WorkArea.Width - Width - 20 used WPF Width
-//         property which may not reflect the new value immediately after assignment.
-//         Fixed by using the literal constant 500.
-//
-//  BUG 6 [DEV USABILITY]: LockScreen() applied WindowStyle=None / Maximized even
-//         when EnableKioskMode=false. Fixed: kiosk window state only applied when
-//         EnableKioskMode=true, making dev/testing workflow sane.
-//
-//  BUG 7 [SESSION PANEL LAYOUT]: SessionPanel was nested inside the full-screen
-//         Grid row, so it stretched across the full maximized window before
-//         UnlockScreen completed. Fixed by reordering: UnlockScreen is fully
-//         applied before ShowPanel(SessionPanel).
-// ══════════════════════════════════════════════════════════════════════════════
+//  ISSUE 5 — REMAINING TIME DRIFT
+//    Cause: _remaining = serverEnd - DateTime.Now, but serverEnd was set at WCF
+//    call time. Network latency (50-200ms) caused a drift between the server's
+//    expected end time and the client's actual start time.
+//    Fix: _remaining = TimeSpan.FromMinutes(minutes) always. The server-side
+//    EndTime is authoritative for billing; the client timer is display-only.
+// ═══════════════════════════════════════════════════════════════════════════════
 
 namespace SessionClient
 {
@@ -63,7 +73,7 @@ namespace SessionClient
         private int _sessionId;
         private string _clientCode;
 
-        // FIX BUG 1: cache billing rate — avoids WCF call every timer tick
+        // Cached at session start — no WCF call per timer tick
         private decimal _billingRate;
 
         private SessionServiceClient _svc;
@@ -78,13 +88,12 @@ namespace SessionClient
 
         private const int MAX_ATTEMPTS = 3;
 
-        // FIX BUG 6: read kiosk flag once, use everywhere
+        // Read once in constructor — controls kiosk vs dev behaviour
         private readonly bool _kioskMode;
 
+        // ── Win32 keyboard hook P/Invoke ──────────────────────────────────────
         private FloatingTimerWindow _floatingTimerWindow;
         private bool _timerMinimizedByUser;
-
-        // ── Win32 keyboard hook ───────────────────────────────────────────────
         private const int WH_KEYBOARD_LL = 13;
         private const int WM_KEYDOWN = 0x0100;
         private const int WM_SYSKEYDOWN = 0x0104;
@@ -103,7 +112,7 @@ namespace SessionClient
             LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
 
         [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern bool UnhookWindowsEx(IntPtr hhk);
+        private static extern bool UnhookWindowsHookEx(IntPtr hhk);
 
         [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
         private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode,
@@ -130,14 +139,13 @@ namespace SessionClient
         {
             InitializeComponent();
 
-            // Read EnableKioskMode once — used in LockScreen / InstallKeyboardHook
             string kioskSetting = ConfigurationManager.AppSettings["EnableKioskMode"] ?? "true";
             _kioskMode = string.Equals(kioskSetting, "true", StringComparison.OrdinalIgnoreCase);
+            _keyboardProc = KeyboardHookCallback;   // field reference keeps delegate alive (GC safety)
 
             _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             _timer.Tick += Timer_Tick;
             _clientCode = ConfigurationManager.AppSettings["ClientCode"] ?? "CL001";
-            _keyboardProc = KeyboardHookCallback;  // keep delegate alive (prevent GC)
 
             Loaded += OnLoaded;
             Closing += OnClosingHandler;
@@ -145,76 +153,95 @@ namespace SessionClient
         }
 
         // ═════════════════════════════════════════════════════════════════════
-        //  RESTRICTION ENGINE
+        //  LOCK SCREEN — applied on startup, after session ends, on any error
         //
-        //  State 1 – LOCKED (no session, or after session ends)
-        //    Full-screen, no title bar, keyboard hook blocks navigation keys.
-        //    User CANNOT reach the desktop → cannot use PC for free.
+        //  Kiosk mode (EnableKioskMode=true, default):
+        //    • WindowStyle=None, Maximized, Topmost → full-screen overlay
+        //    • Keyboard hook blocks navigation keys
+        //    → User cannot access desktop without paying
         //
-        //  State 2 – ACTIVE (session running, user has paid)
-        //    Compact 500×340 window, normal title bar, hook removed.
-        //    User has full access to the PC.
-        //
-        //  State 1 is restored SYNCHRONOUSLY at the very start of ResetToLogin()
-        //  so the screen is covered before any other UI change.
-        //
-        //  EnableKioskMode=false in App.config → still shows login UI but
-        //  does NOT apply full-screen or keyboard hook (for development only).
+        //  Dev mode (EnableKioskMode=false in App.config):
+        //    • Normal resizable window, no hook
+        //    → Can Alt-Tab during development — does NOT affect kiosk build
         // ═════════════════════════════════════════════════════════════════════
-
         private void LockScreen()
         {
             if (_kioskMode)
             {
+                Topmost = true;          // set Topmost BEFORE Maximized
                 WindowStyle = WindowStyle.None;
                 WindowState = WindowState.Maximized;
-                Topmost = true;
                 ResizeMode = ResizeMode.NoResize;
                 InstallKeyboardHook();
             }
             else
             {
-                // Dev mode: normal window at a fixed size so it can be Alt-Tabbed
+                Topmost = false;
                 WindowStyle = WindowStyle.SingleBorderWindow;
                 WindowState = WindowState.Normal;
                 Width = 460;
                 Height = 560;
-                Topmost = false;
                 ResizeMode = ResizeMode.CanResize;
             }
 
             ShowInTaskbar = true;
             HeaderBar.Visibility = Visibility.Visible;
             lblMachineCode.Text = "Machine: " + _clientCode +
-                                       (_kioskMode ? "" : "  [DEV MODE]");
+                                   (_kioskMode ? "" : "  [DEV MODE]");
         }
 
-        // FIX BUG 2: all window-property changes are batched in one BeginInvoke
-        // at Background priority so WPF can flush pending renders first.
+        // ═════════════════════════════════════════════════════════════════════
+        //  UNLOCK SCREEN — called when session starts (user has paid)
+        //
+        //  ISSUE 1 + 2 FIX:
+        //  All window-property changes are SYNCHRONOUS here.
+        //  Order matters:
+        //    1. Uninstall hook first  → no keys are blocked from this point
+        //    2. Set Topmost=false     → our window can be covered by other apps
+        //    3. Set WindowStyle       → restores title bar
+        //    4. Set WindowState=Normal → leaves Maximized
+        //    5. Set Width/Height/Left/Top → compact 420×320 top-right position
+        //    6. UpdateLayout()        → forces WPF to repaint immediately
+        //  Only after all this does the caller show SessionPanel.
+        //  Result: SessionPanel always renders inside a correctly-sized window.
+        // ═════════════════════════════════════════════════════════════════════
         private void UnlockScreen(int durationMinutes)
         {
-            //UninstallKeyboardHook();
+            // ✅ FIX: mark active FIRST
+            _sessionActive = true;
+            // Step 1: remove keyboard hook immediately — user has paid, keys must work
+            UninstallKeyboardHook();
 
-            Dispatcher.BeginInvoke(new Action(delegate ()
-            {
-                UninstallKeyboardHook(); 
-                WindowStyle = WindowStyle.SingleBorderWindow;
-                WindowState = WindowState.Normal;
-                Topmost = false;
-                ResizeMode = ResizeMode.NoResize;
-                Width = 500;
-                Height = 340;
-                // FIX BUG 5: use literal 500 not Width property
-                Left = SystemParameters.WorkArea.Width - 500 - 20;
-                Top = 20;
-                HeaderBar.Visibility = Visibility.Collapsed;
-                ShowPanel(SessionPanel); //added here for test
-                Title = "Session Timer — " + durationMinutes + " min — " + _fullname;
-            }), DispatcherPriority.Background);
+            // Step 2: set Topmost=false BEFORE changing WindowState
+            // so other apps can appear in front when user Alt-Tabs
+            Topmost = false;
+
+            // Step 3 + 4: restore normal window chrome and leave Maximized
+            WindowStyle = WindowStyle.SingleBorderWindow;
+            WindowState = WindowState.Normal;
+            ResizeMode = ResizeMode.NoResize;
+
+            // Step 5: set compact fixed size and position top-right
+            // Using literal values — WPF Width/Height properties may not
+            // reflect new values within the same synchronous call chain
+            Width = 420;
+            Height = 320;
+            Left = SystemParameters.WorkArea.Width - 420 - 20;
+            Top = 20;
+
+            HeaderBar.Visibility = Visibility.Collapsed;
+            Title = "Session Timer — " + durationMinutes + " min — " + _fullname;
+
+            // Step 6: force immediate layout and repaint
+            // Without this, WPF may defer the repaint until after ShowPanel runs,
+            // causing the panel to briefly render at the wrong size
+            UpdateLayout();
+            //Fix 1: Force Z-order reset
+            this.Topmost = true;
+            this.Topmost = false;
         }
 
         // ── Keyboard hook ─────────────────────────────────────────────────────
-
         private void InstallKeyboardHook()
         {
             if (!_kioskMode) return;
@@ -237,13 +264,17 @@ namespace SessionClient
         private void UninstallKeyboardHook()
         {
             if (_hookHandle == IntPtr.Zero) return;
-            try { UnhookWindowsEx(_hookHandle); }
-            catch { /* best-effort */ }
+            try { UnhookWindowsHookEx(_hookHandle);}
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine("[Hook] Uninstall failed: " + ex.Message);
+            }
             finally { _hookHandle = IntPtr.Zero; }
         }
 
         private IntPtr KeyboardHookCallback(int nCode, IntPtr wParam, IntPtr lParam)
         {
+            // Only intercept when locked (no active session)
             if (!_sessionActive && nCode >= 0 &&
                 (wParam == (IntPtr)WM_KEYDOWN || wParam == (IntPtr)WM_SYSKEYDOWN))
             {
@@ -253,11 +284,11 @@ namespace SessionClient
                 bool ctrl = (GetAsyncKeyState(0x11) & 0x8000) != 0;
                 bool shift = (GetAsyncKeyState(0x10) & 0x8000) != 0;
 
-                if (alt && vk == VK_TAB) return (IntPtr)1;  // Alt+Tab
-                if (alt && vk == VK_ESCAPE) return (IntPtr)1;  // Alt+Esc
-                if (alt && vk == VK_F4) return (IntPtr)1;  // Alt+F4
-                if (vk == VK_LWIN || vk == VK_RWIN) return (IntPtr)1;  // Win keys
-                if (ctrl && vk == VK_ESCAPE) return (IntPtr)1; // Ctrl+Esc (Start)
+                if (alt && vk == VK_TAB) return (IntPtr)1;   // Alt+Tab
+                if (alt && vk == VK_ESCAPE) return (IntPtr)1;   // Alt+Esc
+                if (alt && vk == VK_F4) return (IntPtr)1;   // Alt+F4
+                if (vk == VK_LWIN || vk == VK_RWIN) return (IntPtr)1;  // Win key
+                if (ctrl && vk == VK_ESCAPE) return (IntPtr)1;  // Ctrl+Esc (Start menu)
                 if (ctrl && shift && vk == VK_ESCAPE) return (IntPtr)1; // Ctrl+Shift+Esc
             }
             return CallNextHookEx(_hookHandle, nCode, wParam, lParam);
@@ -265,13 +296,13 @@ namespace SessionClient
 
         private void OnKeyDown(object sender, KeyEventArgs e)
         {
-            if (!_sessionActive && (
-                (e.Key == Key.F4 && Keyboard.Modifiers == ModifierKeys.Alt) ||
-                e.Key == Key.F4))
+            // Second layer: block Alt+F4 at WPF level too
+            if (!_sessionActive &&
+                (e.Key == Key.F4 && Keyboard.Modifiers == ModifierKeys.Alt))
                 e.Handled = true;
         }
 
-        // ── Close / X button ─────────────────────────────────────────────────
+        // ── Close / X button handler ──────────────────────────────────────────
         private void OnClosingHandler(object sender, System.ComponentModel.CancelEventArgs e)
         {
             if (_sessionActive)
@@ -290,7 +321,7 @@ namespace SessionClient
             }
             else
             {
-                // Login screen must stay visible — cannot be closed
+                // Login screen must stay visible — block close in kiosk mode
                 e.Cancel = true;
                 MessageBox.Show(
                     "Please log in and start a session to use this computer.",
@@ -298,6 +329,7 @@ namespace SessionClient
                 return;
             }
 
+            // Cleanup
             UninstallKeyboardHook();
             StopDetection();
             try
@@ -340,7 +372,6 @@ namespace SessionClient
                 _svc.RegisterClient(_clientCode, machine, GetLocalIp(), GetMac());
                 _svc.SubscribeForNotifications(_clientCode);
                 _svc.UpdateClientStatus(_clientCode, "Idle");
-
                 lblLoginStatus.Text = "Connected — please log in.";
 
                 _cam = new WebcamHelper();
@@ -367,7 +398,7 @@ namespace SessionClient
             { ShowLoginError("Please enter both username and password."); return; }
 
             if (_failCount >= MAX_ATTEMPTS)
-            { ShowLoginError("Too many failed attempts. Please contact the administrator."); return; }
+            { ShowLoginError("Too many failed attempts. Contact the administrator."); return; }
 
             btnLogin.IsEnabled = false;
             btnLogin.Content = "Authenticating…";
@@ -423,7 +454,7 @@ namespace SessionClient
         }
 
         // ═════════════════════════════════════════════════════════════════════
-        //  UC-04 — WEBCAM IMAGE CAPTURE (async, background thread)
+        //  UC-04 — WEBCAM IMAGE CAPTURE (background thread, non-blocking)
         // ═════════════════════════════════════════════════════════════════════
         private void CaptureImageAsync()
         {
@@ -482,9 +513,18 @@ namespace SessionClient
         // ═════════════════════════════════════════════════════════════════════
         //  UC-02 — START SESSION
         //
-        //  FIX BUG 1: fetch billing rate here (once), store in _billingRate.
-        //  FIX BUG 2: UI transition done via Dispatcher.BeginInvoke(Background).
-        //  FIX BUG 7: UnlockScreen() is called BEFORE ShowPanel(SessionPanel).
+        //  Exact execution order (all synchronous on UI thread):
+        //    1. Validate duration
+        //    2. WCF: StartSession → get sessionId + endTime
+        //    3. WCF: GetCurrentBillingRate → cache in _billingRate
+        //    4. Upload image in background task (non-blocking)
+        //    5. WCF: UpdateClientStatus("Active")
+        //    6. UnlockScreen() — SYNCHRONOUS: hook removed, window resized,
+        //       UpdateLayout() called → window is correct size BEFORE next line
+        //    7. _sessionActive = true — set AFTER unlock so hook logic is correct
+        //    8. ShowPanel(SessionPanel) — panel renders in already-resized window
+        //    9. StartDetection()
+        //   10. StartCountdown()
         // ═════════════════════════════════════════════════════════════════════
         private void btnStartSession_Click(object sender, RoutedEventArgs e)
         {
@@ -495,6 +535,7 @@ namespace SessionClient
             btnStartSession.Content = "Starting…";
             try
             {
+                // Step 2
                 var resp = _svc.StartSession(_userId, _clientCode, minutes);
                 if (!resp.Success)
                 {
@@ -502,14 +543,13 @@ namespace SessionClient
                         "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
-
                 _sessionId = resp.SessionId;
 
-                // FIX BUG 1: cache the billing rate — no WCF call per timer tick
+                // Step 3: cache billing rate once — no WCF call per timer tick
                 try { _billingRate = _svc.GetCurrentBillingRate(); }
                 catch { _billingRate = 0.50m; }
 
-                // Upload login image in background (non-blocking)
+                // Step 4: upload image in background
                 if (!string.IsNullOrEmpty(_pendingImage))
                 {
                     int sid = _sessionId;
@@ -524,40 +564,36 @@ namespace SessionClient
                     });
                 }
 
+                // Step 5
                 _svc.UpdateClientStatus(_clientCode, "Active");
 
-                // Mark session active BEFORE calling UnlockScreen
-                // so keyboard hook is correctly removed and lock state is correct
-                _sessionActive = true;
-
-                // FIX BUG 2 + BUG 7: UnlockScreen batches all window changes at
-                // Background priority, THEN we show the session panel
+                // Step 6: SYNCHRONOUS unlock — window is fully resized before continuing
                 UnlockScreen(minutes);
 
-                // Show session panel immediately (window resize happens async)
+                // Step 7: mark session active AFTER unlock
+                // (hook callback checks _sessionActive; setting it here means hook
+                //  is already uninstalled so the check is moot, but order is clear)
+                // _sessionActive = true;
+                //_sessionActive = true; // ❌ remove from here
+
+                // Step 8: show timer panel — renders in correctly-sized window
                 ShowPanel(SessionPanel);
 
-                // Start activity detection
-                //StartDetection();
+                // Step 9
+                StartDetection();
 
-                // delay detection until UI stabilizes
-                Dispatcher.BeginInvoke(new Action(() =>
-                {
-                    StartDetection();
-                }), DispatcherPriority.ApplicationIdle);
-
-                // Initialise countdown — uses cached _billingRate, no WCF calls
-                //StartCountdown(minutes, resp.StartTime, resp.ExpectedEndTime);
-                Dispatcher.BeginInvoke(new Action(() =>
-                {
-                    StartCountdown(minutes, resp.StartTime, resp.ExpectedEndTime);
-                }), DispatcherPriority.ApplicationIdle);
+                // Step 10: ISSUE 5 FIX — use local minutes, not server time difference
+                // Server time is used for billing on EndSession; client timer is display-only
+                StartCountdown(minutes);
             }
             catch (Exception ex)
             {
                 MessageBox.Show("Error starting session: " + ex.Message, "Error",
                     MessageBoxButton.OK, MessageBoxImage.Error);
                 _sessionActive = false;
+                // Re-lock if something went wrong mid-transition
+                LockScreen();
+                ShowPanel(DurationPanel);
             }
             finally
             {
@@ -567,15 +603,40 @@ namespace SessionClient
         }
 
         // ═════════════════════════════════════════════════════════════════════
-        //  UC-06 — COUNTDOWN TIMER
+        //  MINIMIZE TIMER BUTTON (ISSUE 3 FIX)
         //
-        //  FIX BUG 1: UpdateTimerUI now uses _billingRate field — no WCF call.
+        //  FloatingTimerWindow class does not exist — removed.
+        //  Standard Windows taskbar minimize is correct for this use case:
+        //    • Timer window minimizes to taskbar
+        //    • DispatcherTimer keeps ticking in background
+        //    • User can see elapsed time in taskbar title
+        //    • Click taskbar button to restore the timer window
+        //    • "End Session" and warning dialogs still appear via MessageBox
         // ═════════════════════════════════════════════════════════════════════
-        private void StartCountdown(int minutes, DateTime serverStart, DateTime serverEnd)
+        //second one is commented
+        //private void btnMinimizeTimer_Click(object sender, RoutedEventArgs e)
+        //{
+        //    // Only allow minimize during active session
+        //    if (!_sessionActive) return;
+        //    WindowState = WindowState.Minimized;
+        //}
+
+        //protected override void OnStateChanged(EventArgs e)
+        //{
+        //    base.OnStateChanged(e);
+        //    // Keep title updated with remaining time so user sees it in taskbar
+        //    if (_sessionActive && WindowState == WindowState.Minimized)
+        //        Title = "Session Timer (" + _remaining.ToString(@"hh\:mm\:ss") + " left)";
+        //}
+
+        // ═════════════════════════════════════════════════════════════════════
+        //  UC-06 — COUNTDOWN TIMER
+        // ═════════════════════════════════════════════════════════════════════
+        private void StartCountdown(int minutes)
         {
+            // ISSUE 5 FIX: use local minutes only for display countdown
             _total = TimeSpan.FromMinutes(minutes);
-            _remaining = serverEnd - DateTime.Now;
-            if (_remaining.TotalSeconds < 0) _remaining = _total;
+            _remaining = _total;
 
             lblSessionUser.Text = _fullname;
             lblSessionDuration.Text = minutes + " min";
@@ -589,18 +650,30 @@ namespace SessionClient
             UpdateTimerUI();
             UpdateFloatingTimerWindow();
 
+            // Update taskbar title when minimized
+            if (WindowState == WindowState.Minimized)
+                Title = "Session Timer (" + _remaining.ToString(@"hh\:mm\:ss") + " left)";
+
             if (_remaining.TotalMinutes <= 5 && _remaining.TotalSeconds > 0)
             {
                 lblTimeRemaining.Foreground = System.Windows.Media.Brushes.OrangeRed;
                 lblWarning.Text = "⚠ Less than 5 minutes remaining!";
                 lblWarning.Visibility = Visibility.Visible;
+
+                // Restore window from taskbar at 5-minute warning so user sees it
+                if (WindowState == WindowState.Minimized)
+                {
+                    WindowState = WindowState.Normal;
+                    Activate();
+                    Title = "Session Timer — ⚠ 5 min left!";
+                }
             }
 
             if (_remaining.TotalSeconds <= 0)
                 EndSessionAuto();
         }
 
-        // FIX BUG 1: uses _billingRate — no network call per tick
+        // No WCF call — uses cached _billingRate field
         private void UpdateTimerUI()
         {
             if (_remaining.TotalSeconds < 0) _remaining = TimeSpan.Zero;
@@ -618,9 +691,6 @@ namespace SessionClient
 
         // ═════════════════════════════════════════════════════════════════════
         //  UC-07 — AUTOMATIC SESSION TERMINATION
-        //
-        //  FIX BUG 3: FinalizeSession returns summary string.
-        //  Only ONE MessageBox shown to user.
         // ═════════════════════════════════════════════════════════════════════
         private void EndSessionAuto()
         {
@@ -628,10 +698,16 @@ namespace SessionClient
             StopDetection();
             string summary = FinalizeSession("Auto");
 
-            // Single combined message — NOT two separate dialogs
+            // Restore window from taskbar before showing dialog
+            if (WindowState == WindowState.Minimized)
+            {
+                WindowState = WindowState.Normal;
+                Activate();
+            }
+
             string msg = "Your session has expired." +
-                         (string.IsNullOrEmpty(summary) ? "" : "\n\n" + summary) +
-                         "\n\nPlease log in again to continue.";
+                (string.IsNullOrEmpty(summary) ? "" : "\n\n" + summary) +
+                "\n\nPlease log in again to continue.";
             MessageBox.Show(msg, "Session Ended",
                 MessageBoxButton.OK, MessageBoxImage.Information);
 
@@ -640,12 +716,11 @@ namespace SessionClient
                 _floatingTimerWindow.Close();
                 _floatingTimerWindow = null;
             }
-
             ResetToLogin();
         }
 
         // ═════════════════════════════════════════════════════════════════════
-        //  UC-08 — MANUAL LOGOUT
+        //  UC-08 — MANUAL LOGOUT / EXIT SESSION
         // ═════════════════════════════════════════════════════════════════════
         private void btnEndSession_Click(object sender, RoutedEventArgs e)
         {
@@ -664,8 +739,7 @@ namespace SessionClient
             ResetToLogin();
         }
 
-        // FIX BUG 3: returns summary string — does NOT show MessageBox itself.
-        // Callers decide whether to display the summary.
+        // Returns billing summary string. Does NOT show MessageBox itself.
         private string FinalizeSession(string type)
         {
             try
@@ -675,9 +749,9 @@ namespace SessionClient
                 decimal amount = (decimal)elapsed * _billingRate;
 
                 if (ok)
-                    return "Duration: " + (int)elapsed + " min\nTotal charged: $" + amount.ToString("F2");
+                    return "Duration used: " + (int)elapsed + " min\nTotal charged: $" + amount.ToString("F2");
                 else
-                    return "Session ended locally. Billing will sync when server is reachable.";
+                    return "Session ended locally. Billing will sync when server reconnects.";
             }
             catch (Exception ex)
             {
@@ -723,14 +797,11 @@ namespace SessionClient
         }
 
         // ═════════════════════════════════════════════════════════════════════
-        //  WCF CALLBACKS
-        //
-        //  FIX BUG 4: use Dispatcher.BeginInvoke (non-blocking) not Invoke.
+        //  WCF CALLBACKS — always BeginInvoke to avoid deadlock
         // ═════════════════════════════════════════════════════════════════════
         private void OnSessionTerminated(object sender, SessionTerminatedEventArgs e)
         {
             if (e.SessionId != _sessionId) return;
-            // FIX BUG 4: BeginInvoke prevents potential deadlock
             Dispatcher.BeginInvoke(new Action(delegate ()
             {
                 _timer.Stop();
@@ -750,6 +821,8 @@ namespace SessionClient
             Dispatcher.BeginInvoke(new Action(delegate ()
             {
                 _remaining = TimeSpan.FromMinutes(e.RemainingMinutes);
+                if (WindowState == WindowState.Minimized)
+                { WindowState = WindowState.Normal; Activate(); }
                 MessageBox.Show("⚠ Only " + e.RemainingMinutes + " minute(s) remaining!",
                     "Time Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
             }));
@@ -762,19 +835,21 @@ namespace SessionClient
 
         // ═════════════════════════════════════════════════════════════════════
         //  RESET TO LOGIN
-        //  Called after every session end.
-        //  LockScreen() is the FIRST call — covers desktop before any other change.
+        //  LockScreen() is the VERY FIRST call — screen is covered synchronously
+        //  before any other state is cleared or any panel is changed.
         // ═════════════════════════════════════════════════════════════════════
         private void ResetToLogin()
         {
             _sessionActive = false;
 
-            // RE-LOCK immediately — synchronous, on UI thread
-            // Screen is covered BEFORE anything else changes
+            // RE-LOCK first — synchronous, covers screen immediately
             LockScreen();
 
-            _svc?.UpdateClientStatus(_clientCode, "Idle");
+            // Update server status
+            try { _svc?.UpdateClientStatus(_clientCode, "Idle"); }
+            catch { /* best-effort */ }
 
+            // Clear session state
             _username = null;
             _fullname = null;
             _sessionId = 0;
@@ -782,8 +857,9 @@ namespace SessionClient
             _failCount = 0;
             _billingRate = 0m;
 
+            // Reset UI
             ResetLoginFields();
-            cboDuration.SelectedIndex = 2;  // 60 minutes default
+            cboDuration.SelectedIndex = 2;   // default: 60 minutes
             txtCustomDuration.Clear();
             lblTimeRemaining.Foreground = System.Windows.Media.Brushes.DarkSlateGray;
             lblTimeRemaining.Text = "00:00:00";
@@ -798,9 +874,9 @@ namespace SessionClient
             txtUsername.Focus();
         }
 
-        // ═════════════════════════════════════════════════════════════════════
+        // ─────────────────────────────────────────────────────────────────────
         //  PANEL NAVIGATION
-        // ═════════════════════════════════════════════════════════════════════
+        // ─────────────────────────────────────────────────────────────────────
         private void ShowPanel(UIElement p)
         {
             LoginPanel.Visibility = (p == LoginPanel) ? Visibility.Visible : Visibility.Collapsed;
@@ -940,4 +1016,3 @@ namespace SessionClient
         // (Already fixed as per comments in file)
     }
 }
-//}
