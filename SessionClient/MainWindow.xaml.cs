@@ -665,10 +665,11 @@ namespace SessionClient
             StopDetection();
             string summary = FinalizeSession("Auto");
 
+            // Ensure main window is visible before showing message
             if (WindowState == WindowState.Minimized ||
                 (_floatingTimerWindow?.IsVisible == true))
             {
-                _floatingTimerWindow?.Hide();
+                CloseFloatingTimer();
                 this.Show();
                 WindowState = WindowState.Normal;
                 Activate();
@@ -679,7 +680,6 @@ namespace SessionClient
                 "\n\nPlease sign in again to continue.", "Session Ended",
                 MessageBoxButton.OK, MessageBoxImage.Information);
 
-            CloseFloatingTimer();
             ResetToLogin();
         }
 
@@ -780,12 +780,17 @@ namespace SessionClient
             {
                 _timer.Stop();
                 StopDetection();
+                CloseFloatingTimer();
+                // Ensure main window is visible and restored before showing message
+                if (!this.IsVisible)
+                    this.Show();
+                this.WindowState = WindowState.Normal;
+                this.Activate();
                 if (!_manualLogout)
                     MessageBox.Show(
                         "Your session was terminated by the administrator.\nReason: " + e.Reason,
                         "Session Terminated", MessageBoxButton.OK, MessageBoxImage.Warning);
                 _manualLogout = false;
-                CloseFloatingTimer();
                 ResetToLogin();
             }));
         }
