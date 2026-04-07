@@ -1,7 +1,7 @@
 <Window x:Class="SessionClient.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Session Management"
+        Title="NetCafé Session"
         WindowStartupLocation="CenterScreen"
         ResizeMode="NoResize"
         WindowStyle="None"
@@ -9,266 +9,620 @@
         Topmost="True"
         ShowInTaskbar="True"
         AllowsTransparency="False"
-        Background="#1A252F">
+        Background="#0A0E1A">
 
-    <!--
-    ═══════════════════════════════════════════════════════════════════════
-    RESTRICTION DESIGN  (matches project statement + SRS)
-    ═══════════════════════════════════════════════════════════════════════
+    <Window.Resources>
+        <!-- ═══ DESIGN TOKENS (matches Admin theme) ═══ -->
+        <SolidColorBrush x:Key="AccentBrush" Color="#4F8EF7"/>
+        <SolidColorBrush x:Key="AccentGreenBrush" Color="#34D399"/>
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F1F5F9"/>
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#94A3B8"/>
 
-    BEFORE session  (Login + Duration screens):
-      • WindowStyle="None"  → no title bar, no OS chrome
-      • WindowState="Maximized" + Topmost="True" → full-screen lock
-      • Keyboard hook blocks Alt+Tab / Win / Ctrl+Esc / Alt+F4
-      → User CANNOT reach the desktop without paying
+        <!-- ═══ INPUT STYLE ═══ -->
+        <Style x:Key="ClientInput" TargetType="TextBox">
+            <Setter Property="Background" Value="#1A2035"/>
+            <Setter Property="Foreground" Value="#F1F5F9"/>
+            <Setter Property="BorderBrush" Value="#2D3748"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Padding" Value="14,10"/>
+            <Setter Property="CaretBrush" Value="#4F8EF7"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Margin="{TemplateBinding Padding}"
+                                          VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter Property="BorderBrush" Value="#4F8EF7"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
-    DURING active session:
-      • WindowStyle="SingleBorderWindow" → normal title bar
-      • WindowState="Normal", fixed 420×320 compact size
-      • Topmost="False", hook removed → full desktop access
-      • Window sits top-right as a always-visible session timer
-      → User can Alt-Tab to browser and any application freely
+        <Style x:Key="ClientPassword" TargetType="PasswordBox">
+            <Setter Property="Background" Value="#1A2035"/>
+            <Setter Property="Foreground" Value="#F1F5F9"/>
+            <Setter Property="BorderBrush" Value="#2D3748"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Padding" Value="14,10"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="PasswordBox">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                          Margin="{TemplateBinding Padding}"
+                                          VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter Property="BorderBrush" Value="#4F8EF7"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
-    AFTER session ends:
-      • LockScreen() is the first line of ResetToLogin() — synchronous
-      • Full-screen lock restored before any UI changes
-      → No gap where desktop is accessible for free
+        <!-- ═══ PRIMARY BUTTON ═══ -->
+        <Style x:Key="ClientBtnPrimary" TargetType="Button">
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="15"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" CornerRadius="12"
+                                Padding="{TemplateBinding Padding}">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#4F8EF7" Offset="0"/>
+                                    <GradientStop Color="#6366F1" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.9"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.75"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
 
-    EnableKioskMode=false in App.config → dev mode: normal window,
-    no hook, can be Alt-Tabbed during development.
-    ═══════════════════════════════════════════════════════════════════════
-    -->
+        <Style x:Key="ClientBtnGreen" TargetType="Button" BasedOn="{StaticResource ClientBtnPrimary}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" CornerRadius="12" Padding="{TemplateBinding Padding}">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#059669" Offset="0"/>
+                                    <GradientStop Color="#34D399" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.9"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.75"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ClientBtnRed" TargetType="Button" BasedOn="{StaticResource ClientBtnPrimary}">
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" CornerRadius="12" Padding="{TemplateBinding Padding}">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#DC2626" Offset="0"/>
+                                    <GradientStop Color="#EF4444" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.9"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ClientBtnGhost" TargetType="Button">
+            <Setter Property="Background" Value="#1E2433"/>
+            <Setter Property="Foreground" Value="#94A3B8"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#2D3748"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="10" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#252D42"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
 
     <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
+        <!-- Ambient background glow -->
+        <Ellipse Width="800" Height="800" HorizontalAlignment="Center"
+                 VerticalAlignment="Center" Margin="0,-200,0,0">
+            <Ellipse.Fill>
+                <RadialGradientBrush>
+                    <GradientStop Color="#0A1828" Offset="0"/>
+                    <GradientStop Color="Transparent" Offset="1"/>
+                </RadialGradientBrush>
+            </Ellipse.Fill>
+        </Ellipse>
 
-        <!-- ── Header (shown on login/duration screens only) ──────────── -->
-        <Border x:Name="HeaderBar" Grid.Row="0" Background="#2C3E50" Padding="20,14">
-            <Grid>
-                <TextBlock Text="Internet Café — Session Management System"
-                           Foreground="White" FontSize="18" FontWeight="Bold"
-                           VerticalAlignment="Center"/>
-                <TextBlock x:Name="lblMachineCode"
-                           HorizontalAlignment="Right" VerticalAlignment="Center"
-                           Foreground="#95A5A6" FontSize="12"/>
-                <!-- Connection Status Indicator -->
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,0,0,0">
-                    <Ellipse x:Name="ellipseConnectionStatus" Width="14" Height="14" Fill="Red" Stroke="Black" StrokeThickness="1" Margin="0,0,8,0"/>
-                    <TextBlock x:Name="lblConnectionStatus" Text="Disconnected" Foreground="White" FontSize="12" VerticalAlignment="Center"/>
-                    <Button x:Name="btnConnect" Content="Connect" Height="20" Width="60" Margin="8,0,0,0" Visibility="Collapsed" Click="btnConnect_Click"/>
-                </StackPanel>
-            </Grid>
-        </Border>
+        <!-- ══════════════════════════════════════════════════════════
+             LOGIN PANEL
+        ══════════════════════════════════════════════════════════ -->
+        <Grid x:Name="LoginPanel">
 
-        <Grid Grid.Row="1">
-
-            <!-- ══ LOGIN PANEL ══════════════════════════════════════════ -->
-            <Grid x:Name="LoginPanel" Background="#1A252F">
-                <Border Background="#2C3E50" CornerRadius="10" Padding="48"
-                        Width="420" VerticalAlignment="Center" HorizontalAlignment="Center">
-                    <StackPanel>
-                        <TextBlock Text="🖥" FontSize="48" HorizontalAlignment="Center"
-                                   Margin="0,0,0,8"/>
-                        <TextBlock Text="User Login" FontSize="28" FontWeight="Bold"
-                                   Foreground="White" HorizontalAlignment="Center"
-                                   Margin="0,0,0,28"/>
-
-                        <TextBlock Text="Username" Foreground="#BDC3C7" FontSize="13"
-                                   Margin="0,0,0,6"/>
-                        <TextBox x:Name="txtUsername" Height="38" FontSize="14"
-                                 Padding="10,4" Background="#34495E" Foreground="White"
-                                 BorderBrush="#5D6D7E" BorderThickness="1"/>
-
-                        <TextBlock Text="Password" Foreground="#BDC3C7" FontSize="13"
-                                   Margin="0,16,0,6"/>
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="44"/>
-                            </Grid.ColumnDefinitions>
-                            <PasswordBox x:Name="txtPassword" Grid.Column="0"
-                                         Height="38" FontSize="14" Padding="10,4"
-                                         Background="#34495E" Foreground="White"
-                                         BorderBrush="#5D6D7E" BorderThickness="1"/>
-                            <TextBox x:Name="txtPasswordPlain" Grid.Column="0"
-                                     Height="38" FontSize="14" Padding="10,4"
-                                     Background="#34495E" Foreground="White"
-                                     BorderBrush="#5D6D7E" BorderThickness="1"
-                                     Visibility="Collapsed"/>
-                            <Button x:Name="btnShowPassword" Grid.Column="1"
-                                    Content="👁" FontSize="16"
-                                    Background="#34495E" BorderBrush="#5D6D7E"
-                                    Foreground="#BDC3C7" Margin="4,0,0,0"
-                                    Click="btnShowPassword_Click"/>
-                        </Grid>
-
-                        <Border x:Name="pnlLoginError" Background="#2E1515"
-                                BorderBrush="#E74C3C" BorderThickness="1"
-                                CornerRadius="4" Padding="10,8"
-                                Margin="0,14,0,0" Visibility="Collapsed">
-                            <TextBlock x:Name="lblLoginError" Foreground="#E74C3C"
-                                       FontSize="12" TextWrapping="Wrap"/>
+            <!-- Header Bar (kiosk title) -->
+            <Border x:Name="HeaderBar" Height="58" VerticalAlignment="Top"
+                    Background="#13161F" BorderBrush="#1E2433" BorderThickness="0,0,0,1">
+                <Grid Margin="28,0">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Width="28" Height="28" CornerRadius="8" Margin="0,0,10,0">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#4F8EF7" Offset="0"/>
+                                    <GradientStop Color="#7C3AED" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <TextBlock Text="⚡" FontSize="13" HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
                         </Border>
-
-                        <Button x:Name="btnLogin" Content="LOGIN"
-                                Height="42" Margin="0,24,0,0"
-                                Background="#3498DB" Foreground="White"
-                                FontSize="15" FontWeight="Bold" BorderThickness="0"
-                                Click="btnLogin_Click"/>
-
-                        <TextBlock x:Name="lblLoginStatus" Foreground="#7F8C8D"
-                                   FontSize="11" HorizontalAlignment="Center"
-                                   Margin="0,14,0,0" Text="Connecting to server…"
-                                   Visibility="Collapsed"/>
+                        <TextBlock Text="NetCafé" FontSize="15" FontWeight="Bold"
+                                   Foreground="#F1F5F9" FontFamily="Segoe UI"/>
+                        <TextBlock Text=" — Session Management"
+                                   FontSize="13" Foreground="#475569"
+                                   FontFamily="Segoe UI" VerticalAlignment="Bottom"
+                                   Margin="0,0,0,1"/>
                     </StackPanel>
-                </Border>
-            </Grid>
 
-            <!-- ══ DURATION PANEL ════════════════════════════════════════ -->
-            <Grid x:Name="DurationPanel" Background="#1A252F" Visibility="Collapsed">
-                <Border Background="#2C3E50" CornerRadius="10" Padding="48"
-                        Width="460" VerticalAlignment="Center" HorizontalAlignment="Center">
-                    <StackPanel>
-                        <TextBlock Text="⏱" FontSize="48" HorizontalAlignment="Center"
-                                   Margin="0,0,0,8"/>
-                        <TextBlock Text="Select Session Duration"
-                                   FontSize="24" FontWeight="Bold" Foreground="White"
-                                   HorizontalAlignment="Center" Margin="0,0,0,8"/>
-                        <TextBlock x:Name="lblWelcome" Text="Welcome"
-                                   FontSize="14" Foreground="#3498DB"
-                                   HorizontalAlignment="Center" Margin="0,0,0,28"/>
-
-                        <TextBlock Text="Duration:" Foreground="#BDC3C7"
-                                   FontSize="13" Margin="0,0,0,8"/>
-                        <ComboBox x:Name="cboDuration" Height="38" FontSize="14"
-                                  SelectedIndex="2"
-                                  SelectionChanged="cboDuration_SelectionChanged">
-                            <ComboBoxItem Content="15 minutes"/>
-                            <ComboBoxItem Content="30 minutes"/>
-                            <ComboBoxItem Content="60 minutes"/>
-                            <ComboBoxItem Content="120 minutes"/>
-                            <ComboBoxItem Content="Custom…"/>
-                        </ComboBox>
-
-                        <StackPanel x:Name="CustomDurationPanel"
-                                    Margin="0,12,0,0" Visibility="Collapsed">
-                            <TextBlock Text="Enter minutes (15 – 480):"
-                                       Foreground="#BDC3C7" FontSize="13" Margin="0,0,0,6"/>
-                            <TextBox x:Name="txtCustomDuration" Height="38"
-                                     FontSize="14" Padding="10,4"
-                                     Background="#34495E" Foreground="White"
-                                     BorderBrush="#5D6D7E" BorderThickness="1"/>
-                        </StackPanel>
-
-                        <Button x:Name="btnStartSession" Content="START SESSION"
-                                Height="42" Margin="0,24,0,10"
-                                Background="#27AE60" Foreground="White"
-                                FontSize="15" FontWeight="Bold" BorderThickness="0"
-                                Click="btnStartSession_Click"/>
-                        <Button x:Name="btnCancelDuration" Content="← Back to Login"
-                                Height="34" Background="Transparent"
-                                Foreground="#7F8C8D" FontSize="12"
-                                BorderThickness="0"
-                                Click="btnCancelDuration_Click"/>
+                    <!-- Machine code & connection -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                VerticalAlignment="Center">
+                        <Ellipse x:Name="ellipseConnectionStatus" Width="8" Height="8"
+                                 Fill="OrangeRed" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBlock x:Name="lblConnectionStatus" Text="Connecting…"
+                                   FontSize="11" Foreground="#64748B" FontFamily="Segoe UI"
+                                   VerticalAlignment="Center"/>
+                        <Button x:Name="btnConnect" Content="↺ Reconnect" Height="26" Width="90"
+                                Margin="10,0,0,0" FontSize="11" Visibility="Collapsed"
+                                Style="{StaticResource ClientBtnGhost}" Padding="0,0"
+                                Click="btnConnect_Click"/>
+                        <TextBlock x:Name="lblMachineCode" Text="Machine: CL001"
+                                   FontSize="11" Foreground="#475569" FontFamily="Segoe UI"
+                                   VerticalAlignment="Center" Margin="16,0,0,0"/>
                     </StackPanel>
-                </Border>
-            </Grid>
+                </Grid>
+            </Border>
 
-            <!-- ══ SESSION PANEL ═════════════════════════════════════════
-                 Shown inside a compact 420×320 normal window during session.
-                 The window is NO LONGER full-screen when this panel is visible.
-                 UnlockScreen() resizes the window SYNCHRONOUSLY before this
-                 panel is shown, so layout is always correct.
-            ════════════════════════════════════════════════════════════ -->
-            <Grid x:Name="SessionPanel" Visibility="Collapsed" Background="#F5F6FA">
-                <Grid.RowDefinitions>
-                    <RowDefinition Height="Auto"/>
-                    <!-- info bar: user / duration / billing -->
-                    <RowDefinition Height="*"/>
-                    <!-- countdown timer -->
-                    <RowDefinition Height="Auto"/>
-                    <!-- action buttons -->
-                </Grid.RowDefinitions>
+            <!-- Login Card -->
+            <Border Width="460" VerticalAlignment="Center" HorizontalAlignment="Center"
+                    Background="#171B26" BorderBrush="#2D3748" BorderThickness="1"
+                    CornerRadius="20" Padding="40">
+                <StackPanel>
+                    <!-- Logo -->
+                    <Border Width="68" Height="68" CornerRadius="20"
+                            HorizontalAlignment="Center" Margin="0,0,0,20">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#1D3461" Offset="0"/>
+                                <GradientStop Color="#4F8EF7" Offset="0.5"/>
+                                <GradientStop Color="#7C3AED" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
+                        <TextBlock Text="🖥" FontSize="34" HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                    </Border>
 
-                <!-- Row 0: session info bar -->
-                <Border Grid.Row="0" Background="#2C3E50" Padding="12,10">
-                    <Grid>
+                    <TextBlock Text="Welcome Back" FontSize="26" FontWeight="Bold"
+                               Foreground="#F1F5F9" HorizontalAlignment="Center"
+                               FontFamily="Segoe UI"/>
+                    <TextBlock Text="Sign in to start your session"
+                               FontSize="13" Foreground="#475569"
+                               HorizontalAlignment="Center" Margin="0,6,0,32"
+                               FontFamily="Segoe UI"/>
+
+                    <!-- Username -->
+                    <TextBlock Text="USERNAME" FontSize="10" FontWeight="SemiBold"
+                               Foreground="#475569" FontFamily="Segoe UI" Margin="0,0,0,7"/>
+                    <TextBox x:Name="txtUsername" Style="{StaticResource ClientInput}"
+                             Height="48" Margin="0,0,0,16"/>
+
+                    <!-- Password -->
+                    <TextBlock Text="PASSWORD" FontSize="10" FontWeight="SemiBold"
+                               Foreground="#475569" FontFamily="Segoe UI" Margin="0,0,0,7"/>
+                    <Grid Margin="0,0,0,6">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="48"/>
                         </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0">
-                            <TextBlock Text="USER" FontSize="9" Foreground="#95A5A6"/>
-                            <TextBlock x:Name="lblSessionUser" FontSize="13"
-                                       FontWeight="Bold" Foreground="White"
-                                       TextTrimming="CharacterEllipsis"/>
+                        <PasswordBox x:Name="txtPassword" Grid.Column="0"
+                                     Style="{StaticResource ClientPassword}" Height="48"/>
+                        <TextBox x:Name="txtPasswordPlain" Grid.Column="0"
+                                 Style="{StaticResource ClientInput}" Height="48"
+                                 Visibility="Collapsed"/>
+                        <Button x:Name="btnShowPassword" Grid.Column="1"
+                                Content="👁" FontSize="18" Background="Transparent"
+                                BorderThickness="0" Foreground="#475569" Cursor="Hand"
+                                Margin="4,0,0,0" Click="btnShowPassword_Click"/>
+                    </Grid>
+
+                    <!-- Error -->
+                    <Border x:Name="pnlLoginError" Background="#1A0505" CornerRadius="10"
+                            BorderBrush="#7F1D1D" BorderThickness="1"
+                            Padding="14,10" Margin="0,10,0,0" Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="⚠ " Foreground="#F87171" FontSize="14"
+                                       FontFamily="Segoe UI"/>
+                            <TextBlock x:Name="lblLoginError" Foreground="#FCA5A5"
+                                       FontSize="12" TextWrapping="Wrap"
+                                       FontFamily="Segoe UI" VerticalAlignment="Center"/>
                         </StackPanel>
-                        <StackPanel Grid.Column="1" HorizontalAlignment="Center">
-                            <TextBlock Text="DURATION" FontSize="9" Foreground="#95A5A6"/>
-                            <TextBlock x:Name="lblSessionDuration" FontSize="13"
-                                       FontWeight="Bold" Foreground="White"/>
-                        </StackPanel>
-                        <StackPanel Grid.Column="2" HorizontalAlignment="Right">
-                            <TextBlock Text="BILLING" FontSize="9" Foreground="#95A5A6"/>
-                            <TextBlock x:Name="lblCurrentBilling" Text="$0.00"
-                                       FontSize="13" FontWeight="Bold"
-                                       Foreground="#F39C12"/>
+                    </Border>
+
+                    <!-- Login Button -->
+                    <Button x:Name="btnLogin" Content="Sign In →"
+                            Style="{StaticResource ClientBtnPrimary}"
+                            Height="52" Margin="0,24,0,0" FontSize="16"
+                            Padding="0,0" Click="btnLogin_Click"/>
+
+                    <!-- Status -->
+                    <TextBlock x:Name="lblLoginStatus"
+                               FontSize="12" Foreground="#475569"
+                               HorizontalAlignment="Center" Margin="0,16,0,0"
+                               FontFamily="Segoe UI"
+                               Text="Connecting to server…" Visibility="Collapsed"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- ══════════════════════════════════════════════════════════
+             DURATION SELECTION PANEL
+        ══════════════════════════════════════════════════════════ -->
+        <Grid x:Name="DurationPanel" Background="#0A0E1A" Visibility="Collapsed">
+
+            <!-- Ambient glow -->
+            <Ellipse Width="600" Height="600" HorizontalAlignment="Center"
+                     VerticalAlignment="Center">
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Color="#0D1F3C" Offset="0"/>
+                        <GradientStop Color="Transparent" Offset="1"/>
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
+
+            <Border Width="480" VerticalAlignment="Center" HorizontalAlignment="Center"
+                    Background="#171B26" BorderBrush="#2D3748" BorderThickness="1"
+                    CornerRadius="20" Padding="40">
+                <StackPanel>
+                    <Border Width="68" Height="68" CornerRadius="20"
+                            HorizontalAlignment="Center" Margin="0,0,0,20">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#064E3B" Offset="0"/>
+                                <GradientStop Color="#059669" Offset="0.5"/>
+                                <GradientStop Color="#34D399" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
+                        <TextBlock Text="⏱" FontSize="34" HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                    </Border>
+
+                    <TextBlock Text="Choose Duration" FontSize="26" FontWeight="Bold"
+                               Foreground="#F1F5F9" HorizontalAlignment="Center"
+                               FontFamily="Segoe UI"/>
+                    <TextBlock x:Name="lblWelcome" Text="Welcome!"
+                               FontSize="14" Foreground="#4F8EF7"
+                               HorizontalAlignment="Center" Margin="0,6,0,32"
+                               FontFamily="Segoe UI"/>
+
+                    <TextBlock Text="SESSION DURATION" FontSize="10" FontWeight="SemiBold"
+                               Foreground="#475569" FontFamily="Segoe UI" Margin="0,0,0,8"/>
+
+                    <!-- Duration presets grid -->
+                    <UniformGrid Columns="2" Margin="0,0,0,12">
+                        <Button x:Name="btnDur15" Content="15 min" Height="52"
+                                Margin="0,0,6,6"
+                                Background="#1E2433" Foreground="#94A3B8"
+                                BorderBrush="#2D3748" BorderThickness="1"
+                                FontFamily="Segoe UI" FontSize="14"
+                                Cursor="Hand" Click="btnDurationPreset_Click" Tag="15">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="r" Background="{TemplateBinding Background}"
+                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                            CornerRadius="10">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="r" Property="Background" Value="#1D3461"/>
+                                            <Setter TargetName="r" Property="BorderBrush" Value="#4F8EF7"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                        <Button x:Name="btnDur30" Content="30 min" Height="52"
+                                Margin="6,0,0,6"
+                                Background="#1E2433" Foreground="#94A3B8"
+                                BorderBrush="#2D3748" BorderThickness="1"
+                                FontFamily="Segoe UI" FontSize="14"
+                                Cursor="Hand" Click="btnDurationPreset_Click" Tag="30">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="r" Background="{TemplateBinding Background}"
+                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                            CornerRadius="10">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="r" Property="Background" Value="#1D3461"/>
+                                            <Setter TargetName="r" Property="BorderBrush" Value="#4F8EF7"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                        <Button x:Name="btnDur60" Content="60 min  ★" Height="52"
+                                Margin="0,0,6,6"
+                                BorderBrush="#4F8EF7" BorderThickness="1"
+                                FontFamily="Segoe UI" FontSize="14"
+                                Cursor="Hand" Click="btnDurationPreset_Click" Tag="60">
+                            <Button.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#1D3461" Offset="0"/>
+                                    <GradientStop Color="#172854" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Button.Background>
+                            <Button.Foreground>
+                                <SolidColorBrush Color="#60A5FA"/>
+                            </Button.Foreground>
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="r" Background="{TemplateBinding Background}"
+                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                            CornerRadius="10">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                        <Button x:Name="btnDur120" Content="120 min" Height="52"
+                                Margin="6,0,0,6"
+                                Background="#1E2433" Foreground="#94A3B8"
+                                BorderBrush="#2D3748" BorderThickness="1"
+                                FontFamily="Segoe UI" FontSize="14"
+                                Cursor="Hand" Click="btnDurationPreset_Click" Tag="120">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="r" Background="{TemplateBinding Background}"
+                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                            CornerRadius="10">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="r" Property="Background" Value="#1D3461"/>
+                                            <Setter TargetName="r" Property="BorderBrush" Value="#4F8EF7"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </UniformGrid>
+
+                    <!-- Hidden ComboBox for legacy code compatibility -->
+                    <ComboBox x:Name="cboDuration" Visibility="Collapsed" SelectedIndex="2">
+                        <ComboBoxItem Content="15 minutes"/>
+                        <ComboBoxItem Content="30 minutes"/>
+                        <ComboBoxItem Content="60 minutes"/>
+                        <ComboBoxItem Content="120 minutes"/>
+                        <ComboBoxItem Content="Custom…"/>
+                    </ComboBox>
+
+                    <!-- Custom duration -->
+                    <StackPanel x:Name="CustomDurationPanel" Visibility="Collapsed"
+                                Margin="0,0,0,12">
+                        <TextBlock Text="CUSTOM MINUTES (15 – 480)" FontSize="10" FontWeight="SemiBold"
+                                   Foreground="#475569" FontFamily="Segoe UI" Margin="0,0,0,8"/>
+                        <TextBox x:Name="txtCustomDuration" Style="{StaticResource ClientInput}"
+                                 Height="48"/>
+                    </StackPanel>
+
+                    <Button x:Name="btnStartSession" Content="▶  Start Session"
+                            Style="{StaticResource ClientBtnGreen}"
+                            Height="52" Margin="0,12,0,8" FontSize="16"
+                            Padding="0,0" Click="btnStartSession_Click"/>
+                    <Button x:Name="btnCancelDuration" Content="← Back to Login"
+                            Style="{StaticResource ClientBtnGhost}"
+                            Height="40" FontSize="13" Padding="0,0"
+                            Click="btnCancelDuration_Click"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- ══════════════════════════════════════════════════════════
+             SESSION PANEL — compact floating timer
+             This panel is shown inside a small normal window
+             after UnlockScreen() resizes it.
+        ══════════════════════════════════════════════════════════ -->
+        <Grid x:Name="SessionPanel" Visibility="Collapsed" Background="#171B26">
+
+            <!-- Draggable title bar area -->
+            <Border x:Name="sessionDragHandle" Height="38" VerticalAlignment="Top"
+                    Background="#13161F" Cursor="SizeAll"
+                    MouseLeftButtonDown="sessionDragHandle_MouseLeftButtonDown">
+                <Grid Margin="12,0">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Ellipse Width="7" Height="7" Fill="#34D399"
+                                 VerticalAlignment="Center" Margin="0,0,6,0"/>
+                        <TextBlock Text="Session Active" FontSize="11" FontWeight="SemiBold"
+                                   Foreground="#64748B" FontFamily="Segoe UI"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <TextBlock x:Name="lblSessionUser" Text="—" FontSize="11"
+                               Foreground="#94A3B8" FontFamily="Segoe UI"
+                               HorizontalAlignment="Right" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" MaxWidth="120"/>
+                </Grid>
+            </Border>
+
+            <!-- Timer + info -->
+            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center"
+                        Margin="0,38,0,0">
+
+                <!-- Circular progress visual -->
+                <Border Width="160" Height="160" HorizontalAlignment="Center"
+                        Margin="0,0,0,0">
+                    <Grid>
+                        <!-- Background ring -->
+                        <Ellipse Width="160" Height="160" Stroke="#1E2433" StrokeThickness="10"/>
+                        <!-- Timer text -->
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <TextBlock x:Name="lblTimeRemaining" Text="00:00:00"
+                                       FontSize="28" FontWeight="Bold" Foreground="#4F8EF7"
+                                       FontFamily="Segoe UI Mono"
+                                       HorizontalAlignment="Center"/>
+                            <TextBlock Text="remaining" FontSize="10" Foreground="#475569"
+                                       FontFamily="Segoe UI" HorizontalAlignment="Center"
+                                       Margin="0,2,0,0"/>
                         </StackPanel>
                     </Grid>
                 </Border>
 
-                <!-- Row 1: countdown timer display -->
-                <Border Grid.Row="1" Padding="16,12" Background="#F5F6FA">
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="Time Remaining" FontSize="13"
-                                   HorizontalAlignment="Center"
-                                   Foreground="#7F8C8D" Margin="0,0,0,8"/>
-                        <TextBlock x:Name="lblTimeRemaining" Text="00:00:00"
-                                   FontSize="48" FontWeight="Bold"
-                                   HorizontalAlignment="Center"
-                                   Foreground="#2C3E50"/>
-                        <ProgressBar x:Name="progressBar" Height="10"
-                                     Margin="0,12,0,0" Minimum="0" Maximum="100"
-                                     Value="100" Foreground="#27AE60"/>
-                        <TextBlock x:Name="lblWarning" Text=""
-                                   FontSize="12" HorizontalAlignment="Center"
-                                   Foreground="#E74C3C" Margin="0,8,0,0"
-                                   Visibility="Collapsed"/>
-                    </StackPanel>
-                </Border>
-
-                <!-- Row 2: action buttons — BOTH buttons inside this row correctly -->
-                <Grid Grid.Row="2" Margin="12,0,12,12">
+                <!-- Stats row -->
+                <Grid Margin="12,12,12,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="10"/>
-                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-
-                    <!-- End Session — primary red button -->
-                    <Button Grid.Column="0" x:Name="btnEndSession"
-                            Content="End Session" Height="40"
-                            Background="#E74C3C" Foreground="White"
-                            FontSize="13" FontWeight="Bold" BorderThickness="0"
-                            Click="btnEndSession_Click"/>
-
-                    <!-- Minimize timer — secondary compact button -->
-                    <!-- Clicking this minimizes the window to taskbar.         -->
-                    <!-- The timer keeps running; user can restore from taskbar. -->
-                    <Button Grid.Column="2" x:Name="btnMinimizeTimer"
-                            Content="—" Width="40" Height="40"
-                            Background="#7F8C8D" Foreground="White"
-                            FontSize="16" FontWeight="Bold" BorderThickness="0"
-                            ToolTip="Minimize to taskbar — timer keeps running"
-                            Click="btnMinimizeTimer_Click"/>
+                    <StackPanel Grid.Column="0" HorizontalAlignment="Center">
+                        <TextBlock Text="DURATION" FontSize="9" FontWeight="SemiBold"
+                                   Foreground="#475569" FontFamily="Segoe UI"
+                                   HorizontalAlignment="Center"/>
+                        <TextBlock x:Name="lblSessionDuration" Text="—"
+                                   FontSize="13" FontWeight="Bold" Foreground="#94A3B8"
+                                   FontFamily="Segoe UI" HorizontalAlignment="Center"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" HorizontalAlignment="Center">
+                        <TextBlock Text="BILLING" FontSize="9" FontWeight="SemiBold"
+                                   Foreground="#475569" FontFamily="Segoe UI"
+                                   HorizontalAlignment="Center"/>
+                        <TextBlock x:Name="lblCurrentBilling" Text="$0.00"
+                                   FontSize="13" FontWeight="Bold" Foreground="#FBBF24"
+                                   FontFamily="Segoe UI" HorizontalAlignment="Center"/>
+                    </StackPanel>
                 </Grid>
 
-            </Grid>
+                <!-- Progress bar -->
+                <ProgressBar x:Name="progressBar" Height="4" Margin="12,10,12,0"
+                             Minimum="0" Maximum="100" Value="100"
+                             Background="#1E2433" Foreground="#4F8EF7"
+                             BorderThickness="0"/>
 
+                <!-- Warning -->
+                <TextBlock x:Name="lblWarning" Text="" FontSize="11"
+                           HorizontalAlignment="Center" Foreground="#F87171"
+                           FontFamily="Segoe UI" Margin="0,8,0,0"
+                           Visibility="Collapsed"/>
+            </StackPanel>
+
+            <!-- Action buttons at bottom -->
+            <Grid VerticalAlignment="Bottom" Margin="12,0,12,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="40"/>
+                </Grid.ColumnDefinitions>
+                <Button Grid.Column="0" x:Name="btnEndSession"
+                        Content="⬛  End Session"
+                        Style="{StaticResource ClientBtnRed}"
+                        Height="38" FontSize="13" Padding="0,0"
+                        Click="btnEndSession_Click"/>
+                <Button Grid.Column="1" x:Name="btnMinimizeTimer"
+                        Content="—" Height="38" Width="38" Margin="6,0,0,0"
+                        Background="#1E2433" Foreground="#94A3B8"
+                        BorderBrush="#2D3748" BorderThickness="1"
+                        FontFamily="Segoe UI" FontSize="18" Cursor="Hand"
+                        ToolTip="Minimize to floating timer"
+                        Click="btnMinimizeTimer_Click">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="r" Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="10">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="r" Property="Background" Value="#252D42"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+            </Grid>
         </Grid>
     </Grid>
 </Window>

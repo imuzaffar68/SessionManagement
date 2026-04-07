@@ -20,20 +20,16 @@ namespace SessionAdmin
         private void btnSave_Click(object sender, RoutedEventArgs e)
         {
             string fullName = txtFullName.Text.Trim();
-            string phone = txtPhone.Text.Trim();
-            string address = txtAddress.Text.Trim();
-
             if (string.IsNullOrWhiteSpace(fullName))
             {
                 lblError.Text = "Full Name is required.";
-                lblError.Visibility = Visibility.Visible;
+                lblErrorBorder.Visibility = Visibility.Visible;
                 return;
             }
 
             FullName = fullName;
-            Phone = phone;
-            Address = address;
-
+            Phone = txtPhone.Text.Trim();
+            Address = txtAddress.Text.Trim();
             DialogResult = true;
             Close();
         }
