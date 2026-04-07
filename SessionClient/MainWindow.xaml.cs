@@ -150,6 +150,44 @@ namespace SessionClient
             Loaded += OnLoaded;
             Closing += OnClosingHandler;
             KeyDown += OnKeyDown;
+
+            // Connection status timer
+            var connTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+            connTimer.Tick += (s, e) => UpdateConnectionStatus();
+            connTimer.Start();
+        }
+
+        private void UpdateConnectionStatus()
+        {
+            if (_svc != null && _svc.IsConnected)
+            {
+                ellipseConnectionStatus.Fill = System.Windows.Media.Brushes.LimeGreen;
+                lblConnectionStatus.Text = "Connected";
+                btnConnect.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                ellipseConnectionStatus.Fill = System.Windows.Media.Brushes.Red;
+                lblConnectionStatus.Text = "Disconnected";
+                btnConnect.Visibility = Visibility.Visible;
+            }
+        }
+
+        private void btnConnect_Click(object sender, RoutedEventArgs e)
+        {
+            if (_svc != null)
+            {
+                if (!_svc.Connect())
+                {
+                    UpdateConnectionStatus();
+                    MessageBox.Show("Failed to connect to server. Please check your network or server status.",
+                        "Connection Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+                else
+                {
+                    UpdateConnectionStatus();
+                }
+            }
         }
 
         // ═════════════════════════════════════════════════════════════════════

@@ -54,6 +54,12 @@
                 <TextBlock x:Name="lblMachineCode"
                            HorizontalAlignment="Right" VerticalAlignment="Center"
                            Foreground="#95A5A6" FontSize="12"/>
+                <!-- Connection Status Indicator -->
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,0,0,0">
+                    <Ellipse x:Name="ellipseConnectionStatus" Width="14" Height="14" Fill="Red" Stroke="Black" StrokeThickness="1" Margin="0,0,8,0"/>
+                    <TextBlock x:Name="lblConnectionStatus" Text="Disconnected" Foreground="White" FontSize="12" VerticalAlignment="Center"/>
+                    <Button x:Name="btnConnect" Content="Connect" Height="20" Width="60" Margin="8,0,0,0" Visibility="Collapsed" Click="btnConnect_Click"/>
+                </StackPanel>
             </Grid>
         </Border>
 
