@@ -481,6 +481,168 @@
                     </Grid>
                 </TabItem>
 
+                <!-- TAB 7: Billing Rates Management -->
+                <TabItem Header="Billing Rates">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Add/Edit Billing Rate Form -->
+                        <Border Grid.Row="0" Background="#ECF0F1" Padding="16" Margin="0,0,0,12">
+                            <StackPanel>
+                                <TextBlock Text="Add / Edit Billing Rate" FontSize="16" 
+                                           FontWeight="Bold" Margin="0,0,0,12"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="200"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="150"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="150"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <!-- Row 1: Name and Rate -->
+                                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Rate Name:" 
+                                               VerticalAlignment="Center" Margin="0,0,8,8"/>
+                                    <TextBox x:Name="txtRateName" Grid.Row="0" Grid.Column="1"
+                                             Height="28" Margin="0,0,16,8" Padding="6"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="2" Text="Rate/Min:" 
+                                               VerticalAlignment="Center" Margin="0,0,8,8"/>
+                                    <TextBox x:Name="txtRatePerMinute" Grid.Row="0" Grid.Column="3"
+                                             Height="28" Margin="0,0,16,8" Padding="6"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="4" Text="Currency:" 
+                                               VerticalAlignment="Center" Margin="0,0,8,8"/>
+                                    <ComboBox x:Name="cboCurrency" Grid.Row="0" Grid.Column="5"
+                                              Height="28" Margin="0,0,0,8" SelectedIndex="0">
+                                        <ComboBoxItem Content="USD"/>
+                                        <ComboBoxItem Content="EUR"/>
+                                        <ComboBoxItem Content="GBP"/>
+                                        <ComboBoxItem Content="INR"/>
+                                        <ComboBoxItem Content="PKR"/>
+                                    </ComboBox>
+
+                                    <!-- Row 2: Effective Dates -->
+                                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Effective From:" 
+                                               VerticalAlignment="Center" Margin="0,0,8,8"/>
+                                    <DatePicker x:Name="dpEffectiveFrom" Grid.Row="1" Grid.Column="1"
+                                                Height="28" Margin="0,0,16,8"/>
+                                    <TextBlock Grid.Row="1" Grid.Column="2" Text="To:" 
+                                               VerticalAlignment="Center" Margin="0,0,8,8"/>
+                                    <DatePicker x:Name="dpEffectiveTo" Grid.Row="1" Grid.Column="3"
+                                                Height="28" Margin="0,0,16,8"/>
+                                    <CheckBox x:Name="chkIsActive" Grid.Row="1" Grid.Column="4"
+                                              VerticalAlignment="Center" Content="Active" Margin="0,0,8,8"
+                                              IsChecked="True"/>
+
+                                    <!-- Row 3: Notes and Buttons -->
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Notes:" 
+                                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBox x:Name="txtNotes" Grid.Row="2" Grid.Column="1"
+                                             Grid.ColumnSpan="3" Height="28" Padding="6" Margin="0,0,16,0"/>
+                                    <CheckBox x:Name="chkIsDefault" Grid.Row="2" Grid.Column="4"
+                                              VerticalAlignment="Center" Content="Set as Default" Margin="0,0,8,0"/>
+                                </Grid>
+
+                                <TextBlock x:Name="lblBillingRateError" Foreground="Red" FontSize="11"
+                                           Margin="0,12,0,0" Visibility="Collapsed" TextWrapping="Wrap"/>
+                                <TextBlock x:Name="lblBillingRateSuccess" Foreground="Green" FontSize="11"
+                                           Margin="0,12,0,0" Visibility="Collapsed" TextWrapping="Wrap"/>
+
+                                <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                    <Button x:Name="btnAddBillingRate" Content="Add Rate"
+                                            Height="32" Width="100" Background="#27AE60" 
+                                            Foreground="White" Click="btnAddBillingRate_Click"/>
+                                    <Button x:Name="btnUpdateBillingRate" Content="Update Rate"
+                                            Height="32" Width="110" Margin="8,0,0,0"
+                                            Background="#3498DB" Foreground="White"
+                                            Click="btnUpdateBillingRate_Click"
+                                            Visibility="Collapsed"/>
+                                    <Button x:Name="btnClearBillingRateForm" Content="Clear" 
+                                            Height="32" Width="80" Margin="8,0,0,0"
+                                            Click="btnClearBillingRateForm_Click"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Billing Rates List -->
+                        <Grid Grid.Row="1">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBlock Text="Billing Rates" FontSize="16" 
+                                           FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,16,0"/>
+                                <TextBlock Text="Total:" FontSize="12" VerticalAlignment="Center" Margin="0,0,4,0"/>
+                                <TextBlock x:Name="lblBillingRateCount" Text="0" FontSize="12"
+                                           FontWeight="Bold" Foreground="#27AE60" VerticalAlignment="Center"/>
+                                <Button x:Name="btnRefreshBillingRates" Content="Refresh"
+                                        Height="28" Width="90" Margin="16,0,0,0"
+                                        Click="btnRefreshBillingRates_Click"/>
+                            </StackPanel>
+                            <DataGrid Grid.Row="1" x:Name="dgBillingRates"
+                                      AutoGenerateColumns="False" IsReadOnly="True"
+                                      SelectionMode="Single" CanUserAddRows="False">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="ID"         Binding="{Binding BillingRateId}"   Width="50"/>
+                                    <DataGridTextColumn Header="Name"       Binding="{Binding Name}"            Width="140"/>
+                                    <DataGridTextColumn Header="Rate/Min"   Binding="{Binding RatePerMinute}"   Width="90"/>
+                                    <DataGridTextColumn Header="Currency"   Binding="{Binding Currency}"        Width="80"/>
+                                    <DataGridTextColumn Header="Effective From" Binding="{Binding EffectiveFrom}" Width="120"/>
+                                    <DataGridTextColumn Header="Effective To"   Binding="{Binding EffectiveTo}"   Width="120"/>
+                                    <DataGridTextColumn Header="Active"     Binding="{Binding IsActive}"        Width="70"/>
+                                    <DataGridTextColumn Header="Default"    Binding="{Binding IsDefault}"       Width="70"/>
+                                    <DataGridTextColumn Header="Created"    Binding="{Binding CreatedAt}"       Width="150"/>
+                                    <DataGridTextColumn Header="Notes"      Binding="{Binding Notes}"           Width="*"/>
+                                    <DataGridTemplateColumn Header="Actions" Width="220">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal" Margin="4,2">
+                                                    <!-- Edit Button -->
+                                                    <Button Content="✎ Edit" Height="28" Width="60"
+                                                            Background="#3498DB" Foreground="White"
+                                                            Click="btnEditBillingRate_Click"
+                                                            Padding="4,2" Margin="2"/>
+                                                    <!-- Set Default Button (hidden if already default) -->
+                                                    <Button Content="★ Default" Height="28" Width="85" Margin="4,2,0,2"
+                                                            Background="#F39C12" Foreground="White"
+                                                            Click="btnSetDefaultBillingRate_Click"
+                                                            Padding="4,2">
+                                                        <Button.Style>
+                                                            <Style TargetType="Button">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsDefault}" Value="1">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Button.Style>
+                                                    </Button>
+                                                    <!-- Delete Button -->
+                                                    <Button Content="🗑 Delete" Height="28" Width="70" Margin="4,2,0,2"
+                                                            Background="#E74C3C" Foreground="White"
+                                                            Click="btnDeleteBillingRate_Click"
+                                                            Padding="4,2"/>
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Grid>
+                </TabItem>
+
             </TabControl>
         </Grid>
 

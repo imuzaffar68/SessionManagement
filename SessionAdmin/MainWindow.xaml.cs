@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Data;
 using System.IO;
 using System.Linq;
 using System.Windows;
@@ -27,6 +28,8 @@ namespace SessionAdmin
         private ObservableCollection<AlertVM> _alerts = new ObservableCollection<AlertVM>();
         private ObservableCollection<LogVM> _logs = new ObservableCollection<LogVM>();
         private ObservableCollection<UserVM> _users = new ObservableCollection<UserVM>();
+        private ObservableCollection<BillingRateVM> _billingRates = new ObservableCollection<BillingRateVM>();
+        private int? _selectedBillingRateId = null;
 
         // ─────────────────────────────────────────────────────────
         public MainWindow()
@@ -38,6 +41,7 @@ namespace SessionAdmin
             dgAlerts.ItemsSource         = _alerts;
             dgLogs.ItemsSource           = _logs;
             dgUsers.ItemsSource          = _users;
+            dgBillingRates.ItemsSource   = _billingRates;
 
             dpFromDate.SelectedDate = DateTime.Today.AddMonths(-1);
             dpToDate.SelectedDate   = DateTime.Today;
@@ -808,6 +812,7 @@ namespace SessionAdmin
             LoadClients();
             LoadAlerts();
             LoadClientUsers();
+            LoadBillingRates();
         }
 
         private void AutoRefresh()
@@ -1145,6 +1150,289 @@ namespace SessionAdmin
             lblAdminLoginError.Text       = msg;
             lblAdminLoginError.Visibility = Visibility.Visible;
         }
+
+        // ═══════════════════════════════════════════════════════════
+        //  BILLING RATE MANAGEMENT
+        // ═══════════════════════════════════════════════════════════
+
+        private void LoadBillingRates()
+        {
+            try
+            {
+                _billingRates.Clear();
+                var rates = _svc.GetAllBillingRates();
+
+                foreach (var rate in rates)
+                {
+                    _billingRates.Add(new BillingRateVM
+                    {
+                        BillingRateId = rate.BillingRateId,
+                        Name = rate.Name,
+                        RatePerMinute = rate.RatePerMinute,
+                        Currency = rate.Currency,
+                        EffectiveFrom = rate.EffectiveFrom,
+                        EffectiveTo = rate.EffectiveTo,
+                        IsActive = rate.IsActive ? 1 : 0,
+                        IsDefault = rate.IsDefault ? 1 : 0,
+                        CreatedAt = rate.CreatedAt,
+                        Notes = rate.Notes
+                    });
+                }
+                lblBillingRateCount.Text = _billingRates.Count.ToString();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LoadBillingRates] {ex.Message}");
+            }
+        }
+
+        private void btnRefreshBillingRates_Click(object sender, RoutedEventArgs e)
+        {
+            LoadBillingRates();
+            MessageBox.Show("Billing rates refreshed.", "Refresh",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+        }
+
+        private void btnAddBillingRate_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrWhiteSpace(txtRateName.Text))
+            {
+                ShowBillingRateError("Rate name is required.");
+                return;
+            }
+
+            if (!decimal.TryParse(txtRatePerMinute.Text, out decimal rate) || rate < 0)
+            {
+                ShowBillingRateError("Rate must be a valid positive number.");
+                return;
+            }
+
+            btnAddBillingRate.IsEnabled = false;
+            btnAddBillingRate.Content = "Adding…";
+
+            try
+            {
+                string currency = (cboCurrency.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "USD";
+                DateTime? effectiveFrom = dpEffectiveFrom.SelectedDate;
+                DateTime? effectiveTo = dpEffectiveTo.SelectedDate;
+                bool isDefault = chkIsDefault.IsChecked ?? false;
+                bool isActive = chkIsActive.IsChecked ?? true;
+                string notes = txtNotes.Text.Trim();
+
+                int newId = _svc.InsertBillingRate(txtRateName.Text.Trim(), rate, currency,
+                    effectiveFrom, effectiveTo, isDefault, _adminUserId, notes);
+
+                if (newId <= 0)
+                {
+                    ShowBillingRateError("Failed to insert billing rate. Please try again.");
+                    return;
+                }
+
+                ShowBillingRateSuccess($"Billing rate '{txtRateName.Text}' added successfully (ID: {newId})");
+                ClearBillingRateForm();
+                LoadBillingRates();
+            }
+            catch (Exception ex)
+            {
+                ShowBillingRateError($"Error: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[AddBillingRate] {ex.Message}");
+            }
+            finally
+            {
+                btnAddBillingRate.IsEnabled = true;
+                btnAddBillingRate.Content = "Add Rate";
+            }
+        }
+
+        private void btnEditBillingRate_Click(object sender, RoutedEventArgs e)
+        {
+            var btn = sender as Button;
+            var rate = btn?.DataContext as BillingRateVM;
+            if (rate == null) return;
+
+            // Populate form
+            _selectedBillingRateId = rate.BillingRateId;
+            txtRateName.Text = rate.Name;
+            txtRatePerMinute.Text = rate.RatePerMinute.ToString();
+            cboCurrency.SelectedItem = cboCurrency.Items.Cast<ComboBoxItem>()
+                .FirstOrDefault(x => x.Content.ToString() == rate.Currency) ?? cboCurrency.Items[0];
+            dpEffectiveFrom.SelectedDate = rate.EffectiveFrom;
+            dpEffectiveTo.SelectedDate = rate.EffectiveTo;
+            chkIsActive.IsChecked = rate.IsActive == 1;
+            chkIsDefault.IsChecked = rate.IsDefault == 1;
+            txtNotes.Text = rate.Notes ?? "";
+
+            btnAddBillingRate.Visibility = Visibility.Collapsed;
+            btnUpdateBillingRate.Visibility = Visibility.Visible;
+            lblBillingRateError.Visibility = Visibility.Collapsed;
+            lblBillingRateSuccess.Visibility = Visibility.Collapsed;
+        }
+
+        private void btnUpdateBillingRate_Click(object sender, RoutedEventArgs e)
+        {
+            if (!_selectedBillingRateId.HasValue)
+            {
+                ShowBillingRateError("No rate selected for editing.");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(txtRateName.Text))
+            {
+                ShowBillingRateError("Rate name is required.");
+                return;
+            }
+
+            if (!decimal.TryParse(txtRatePerMinute.Text, out decimal rate) || rate < 0)
+            {
+                ShowBillingRateError("Rate must be a valid positive number.");
+                return;
+            }
+
+            btnUpdateBillingRate.IsEnabled = false;
+            btnUpdateBillingRate.Content = "Updating…";
+
+            try
+            {
+                string currency = (cboCurrency.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "USD";
+                DateTime? effectiveFrom = dpEffectiveFrom.SelectedDate;
+                DateTime? effectiveTo = dpEffectiveTo.SelectedDate;
+                bool isDefault = chkIsDefault.IsChecked ?? false;
+                bool isActive = chkIsActive.IsChecked ?? true;
+                string notes = txtNotes.Text.Trim();
+
+                bool success = _svc.UpdateBillingRate(_selectedBillingRateId.Value, txtRateName.Text.Trim(),
+                    rate, currency, effectiveFrom, effectiveTo, isActive, isDefault, notes);
+
+                if (!success)
+                {
+                    ShowBillingRateError("Failed to update billing rate. Please try again.");
+                    return;
+                }
+
+                ShowBillingRateSuccess($"Billing rate '{txtRateName.Text}' updated successfully.");
+                ClearBillingRateForm();
+                _selectedBillingRateId = null;
+                btnAddBillingRate.Visibility = Visibility.Visible;
+                btnUpdateBillingRate.Visibility = Visibility.Collapsed;
+                LoadBillingRates();
+            }
+            catch (Exception ex)
+            {
+                ShowBillingRateError($"Error: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine($"[UpdateBillingRate] {ex.Message}");
+            }
+            finally
+            {
+                btnUpdateBillingRate.IsEnabled = true;
+                btnUpdateBillingRate.Content = "Update Rate";
+            }
+        }
+
+        private void btnSetDefaultBillingRate_Click(object sender, RoutedEventArgs e)
+        {
+            var btn = sender as Button;
+            var rate = btn?.DataContext as BillingRateVM;
+            if (rate == null) return;
+
+            var result = MessageBox.Show(
+                $"Set '{rate.Name}' as the default billing rate?\nThe current default will be updated.",
+                "Confirm", MessageBoxButton.YesNo, MessageBoxImage.Question);
+
+            if (result != MessageBoxResult.Yes) return;
+
+            try
+            {
+                bool success = _svc.SetDefaultBillingRate(rate.BillingRateId);
+
+                if (success)
+                {
+                    MessageBox.Show($"'{rate.Name}' is now the default rate.", "Done",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    LoadBillingRates();
+                }
+                else
+                {
+                    MessageBox.Show("Failed to set default rate. Please try again.", "Error",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error: {ex.Message}", "Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void btnDeleteBillingRate_Click(object sender, RoutedEventArgs e)
+        {
+            var btn = sender as Button;
+            var rate = btn?.DataContext as BillingRateVM;
+            if (rate == null) return;
+
+            var result = MessageBox.Show(
+                $"Delete billing rate '{rate.Name}'?\n\nThis action cannot be undone if the rate has been used in billing records.",
+                "Confirm Deletion", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
+            if (result != MessageBoxResult.Yes) return;
+
+            try
+            {
+                bool success = _svc.DeleteBillingRate(rate.BillingRateId);
+
+                if (success)
+                {
+                    MessageBox.Show($"Billing rate '{rate.Name}' deleted successfully.", "Done",
+                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    LoadBillingRates();
+                }
+                else
+                {
+                    MessageBox.Show("Cannot delete this rate:\n- At least one rate must exist\n- At least one default rate must exist",
+                        "Deletion Not Allowed", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Error: {ex.Message}", "Error",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void btnClearBillingRateForm_Click(object sender, RoutedEventArgs e)
+        {
+            ClearBillingRateForm();
+        }
+
+        private void ClearBillingRateForm()
+        {
+            txtRateName.Clear();
+            txtRatePerMinute.Clear();
+            cboCurrency.SelectedIndex = 0;
+            dpEffectiveFrom.SelectedDate = null;
+            dpEffectiveTo.SelectedDate = null;
+            chkIsActive.IsChecked = true;
+            chkIsDefault.IsChecked = false;
+            txtNotes.Clear();
+            _selectedBillingRateId = null;
+            btnAddBillingRate.Visibility = Visibility.Visible;
+            btnUpdateBillingRate.Visibility = Visibility.Collapsed;
+            lblBillingRateError.Visibility = Visibility.Collapsed;
+            lblBillingRateSuccess.Visibility = Visibility.Collapsed;
+        }
+
+        private void ShowBillingRateError(string msg)
+        {
+            lblBillingRateError.Text = msg;
+            lblBillingRateError.Visibility = Visibility.Visible;
+            lblBillingRateSuccess.Visibility = Visibility.Collapsed;
+        }
+
+        private void ShowBillingRateSuccess(string msg)
+        {
+            lblBillingRateSuccess.Text = msg;
+            lblBillingRateSuccess.Visibility = Visibility.Visible;
+            lblBillingRateError.Visibility = Visibility.Collapsed;
+        }
     }
 
     // ── View-models ───────────────────────────────────────────────
@@ -1230,5 +1518,19 @@ namespace SessionAdmin
         public string Status      { get; set; }
         public string CreatedAt   { get; set; }
         public string LastLogin   { get; set; }
+    }
+
+    public class BillingRateVM
+    {
+        public int BillingRateId { get; set; }
+        public string Name { get; set; }
+        public decimal RatePerMinute { get; set; }
+        public string Currency { get; set; }
+        public DateTime? EffectiveFrom { get; set; }
+        public DateTime? EffectiveTo { get; set; }
+        public int IsActive { get; set; }
+        public int IsDefault { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public string Notes { get; set; }
     }
 }

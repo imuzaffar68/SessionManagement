@@ -1063,5 +1063,83 @@ namespace SessionManagement.WCF
             _db.WriteSystemLog(null, null, null, null,
                 "System", "ServiceStop", "SessionService stopped", "Server");
         }
+
+        // ═══════════════════════════════════════════════════════════
+        //  BILLING RATE MANAGEMENT
+        // ═══════════════════════════════════════════════════════════
+
+        public BillingRateInfo[] GetAllBillingRates()
+        {
+            try
+            {
+                return _db.GetAllBillingRates();
+            }
+            catch (Exception ex)
+            {
+                _db.WriteSystemLog(null, null, null, null,
+                    "System", "Error", $"GetAllBillingRates: {ex.Message}", "Server");
+                return Array.Empty<BillingRateInfo>();
+            }
+        }
+
+        public int InsertBillingRate(string name, decimal ratePerMinute, string currency,
+            DateTime? effectiveFrom, DateTime? effectiveTo, bool isDefault, int adminUserId, string notes)
+        {
+            try
+            {
+                return _db.InsertBillingRate(name, ratePerMinute, currency, 
+                    effectiveFrom, effectiveTo, isDefault, adminUserId, notes);
+            }
+            catch (Exception ex)
+            {
+                _db.WriteSystemLog(null, null, null, adminUserId,
+                    "Billing", "Error", $"InsertBillingRate: {ex.Message}", "Server");
+                return -1;
+            }
+        }
+
+        public bool UpdateBillingRate(int billingRateId, string name, decimal ratePerMinute,
+            string currency, DateTime? effectiveFrom, DateTime? effectiveTo, bool isActive, bool isDefault, string notes)
+        {
+            try
+            {
+                return _db.UpdateBillingRate(billingRateId, name, ratePerMinute,
+                    currency, effectiveFrom, effectiveTo, isActive, isDefault, notes);
+            }
+            catch (Exception ex)
+            {
+                _db.WriteSystemLog(null, null, null, null,
+                    "Billing", "Error", $"UpdateBillingRate: {ex.Message}", "Server");
+                return false;
+            }
+        }
+
+        public bool DeleteBillingRate(int billingRateId)
+        {
+            try
+            {
+                return _db.DeleteBillingRate(billingRateId);
+            }
+            catch (Exception ex)
+            {
+                _db.WriteSystemLog(null, null, null, null,
+                    "Billing", "Error", $"DeleteBillingRate: {ex.Message}", "Server");
+                return false;
+            }
+        }
+
+        public bool SetDefaultBillingRate(int billingRateId)
+        {
+            try
+            {
+                return _db.SetDefaultBillingRate(billingRateId);
+            }
+            catch (Exception ex)
+            {
+                _db.WriteSystemLog(null, null, null, null,
+                    "Billing", "Error", $"SetDefaultBillingRate: {ex.Message}", "Server");
+                return false;
+            }
+        }
     }
 }

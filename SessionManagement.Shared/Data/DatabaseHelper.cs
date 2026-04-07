@@ -3,6 +3,7 @@ using System.Configuration;
 using System.Data;
 using System.Data.SqlClient;
 using System.Collections.Generic;
+using SessionManagement.WCF;
 
 namespace SessionManagement.Data
 {
@@ -917,6 +918,165 @@ namespace SessionManagement.Data
                 }
             }
             catch (Exception ex) { LogError("UpdateUserStatus", ex); return false; }
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        //  BILLING RATE MANAGEMENT
+        // ═══════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// Get all billing rates from database.
+        /// Returns array of BillingRateInfo DTOs.
+        /// </summary>
+        public BillingRateInfo[] GetAllBillingRates()
+        {
+            try
+            {
+                using (var c = Conn())
+                using (var cmd = new SqlCommand("sp_GetAllBillingRates", c)
+                { CommandType = CommandType.StoredProcedure })
+                {
+                    c.Open();
+                    var dt = new DataTable();
+                    new SqlDataAdapter(cmd).Fill(dt);
+                    
+                    var rates = new List<BillingRateInfo>();
+                    foreach (DataRow row in dt.Rows)
+                    {
+                        rates.Add(new BillingRateInfo
+                        {
+                            BillingRateId = (int)row["BillingRateId"],
+                            Name = row["Name"].ToString(),
+                            RatePerMinute = (decimal)row["RatePerMinute"],
+                            Currency = row["Currency"].ToString(),
+                            EffectiveFrom = row["EffectiveFrom"] != DBNull.Value ? (DateTime?)row["EffectiveFrom"] : null,
+                            EffectiveTo = row["EffectiveTo"] != DBNull.Value ? (DateTime?)row["EffectiveTo"] : null,
+                            IsActive = (bool)row["IsActive"],
+                            IsDefault = (bool)row["IsDefault"],
+                            CreatedAt = (DateTime)row["CreatedAt"],
+                            Notes = row["Notes"] != DBNull.Value ? row["Notes"].ToString() : null
+                        });
+                    }
+                    
+                    return rates.ToArray();
+                }
+            }
+            catch (Exception ex) { LogError("GetAllBillingRates", ex); return new BillingRateInfo[0]; }
+        }
+
+        /// <summary>
+        /// Insert a new billing rate.
+        /// If isDefault=true, automatically unsets all other defaults.
+        /// Returns the new BillingRateId or -1 on error.
+        /// </summary>
+        public int InsertBillingRate(string name, decimal ratePerMinute, string currency,
+            DateTime? effectiveFrom, DateTime? effectiveTo, bool isDefault, int adminUserId, string notes = null)
+        {
+            try
+            {
+                using (var c = Conn())
+                using (var cmd = new SqlCommand("sp_InsertBillingRate", c)
+                { CommandType = CommandType.StoredProcedure })
+                {
+                    cmd.Parameters.AddWithValue("@Name", name);
+                    cmd.Parameters.AddWithValue("@RatePerMinute", ratePerMinute);
+                    cmd.Parameters.AddWithValue("@Currency", currency);
+                    cmd.Parameters.AddWithValue("@EffectiveFrom", (object)effectiveFrom ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@EffectiveTo", (object)effectiveTo ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@IsDefault", isDefault);
+                    cmd.Parameters.AddWithValue("@SetByAdminUserId", adminUserId);
+                    cmd.Parameters.AddWithValue("@Notes", (object)notes ?? DBNull.Value);
+
+                    var outParam = new SqlParameter("@NewBillingRateId", SqlDbType.Int)
+                    { Direction = ParameterDirection.Output };
+                    cmd.Parameters.Add(outParam);
+
+                    c.Open();
+                    cmd.ExecuteNonQuery();
+
+                    var result = outParam.Value;
+                    return (result != null && result != DBNull.Value) ? Convert.ToInt32(result) : -1;
+                }
+            }
+            catch (Exception ex) { LogError("InsertBillingRate", ex); return -1; }
+        }
+
+        /// <summary>
+        /// Update an existing billing rate.
+        /// If isDefault=true, automatically unsets all other defaults.
+        /// If isDefault=false, ensures at least one other default exists.
+        /// Returns true on success.
+        /// </summary>
+        public bool UpdateBillingRate(int billingRateId, string name, decimal ratePerMinute,
+            string currency, DateTime? effectiveFrom, DateTime? effectiveTo, bool isActive, bool isDefault, string notes = null)
+        {
+            try
+            {
+                using (var c = Conn())
+                using (var cmd = new SqlCommand("sp_UpdateBillingRate", c)
+                { CommandType = CommandType.StoredProcedure })
+                {
+                    cmd.Parameters.AddWithValue("@BillingRateId", billingRateId);
+                    cmd.Parameters.AddWithValue("@Name", name);
+                    cmd.Parameters.AddWithValue("@RatePerMinute", ratePerMinute);
+                    cmd.Parameters.AddWithValue("@Currency", currency);
+                    cmd.Parameters.AddWithValue("@EffectiveFrom", (object)effectiveFrom ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@EffectiveTo", (object)effectiveTo ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@IsActive", isActive);
+                    cmd.Parameters.AddWithValue("@IsDefault", isDefault);
+                    cmd.Parameters.AddWithValue("@Notes", (object)notes ?? DBNull.Value);
+
+                    c.Open();
+                    var result = cmd.ExecuteScalar();
+                    return (result != null && Convert.ToInt32(result) == 1);
+                }
+            }
+            catch (Exception ex) { LogError("UpdateBillingRate", ex); return false; }
+        }
+
+        /// <summary>
+        /// Delete a billing rate if conditions are met:
+        /// - At least one other rate exists
+        /// - If this is the default, at least one other default exists
+        /// Returns true on success, false on error or validation failure.
+        /// </summary>
+        public bool DeleteBillingRate(int billingRateId)
+        {
+            try
+            {
+                using (var c = Conn())
+                using (var cmd = new SqlCommand("sp_DeleteBillingRate", c)
+                { CommandType = CommandType.StoredProcedure })
+                {
+                    cmd.Parameters.AddWithValue("@BillingRateId", billingRateId);
+                    c.Open();
+                    var result = cmd.ExecuteScalar();
+                    return (result != null && Convert.ToInt32(result) == 1);
+                }
+            }
+            catch (Exception ex) { LogError("DeleteBillingRate", ex); return false; }
+        }
+
+        /// <summary>
+        /// Set a specific billing rate as the default.
+        /// Automatically unsets all other defaults.
+        /// Returns true on success.
+        /// </summary>
+        public bool SetDefaultBillingRate(int billingRateId)
+        {
+            try
+            {
+                using (var c = Conn())
+                using (var cmd = new SqlCommand("sp_SetDefaultBillingRate", c)
+                { CommandType = CommandType.StoredProcedure })
+                {
+                    cmd.Parameters.AddWithValue("@BillingRateId", billingRateId);
+                    c.Open();
+                    var result = cmd.ExecuteScalar();
+                    return (result != null && Convert.ToInt32(result) == 1);
+                }
+            }
+            catch (Exception ex) { LogError("SetDefaultBillingRate", ex); return false; }
         }
 
         // ═══════════════════════════════════════════════════════════

@@ -33,6 +33,16 @@ IF OBJECT_ID('dbo.sp_RegisterClient', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_Reg
 GO
 IF OBJECT_ID('dbo.sp_RegisterClientUser', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_RegisterClientUser;
 GO
+IF OBJECT_ID('dbo.sp_InsertBillingRate', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_InsertBillingRate;
+GO
+IF OBJECT_ID('dbo.sp_UpdateBillingRate', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_UpdateBillingRate;
+GO
+IF OBJECT_ID('dbo.sp_DeleteBillingRate', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_DeleteBillingRate;
+GO
+IF OBJECT_ID('dbo.sp_GetAllBillingRates', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_GetAllBillingRates;
+GO
+IF OBJECT_ID('dbo.sp_SetDefaultBillingRate', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_SetDefaultBillingRate;
+GO
 
 -- Drop views
 IF OBJECT_ID('dbo.vw_SessionReport', 'V') IS NOT NULL DROP VIEW dbo.vw_SessionReport;
@@ -1170,4 +1180,317 @@ GO
 
 SELECT 'PATCH COMPLETE — ' + CAST(COUNT(*) AS VARCHAR) + ' activity types registered' AS Status
 FROM   dbo.tblActivityType;
+GO
+
+/* ============================================================
+   PART 3B: BILLING RATE MANAGEMENT PROCEDURES
+   ============================================================ */
+
+-- ═══════════════════════════════════════════════════════════
+--  sp_InsertBillingRate
+--  Inserts a new billing rate. If IsDefault=1, sets all others
+--  to IsDefault=0 before insertion.
+-- ═══════════════════════════════════════════════════════════
+CREATE or alter PROCEDURE dbo.sp_InsertBillingRate
+    @Name NVARCHAR(100),
+    @RatePerMinute DECIMAL(10,2),
+    @Currency NVARCHAR(10),
+    @EffectiveFrom DATE = NULL,
+    @EffectiveTo DATE = NULL,
+    @IsDefault BIT = 0,
+    @SetByAdminUserId INT,
+    @Notes NVARCHAR(500) = NULL,
+    @NewBillingRateId INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        -- Validate rate
+        IF @RatePerMinute < 0
+        BEGIN
+            RAISERROR('Rate cannot be negative.', 16, 1);
+            RETURN;
+        END;
+
+        -- If this is being set as default, unset all others
+        IF @IsDefault = 1
+        BEGIN
+            UPDATE dbo.tblBillingRate SET IsDefault = 0;
+        END;
+
+        -- Insert new rate
+        INSERT INTO dbo.tblBillingRate
+            (Name, RatePerMinute, Currency, EffectiveFrom, EffectiveTo, IsActive, IsDefault, SetByAdminUserId, Notes, CreatedAt)
+        VALUES
+            (@Name, @RatePerMinute, @Currency, @EffectiveFrom, @EffectiveTo, 1, @IsDefault, @SetByAdminUserId, @Notes, GETDATE());
+
+        SET @NewBillingRateId = SCOPE_IDENTITY();
+
+        -- Log the action
+        --INSERT INTO dbo.tblSystemLog
+        --    (Category, Type, Message, Source)
+        --VALUES
+        --    ('Billing', 'RateCreated', 
+        --     'Billing rate created: ' + @Name + ' (' + CAST(@RatePerMinute AS NVARCHAR(20)) + ' ' + @Currency + '/min)',
+        --     'Admin');
+
+        SELECT @NewBillingRateId AS BillingRateId;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source)
+        VALUES
+            ('Billing', 'Error', 'Error in sp_InsertBillingRate: ' + ERROR_MESSAGE(), 'Admin');
+
+        SELECT -1 AS BillingRateId;
+    END CATCH
+END;
+GO
+
+-- ═══════════════════════════════════════════════════════════
+--  sp_UpdateBillingRate
+--  Updates an existing billing rate. If IsDefault=1, unsets
+--  other defaults before updating.
+-- ═══════════════════════════════════════════════════════════
+CREATE OR ALTER PROCEDURE dbo.sp_UpdateBillingRate
+    @BillingRateId INT,
+    @Name NVARCHAR(100),
+    @RatePerMinute DECIMAL(10,2),
+    @Currency NVARCHAR(10),
+    @EffectiveFrom DATE = NULL,
+    @EffectiveTo DATE = NULL,
+    @IsActive BIT,
+    @IsDefault BIT = 0,
+    @Notes NVARCHAR(500) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @OldIsDefault BIT;
+
+    BEGIN TRY
+        -- Validate inputs
+        IF @RatePerMinute < 0
+        BEGIN
+            RAISERROR('Rate cannot be negative.', 16, 1);
+            RETURN;
+        END;
+
+        IF NOT EXISTS (SELECT 1 FROM dbo.tblBillingRate WHERE BillingRateId = @BillingRateId)
+        BEGIN
+            RAISERROR('Billing rate not found.', 16, 1);
+            RETURN;
+        END;
+
+        -- Get the old IsDefault value
+        SELECT @OldIsDefault = IsDefault FROM dbo.tblBillingRate WHERE BillingRateId = @BillingRateId;
+
+        -- If setting this as default and it wasn't before, unset others
+        IF @IsDefault = 1 AND @OldIsDefault = 0
+        BEGIN
+            UPDATE dbo.tblBillingRate SET IsDefault = 0 WHERE BillingRateId <> @BillingRateId;
+        END;
+
+        -- If unsetting as default, ensure at least one other is default
+        IF @IsDefault = 0 AND @OldIsDefault = 1
+        BEGIN
+            -- Check if there are other active rates
+            IF NOT EXISTS (SELECT 1 FROM dbo.tblBillingRate WHERE IsDefault = 1 AND BillingRateId <> @BillingRateId)
+            BEGIN
+                RAISERROR('At least one default rate must exist. Cannot unset as default.', 16, 1);
+                RETURN;
+            END;
+        END;
+
+        -- Update the rate
+        UPDATE dbo.tblBillingRate
+        SET Name = @Name,
+            RatePerMinute = @RatePerMinute,
+            Currency = @Currency,
+            EffectiveFrom = @EffectiveFrom,
+            EffectiveTo = @EffectiveTo,
+            IsActive = @IsActive,
+            IsDefault = @IsDefault,
+            Notes = @Notes
+        WHERE BillingRateId = @BillingRateId;
+
+        -- Log the action
+        --INSERT INTO dbo.tblSystemLog
+        --    (Category, Type, Message, Source)
+        --VALUES
+        --    ('Billing', 'RateUpdated',
+        --     'Billing rate updated: ' + @Name + ' (' + CAST(@RatePerMinute AS NVARCHAR(20)) + ' ' + @Currency + '/min)',
+        --     'Admin');
+
+        SELECT 1 AS Result;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source)
+        VALUES
+            ('Billing', 'Error', 'Error in sp_UpdateBillingRate: ' + ERROR_MESSAGE(), 'Admin');
+
+        SELECT 0 AS Result;
+    END CATCH
+END;
+GO
+
+
+-- ═══════════════════════════════════════════════════════════
+--  sp_DeleteBillingRate
+--  Deletes a billing rate only if:
+--  1. At least one other rate exists
+--  2. If this rate is default, at least one other default exists
+-- ═══════════════════════════════════════════════════════════
+CREATE OR Alter PROCEDURE dbo.sp_DeleteBillingRate
+    @BillingRateId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @RateName NVARCHAR(100),
+            @RateCount INT,
+            @IsDefault BIT,
+            @DefaultCount INT,
+            @BillingRecordCount INT;
+
+    BEGIN TRY
+        -- Get rate details
+        SELECT @RateName = Name, @IsDefault = IsDefault FROM dbo.tblBillingRate WHERE BillingRateId = @BillingRateId;
+
+        IF @RateName IS NULL
+        BEGIN
+            RAISERROR('Billing rate not found.', 16, 1);
+            RETURN;
+        END;
+
+        -- Count total rates
+        SELECT @RateCount = COUNT(*) FROM dbo.tblBillingRate;
+
+        -- Check if this is the only rate
+        IF @RateCount = 1
+        BEGIN
+            RAISERROR('Cannot delete the last billing rate. At least one rate must exist.', 16, 1);
+            RETURN;
+        END;
+
+        -- If this rate is default, check if another default exists
+        IF @IsDefault = 1
+        BEGIN
+            SELECT @DefaultCount = COUNT(*) FROM dbo.tblBillingRate WHERE IsDefault = 1;
+
+            IF @DefaultCount = 1
+            BEGIN
+                RAISERROR('Cannot delete the only default rate. At least one default rate must exist.', 16, 1);
+                RETURN;
+            END;
+        END;
+
+        -- Check if this rate is used in billing records (informational, but allow deletion)
+        SELECT @BillingRecordCount = COUNT(*) FROM dbo.tblBillingRecord WHERE BillingRateId = @BillingRateId;
+
+        -- Delete the rate
+        DELETE FROM dbo.tblBillingRate WHERE BillingRateId = @BillingRateId;
+
+        -- Log the action
+        --INSERT INTO dbo.tblSystemLog
+        --    (Category, Type, Message, Source)
+        --VALUES
+        --    ('Billing', 'RateDeleted',
+        --     'Billing rate deleted: ' + @RateName + ' (was used in ' + CAST(@BillingRecordCount AS NVARCHAR(10)) + ' records)',
+        --     'Admin');
+
+        SELECT 1 AS Result;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source)
+        VALUES
+            ('Billing', 'Error', 'Error in sp_DeleteBillingRate: ' + ERROR_MESSAGE(), 'Admin');
+
+        SELECT 0 AS Result;
+    END CATCH
+END;
+GO
+
+
+-- ═══════════════════════════════════════════════════════════
+--  sp_GetAllBillingRates
+--  Retrieves all billing rates ordered by IsDefault DESC, then by CreatedAt DESC
+-- ═══════════════════════════════════════════════════════════
+CREATE OR ALTER PROCEDURE dbo.sp_GetAllBillingRates
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        SELECT BillingRateId,
+               Name,
+               RatePerMinute,
+               Currency,
+               EffectiveFrom,
+               EffectiveTo,
+               IsActive,
+               IsDefault,
+               SetByAdminUserId,
+               Notes,
+               CreatedAt
+        FROM dbo.tblBillingRate
+        ORDER BY IsDefault DESC, CreatedAt DESC;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source)
+        VALUES
+            ('Billing', 'Error', 'Error in sp_GetAllBillingRates: ' + ERROR_MESSAGE(), 'Admin');
+    END CATCH
+END;
+GO
+
+
+-- ═══════════════════════════════════════════════════════════
+--  sp_SetDefaultBillingRate
+--  Sets a specific rate as default and unsets all others
+-- ═══════════════════════════════════════════════════════════
+CREATE or Alter PROCEDURE dbo.sp_SetDefaultBillingRate
+    @BillingRateId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @RateName NVARCHAR(100);
+
+    BEGIN TRY
+        IF NOT EXISTS (SELECT 1 FROM dbo.tblBillingRate WHERE BillingRateId = @BillingRateId)
+        BEGIN
+            RAISERROR('Billing rate not found.', 16, 1);
+            RETURN;
+        END;
+
+        SELECT @RateName = Name FROM dbo.tblBillingRate WHERE BillingRateId = @BillingRateId;
+
+        -- Unset all other defaults
+        UPDATE dbo.tblBillingRate SET IsDefault = 0 WHERE BillingRateId <> @BillingRateId;
+
+        -- Set this one as default
+        UPDATE dbo.tblBillingRate SET IsDefault = 1 WHERE BillingRateId = @BillingRateId;
+
+        -- Log the action
+        --INSERT INTO dbo.tblSystemLog
+        --    (Category, Type, Message, Source)
+        --VALUES
+        --    ('Billing', 'DefaultRateSet', 'Default billing rate set to: ' + @RateName, 'Admin');
+
+        SELECT 1 AS Result;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source)
+        VALUES
+            ('Billing', 'Error', 'Error in sp_SetDefaultBillingRate: ' + ERROR_MESSAGE(), 'Admin');
+
+        SELECT 0 AS Result;
+    END CATCH
+END;
 GO

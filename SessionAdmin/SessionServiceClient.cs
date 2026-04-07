@@ -339,6 +339,52 @@ namespace SessionManagement.Client
         }
 
         // ─────────────────────────────────────────────────────────
+        //  BILLING RATE MANAGEMENT
+        // ─────────────────────────────────────────────────────────
+
+        public BillingRateInfo[] GetAllBillingRates()
+        {
+            if (!EnsureConnection()) return new BillingRateInfo[0];
+            try { return _proxy.GetAllBillingRates(); }
+            catch (Exception ex)
+            { Log($"GetAllBillingRates: {ex.Message}"); return new BillingRateInfo[0]; }
+        }
+
+        public int InsertBillingRate(string name, decimal ratePerMinute, string currency,
+            DateTime? effectiveFrom, DateTime? effectiveTo, bool isDefault, int adminUserId, string notes)
+        {
+            if (!EnsureConnection()) return -1;
+            try { return _proxy.InsertBillingRate(name, ratePerMinute, currency, effectiveFrom, effectiveTo, isDefault, adminUserId, notes); }
+            catch (Exception ex)
+            { Log($"InsertBillingRate: {ex.Message}"); return -1; }
+        }
+
+        public bool UpdateBillingRate(int billingRateId, string name, decimal ratePerMinute,
+            string currency, DateTime? effectiveFrom, DateTime? effectiveTo, bool isActive, bool isDefault, string notes)
+        {
+            if (!EnsureConnection()) return false;
+            try { return _proxy.UpdateBillingRate(billingRateId, name, ratePerMinute, currency, effectiveFrom, effectiveTo, isActive, isDefault, notes); }
+            catch (Exception ex)
+            { Log($"UpdateBillingRate: {ex.Message}"); return false; }
+        }
+
+        public bool DeleteBillingRate(int billingRateId)
+        {
+            if (!EnsureConnection()) return false;
+            try { return _proxy.DeleteBillingRate(billingRateId); }
+            catch (Exception ex)
+            { Log($"DeleteBillingRate: {ex.Message}"); return false; }
+        }
+
+        public bool SetDefaultBillingRate(int billingRateId)
+        {
+            if (!EnsureConnection()) return false;
+            try { return _proxy.SetDefaultBillingRate(billingRateId); }
+            catch (Exception ex)
+            { Log($"SetDefaultBillingRate: {ex.Message}"); return false; }
+        }
+
+        // ─────────────────────────────────────────────────────────
         //  Duplex Subscriptions
         // ─────────────────────────────────────────────────────────
 

@@ -117,6 +117,25 @@ namespace SessionManagement.WCF
         [OperationContract]
         decimal CalculateSessionBilling(int sessionId);
 
+        // ── BILLING RATE MANAGEMENT ───────────────────────────────
+
+        [OperationContract]
+        BillingRateInfo[] GetAllBillingRates();
+
+        [OperationContract]
+        int InsertBillingRate(string name, decimal ratePerMinute, string currency,
+            System.DateTime? effectiveFrom, System.DateTime? effectiveTo, bool isDefault, int adminUserId, string notes);
+
+        [OperationContract]
+        bool UpdateBillingRate(int billingRateId, string name, decimal ratePerMinute,
+            string currency, System.DateTime? effectiveFrom, System.DateTime? effectiveTo, bool isActive, bool isDefault, string notes);
+
+        [OperationContract]
+        bool DeleteBillingRate(int billingRateId);
+
+        [OperationContract]
+        bool SetDefaultBillingRate(int billingRateId);
+
         // ── UC-15  Session Logs ───────────────────────────────────
 
         /// <summary>
@@ -277,6 +296,21 @@ namespace SessionManagement.WCF
         [DataMember] public string   Role          { get; set; }
         [DataMember] public DateTime CreatedAt     { get; set; }
         [DataMember] public DateTime? LastLoginAt  { get; set; }
+    }
+
+    [DataContract]
+    public class BillingRateInfo
+    {
+        [DataMember] public int BillingRateId { get; set; }
+        [DataMember] public string Name { get; set; }
+        [DataMember] public decimal RatePerMinute { get; set; }
+        [DataMember] public string Currency { get; set; }
+        [DataMember] public DateTime? EffectiveFrom { get; set; }
+        [DataMember] public DateTime? EffectiveTo { get; set; }
+        [DataMember] public bool IsActive { get; set; }
+        [DataMember] public bool IsDefault { get; set; }
+        [DataMember] public DateTime CreatedAt { get; set; }
+        [DataMember] public string Notes { get; set; }
     }
 
     [DataContract]
