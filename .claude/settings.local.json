@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pwsh --version)",
+      "Bash(node -e ':*)",
+      "Bash(sed:*)"
+    ]
+  }
+}
