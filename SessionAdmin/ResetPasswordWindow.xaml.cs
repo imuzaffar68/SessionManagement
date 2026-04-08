@@ -54,39 +54,29 @@ namespace SessionAdmin
 
         private void btnGenerate_Click(object sender, RoutedEventArgs e)
         {
-            txtPassword.Password = "User@123456";
-            txtPasswordPlain.Text = "User@123456";
-            txtConfirmPassword.Password = "User@123456";
-            txtConfirmPasswordPlain.Text = "User@123456";
+            const string defaultPwd = "User@123456";
+            txtPassword.Password = defaultPwd;
+            txtPasswordPlain.Text = defaultPwd;
+            txtConfirmPassword.Password = defaultPwd;
+            txtConfirmPasswordPlain.Text = defaultPwd;
         }
 
         private void btnReset_Click(object sender, RoutedEventArgs e)
         {
             string password = _passwordVisible ? txtPasswordPlain.Text : txtPassword.Password;
-            string confirmPassword = _confirmPasswordVisible ? txtConfirmPasswordPlain.Text : txtConfirmPassword.Password;
+            string confirm = _confirmPasswordVisible ? txtConfirmPasswordPlain.Text : txtConfirmPassword.Password;
+
+            lblErrorBorder.Visibility = Visibility.Collapsed;
 
             if (string.IsNullOrWhiteSpace(password))
-            {
-                lblError.Text = "Password cannot be empty.";
-                lblError.Visibility = Visibility.Visible;
-                return;
-            }
+            { ShowError("Password cannot be empty."); return; }
 
-            if (password != confirmPassword)
-            {
-                lblError.Text = "Passwords do not match.";
-                lblError.Visibility = Visibility.Visible;
-                return;
-            }
+            if (password != confirm)
+            { ShowError("Passwords do not match."); return; }
 
             if (password.Length < 8)
-            {
-                lblError.Text = "Password must be at least 8 characters long.";
-                lblError.Visibility = Visibility.Visible;
-                return;
-            }
+            { ShowError("Password must be at least 8 characters."); return; }
 
-            // Check for uppercase, lowercase, and digits
             bool hasUpper = false, hasLower = false, hasDigit = false;
             foreach (char c in password)
             {
@@ -96,15 +86,17 @@ namespace SessionAdmin
             }
 
             if (!hasUpper || !hasLower || !hasDigit)
-            {
-                lblError.Text = "Password must contain uppercase, lowercase, and digits.";
-                lblError.Visibility = Visibility.Visible;
-                return;
-            }
+            { ShowError("Password must contain uppercase, lowercase, and a digit."); return; }
 
             NewPassword = password;
             DialogResult = true;
             Close();
+        }
+
+        private void ShowError(string msg)
+        {
+            lblError.Text = msg;
+            lblErrorBorder.Visibility = Visibility.Visible;
         }
 
         private void btnCancel_Click(object sender, RoutedEventArgs e)
