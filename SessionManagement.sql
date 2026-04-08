@@ -1,45 +1,56 @@
 /* ============================================================
-   Session Management Database - Complete Setup Script
-   SQL Server 2019 Compatible
+   Client Server Session DB (SQL Server 2019 compatible)
    ============================================================ */
 
--- Create database if it doesn't exist
-IF NOT EXISTS (SELECT * FROM sys.databases WHERE name = 'ClientServerSessionDB')
+-- Create database if it does not exist
+IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = 'ClientServerSessionDB')
 BEGIN
     CREATE DATABASE ClientServerSessionDB;
-END
+END;
 GO
 
 USE ClientServerSessionDB;
 GO
 
 /* ============================================================
-   PART 1: DROP EXISTING OBJECTS (if any)
+   PART 1: DROP EXISTING OBJECTS
    ============================================================ */
 
 -- Drop stored procedures
-IF OBJECT_ID('sp_StartSession', 'P') IS NOT NULL DROP PROCEDURE sp_StartSession;
+IF OBJECT_ID('dbo.sp_StartSession', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_StartSession;
 GO
-IF OBJECT_ID('sp_EndSession', 'P') IS NOT NULL DROP PROCEDURE sp_EndSession;
+IF OBJECT_ID('dbo.sp_EndSession', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_EndSession;
 GO
-IF OBJECT_ID('sp_GetActiveSessions', 'P') IS NOT NULL DROP PROCEDURE sp_GetActiveSessions;
+IF OBJECT_ID('dbo.sp_GetActiveSessions', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_GetActiveSessions;
 GO
-IF OBJECT_ID('sp_LogSecurityAlert', 'P') IS NOT NULL DROP PROCEDURE sp_LogSecurityAlert;
+IF OBJECT_ID('dbo.sp_LogSecurityAlert', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_LogSecurityAlert;
 GO
-IF OBJECT_ID('sp_CalculateSessionBilling', 'P') IS NOT NULL DROP PROCEDURE sp_CalculateSessionBilling;
+IF OBJECT_ID('dbo.sp_CalculateSessionBilling', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_CalculateSessionBilling;
 GO
-IF OBJECT_ID('sp_FinalizeSessionBilling', 'P') IS NOT NULL DROP PROCEDURE sp_FinalizeSessionBilling;
+IF OBJECT_ID('dbo.sp_FinalizeSessionBilling', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_FinalizeSessionBilling;
 GO
-IF OBJECT_ID('sp_RegisterClient', 'P') IS NOT NULL DROP PROCEDURE sp_RegisterClient;
+IF OBJECT_ID('dbo.sp_RegisterClient', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_RegisterClient;
+GO
+IF OBJECT_ID('dbo.sp_RegisterClientUser', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_RegisterClientUser;
+GO
+IF OBJECT_ID('dbo.sp_InsertBillingRate', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_InsertBillingRate;
+GO
+IF OBJECT_ID('dbo.sp_UpdateBillingRate', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_UpdateBillingRate;
+GO
+IF OBJECT_ID('dbo.sp_DeleteBillingRate', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_DeleteBillingRate;
+GO
+IF OBJECT_ID('dbo.sp_GetAllBillingRates', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_GetAllBillingRates;
+GO
+IF OBJECT_ID('dbo.sp_SetDefaultBillingRate', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_SetDefaultBillingRate;
 GO
 
 -- Drop views
-IF OBJECT_ID('vw_SessionReport', 'V') IS NOT NULL DROP VIEW vw_SessionReport;
+IF OBJECT_ID('dbo.vw_SessionReport', 'V') IS NOT NULL DROP VIEW dbo.vw_SessionReport;
 GO
-IF OBJECT_ID('vw_ActiveSessionsSummary', 'V') IS NOT NULL DROP VIEW vw_ActiveSessionsSummary;
+IF OBJECT_ID('dbo.vw_ActiveSessionsSummary', 'V') IS NOT NULL DROP VIEW dbo.vw_ActiveSessionsSummary;
 GO
 
--- Drop tables in reverse order (respecting foreign keys)
+-- Drop tables in reverse dependency order
 IF OBJECT_ID('dbo.tblSystemLog', 'U') IS NOT NULL DROP TABLE dbo.tblSystemLog;
 GO
 IF OBJECT_ID('dbo.tblLoginAttempt', 'U') IS NOT NULL DROP TABLE dbo.tblLoginAttempt;
@@ -71,44 +82,47 @@ CREATE TABLE dbo.tblUser (
     Username          NVARCHAR(50) NOT NULL,
     PasswordHash      NVARCHAR(255) NOT NULL,
     FullName          NVARCHAR(100) NULL,
-    Role              NVARCHAR(20) NOT NULL,  -- Admin / ClientUser
-    Status            NVARCHAR(20) NOT NULL,  -- Active / Blocked / Disabled
+    Role              NVARCHAR(20) NOT NULL,
+    Status            NVARCHAR(20) NOT NULL,
     Phone             NVARCHAR(30) NULL,
     Address           NVARCHAR(200) NULL,
     CreatedByUserId   INT NULL,
     CreatedAt         DATETIME NOT NULL CONSTRAINT DF_tblUser_CreatedAt DEFAULT (GETDATE()),
     LastLoginAt       DATETIME NULL,
     CONSTRAINT UQ_tblUser_Username UNIQUE (Username),
-    CONSTRAINT CK_tblUser_Role CHECK (Role IN ('Admin','ClientUser')),
-    CONSTRAINT CK_tblUser_Status CHECK (Status IN ('Active','Blocked','Disabled'))
+    CONSTRAINT CK_tblUser_Role CHECK (Role IN ('Admin', 'ClientUser')),
+    CONSTRAINT CK_tblUser_Status CHECK (Status IN ('Active', 'Blocked', 'Disabled'))
 );
 GO
 
 ALTER TABLE dbo.tblUser
 ADD CONSTRAINT FK_tblUser_CreatedByUser
 FOREIGN KEY (CreatedByUserId) REFERENCES dbo.tblUser(UserId)
-ON DELETE NO ACTION ON UPDATE NO ACTION;
+ON DELETE NO ACTION
+ON UPDATE NO ACTION;
 GO
+
 
 -- 2) tblClientMachine
 CREATE TABLE dbo.tblClientMachine (
     ClientMachineId   INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    ClientCode        NVARCHAR(50) NOT NULL,
+    ClientCode        NVARCHAR(50) NOT NULL, --v2
     MachineName       NVARCHAR(50) NOT NULL,
     IPAddress         NVARCHAR(45) NOT NULL,
     MACAddress        NVARCHAR(50) NULL,
     Location          NVARCHAR(100) NULL,
-    Status            NVARCHAR(20) NOT NULL,  -- Idle / Active / Offline
+    Status            NVARCHAR(20) NOT NULL,
     LastSeenAt        DATETIME NOT NULL CONSTRAINT DF_tblClientMachine_LastSeenAt DEFAULT (GETDATE()),
     IsActive          BIT NOT NULL CONSTRAINT DF_tblClientMachine_IsActive DEFAULT (1),
     CONSTRAINT UQ_tblClientMachine_IP UNIQUE (IPAddress),
-    CONSTRAINT UQ_tblClientMachine_ClientCode UNIQUE (ClientCode),
-    CONSTRAINT CK_tblClientMachine_Status CHECK (Status IN ('Idle','Active','Offline'))
+    CONSTRAINT UQ_tblClientMachine_ClientCode UNIQUE (ClientCode), --v2
+    CONSTRAINT CK_tblClientMachine_Status CHECK (Status IN ('Idle', 'Active', 'Offline'))
 );
 GO
 
-CREATE INDEX IX_tblClientMachine_ClientCode ON dbo.tblClientMachine(ClientCode);
+CREATE INDEX IX_tblClientMachine_ClientCode ON dbo.tblClientMachine(ClientCode); --v2
 GO
+
 
 -- 3) tblSession
 CREATE TABLE dbo.tblSession (
@@ -116,18 +130,19 @@ CREATE TABLE dbo.tblSession (
     UserId                   INT NOT NULL,
     ClientMachineId          INT NOT NULL,
     LoginAt                  DATETIME NOT NULL CONSTRAINT DF_tblSession_LoginAt DEFAULT (GETDATE()),
-    StartedAt                DATETIME NOT NULL CONSTRAINT DF_tblSession_StartTime DEFAULT (GETDATE()),
+    StartedAt                DATETIME NOT NULL CONSTRAINT DF_tblSession_StartedAt DEFAULT (GETDATE()),
     SelectedDurationMinutes  INT NOT NULL,
     ExpectedEndAt            AS (DATEADD(MINUTE, SelectedDurationMinutes, StartedAt)),
     EndedAt                  DATETIME NULL,
     ActualDurationMinutes    INT NULL,
-    Status                   NVARCHAR(20) NOT NULL DEFAULT 'Pending',
+    Status                   NVARCHAR(20) NOT NULL,
     TerminationReason        NVARCHAR(30) NULL,
-    CONSTRAINT CK_tblSession_TerminationReason CHECK (
-        TerminationReason IS NULL OR TerminationReason IN ('AutoExpiry','AdminTerminate','UserLogout','SystemError','Crash')
-    ),
     CONSTRAINT CK_tblSession_Status CHECK (
-        Status IN ('Pending','Active','Completed','Expired','Terminated','Cancelled')
+        Status IN ('Pending', 'Active', 'Completed', 'Expired', 'Terminated', 'Cancelled')
+    ),
+    CONSTRAINT CK_tblSession_TerminationReason CHECK (
+        TerminationReason IS NULL OR
+        TerminationReason IN ('AutoExpiry', 'AdminTerminate', 'UserLogout', 'SystemError', 'Crash')
     )
 );
 GO
@@ -135,46 +150,51 @@ GO
 ALTER TABLE dbo.tblSession
 ADD CONSTRAINT FK_tblSession_tblUser
 FOREIGN KEY (UserId) REFERENCES dbo.tblUser(UserId)
-ON DELETE NO ACTION ON UPDATE NO ACTION;
+ON DELETE NO ACTION
+ON UPDATE NO ACTION;
 GO
 
 ALTER TABLE dbo.tblSession
 ADD CONSTRAINT FK_tblSession_tblClientMachine
 FOREIGN KEY (ClientMachineId) REFERENCES dbo.tblClientMachine(ClientMachineId)
-ON DELETE NO ACTION ON UPDATE NO ACTION;
+ON DELETE NO ACTION
+ON UPDATE NO ACTION;
 GO
 
 CREATE INDEX IX_tblSession_UserId ON dbo.tblSession(UserId);
+GO
 CREATE INDEX IX_tblSession_ClientMachineId ON dbo.tblSession(ClientMachineId);
+GO
 CREATE INDEX IX_tblSession_Status ON dbo.tblSession(Status);
 GO
+
 
 -- 4) tblSessionImage
 CREATE TABLE dbo.tblSessionImage (
     SessionImageId     INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
     SessionId          INT NOT NULL,
     CapturedAt         DATETIME NOT NULL CONSTRAINT DF_tblSessionImage_CapturedAt DEFAULT (GETDATE()),
-    CaptureStatus      NVARCHAR(30) NOT NULL, -- Captured/CameraUnavailable/Skipped/Failed
-    UploadStatus       NVARCHAR(20) NOT NULL, -- Sent/Pending/Failed
-    ImagePath          NVARCHAR(500) NOT NULL,
+    CaptureStatus      NVARCHAR(30) NOT NULL,
+    UploadStatus       NVARCHAR(20) NOT NULL,
+    ImagePath          NVARCHAR(500) NULL,--NVARCHAR(500) NOT NULL, --v2
     Notes              NVARCHAR(500) NULL,
     CONSTRAINT CK_tblSessionImage_CaptureStatus CHECK (
-        CaptureStatus IN ('Captured','CameraUnavailable','Skipped','Failed')
+        CaptureStatus IN ('Captured', 'CameraUnavailable', 'Skipped', 'Failed')
     ),
     CONSTRAINT CK_tblSessionImage_UploadStatus CHECK (
-        UploadStatus IN ('Sent','Pending','Failed')
+        UploadStatus IN ('Sent', 'Pending', 'Failed')
     ),
     CONSTRAINT UQ_tblSessionImage_Session UNIQUE (SessionId)
 );
 GO
-ALTER TABLE dbo.tblSessionImage
-alter column ImagePath          NVARCHAR(500) NULL;
-go
+
 ALTER TABLE dbo.tblSessionImage
 ADD CONSTRAINT FK_tblSessionImage_tblSession
 FOREIGN KEY (SessionId) REFERENCES dbo.tblSession(SessionId)
-ON DELETE CASCADE ON UPDATE NO ACTION;
+ON DELETE CASCADE
+ON UPDATE NO ACTION;
 GO
+
 
 -- 5) tblBillingRate
 CREATE TABLE dbo.tblBillingRate (
@@ -195,8 +215,10 @@ GO
 ALTER TABLE dbo.tblBillingRate
 ADD CONSTRAINT FK_tblBillingRate_SetByAdmin
 FOREIGN KEY (SetByAdminUserId) REFERENCES dbo.tblUser(UserId)
-ON DELETE SET NULL ON UPDATE NO ACTION;
+ON DELETE SET NULL
+ON UPDATE NO ACTION;
 GO
+
 
 -- 6) tblBillingRecord
 CREATE TABLE dbo.tblBillingRecord (
@@ -206,7 +228,7 @@ CREATE TABLE dbo.tblBillingRecord (
     BillableMinutes    INT NOT NULL,
     Amount             DECIMAL(10,2) NOT NULL,
     CalculatedAt       DATETIME NOT NULL CONSTRAINT DF_tblBillingRecord_CalculatedAt DEFAULT (GETDATE()),
-    Status             NVARCHAR(20) NOT NULL DEFAULT 'Running',
+    Status             NVARCHAR(20) NOT NULL CONSTRAINT DF_tblBillingRecord_Status DEFAULT ('Running'),
     Remarks            NVARCHAR(500) NULL,
     CONSTRAINT CK_tblBillingRecord_Status CHECK (Status IN ('Finalized', 'Running')),
     CONSTRAINT UQ_tblBillingRecord_Session UNIQUE (SessionId)
@@ -216,164 +238,187 @@ GO
 ALTER TABLE dbo.tblBillingRecord
 ADD CONSTRAINT FK_tblBillingRecord_tblSession
 FOREIGN KEY (SessionId) REFERENCES dbo.tblSession(SessionId)
-ON DELETE CASCADE ON UPDATE NO ACTION;
+ON DELETE CASCADE
+ON UPDATE NO ACTION;
 GO
 
 ALTER TABLE dbo.tblBillingRecord
 ADD CONSTRAINT FK_tblBillingRecord_tblBillingRate
 FOREIGN KEY (BillingRateId) REFERENCES dbo.tblBillingRate(BillingRateId)
-ON DELETE NO ACTION ON UPDATE NO ACTION;
+ON DELETE NO ACTION
+ON UPDATE NO ACTION;
 GO
 
 CREATE INDEX IX_tblBillingRecord_BillingRateId ON dbo.tblBillingRecord(BillingRateId);
 GO
 
+
 -- 7) tblActivityType
 CREATE TABLE dbo.tblActivityType (
-    ActivityTypeId        INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    Name                  NVARCHAR(100) NOT NULL,
-    Description           NVARCHAR(500) NULL,
-    DefaultSeverity       NVARCHAR(10) NOT NULL,
-    IsActive              BIT NOT NULL CONSTRAINT DF_tblActivityType_IsActive DEFAULT (1),
-    CONSTRAINT CK_tblActivityType_Severity CHECK (DefaultSeverity IN ('Low','Medium','High'))
+    ActivityTypeId     INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    Name               NVARCHAR(100) NOT NULL,
+    Description        NVARCHAR(500) NULL,
+    DefaultSeverity    NVARCHAR(10) NOT NULL,
+    IsActive           BIT NOT NULL CONSTRAINT DF_tblActivityType_IsActive DEFAULT (1),
+    CONSTRAINT CK_tblActivityType_Severity CHECK (DefaultSeverity IN ('Low', 'Medium', 'High'))
 );
 GO
 
+
 -- 8) tblAlert
 CREATE TABLE dbo.tblAlert (
-    AlertId                 INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    ActivityTypeId          INT NOT NULL,
-    SessionId               INT NULL,
-    ClientMachineId         INT NOT NULL,
-    UserId                  INT NULL,
-    DetectedAt              DATETIME NOT NULL CONSTRAINT DF_tblAlert_DetectedAt DEFAULT (GETDATE()),
-    Severity                NVARCHAR(10) NOT NULL,
-    Status                  NVARCHAR(20) NOT NULL DEFAULT 'New',
-    Details                 NVARCHAR(1000) NOT NULL,
-    IsNotifiedToAdmin       BIT NOT NULL CONSTRAINT DF_tblAlert_IsNotified DEFAULT (0),
-    IsAcknowledged          BIT NOT NULL CONSTRAINT DF_tblAlert_IsAcknowledged DEFAULT (0),
+    AlertId                   INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
+    ActivityTypeId            INT NOT NULL,
+    SessionId                 INT NULL,
+    ClientMachineId           INT NOT NULL,
+    UserId                    INT NULL,
+    DetectedAt                DATETIME NOT NULL CONSTRAINT DF_tblAlert_DetectedAt DEFAULT (GETDATE()),
+    Severity                  NVARCHAR(10) NOT NULL,
+    Status                    NVARCHAR(20) NOT NULL CONSTRAINT DF_tblAlert_Status DEFAULT ('New'),
+    Details                   NVARCHAR(1000) NOT NULL,
+    IsNotifiedToAdmin         BIT NOT NULL CONSTRAINT DF_tblAlert_IsNotified DEFAULT (0),
+    IsAcknowledged            BIT NOT NULL CONSTRAINT DF_tblAlert_IsAcknowledged DEFAULT (0),
     AcknowledgedByAdminUserId INT NULL,
-    AcknowledgedAt          DATETIME NULL,
-    CONSTRAINT CK_tblAlert_Severity CHECK (Severity IN ('Low','Medium','High')),
-    CONSTRAINT CK_tblAlert_Status CHECK (Status IN ('New','Acknowledged','Resolved','Closed'))
+    AcknowledgedAt            DATETIME NULL,
+    CONSTRAINT CK_tblAlert_Severity CHECK (Severity IN ('Low', 'Medium', 'High')),
+    CONSTRAINT CK_tblAlert_Status CHECK (Status IN ('New', 'Acknowledged', 'Resolved', 'Closed'))
 );
 GO
 
 ALTER TABLE dbo.tblAlert
 ADD CONSTRAINT FK_tblAlert_tblActivityType
 FOREIGN KEY (ActivityTypeId) REFERENCES dbo.tblActivityType(ActivityTypeId)
-ON DELETE NO ACTION ON UPDATE NO ACTION;
+ON DELETE NO ACTION
+ON UPDATE NO ACTION;
 GO
 
 ALTER TABLE dbo.tblAlert
 ADD CONSTRAINT FK_tblAlert_tblSession
 FOREIGN KEY (SessionId) REFERENCES dbo.tblSession(SessionId)
-ON DELETE SET NULL ON UPDATE NO ACTION;
+ON DELETE SET NULL
+ON UPDATE NO ACTION;
 GO
 
 ALTER TABLE dbo.tblAlert
 ADD CONSTRAINT FK_tblAlert_tblClientMachine
 FOREIGN KEY (ClientMachineId) REFERENCES dbo.tblClientMachine(ClientMachineId)
-ON DELETE NO ACTION ON UPDATE NO ACTION;
+ON DELETE NO ACTION
+ON UPDATE NO ACTION;
 GO
 
 ALTER TABLE dbo.tblAlert
 ADD CONSTRAINT FK_tblAlert_tblUser
 FOREIGN KEY (UserId) REFERENCES dbo.tblUser(UserId)
-ON DELETE SET NULL ON UPDATE NO ACTION;
+ON DELETE SET NULL
+ON UPDATE NO ACTION;
 GO
 
 ALTER TABLE dbo.tblAlert
 ADD CONSTRAINT FK_tblAlert_AckAdmin
 FOREIGN KEY (AcknowledgedByAdminUserId) REFERENCES dbo.tblUser(UserId)
-ON DELETE NO ACTION ON UPDATE NO ACTION;
+ON DELETE NO ACTION
+ON UPDATE NO ACTION;
 GO
 
 CREATE INDEX IX_tblAlert_SessionId ON dbo.tblAlert(SessionId);
+GO
 CREATE INDEX IX_tblAlert_ClientMachineId ON dbo.tblAlert(ClientMachineId);
+GO
 CREATE INDEX IX_tblAlert_ActivityTypeId ON dbo.tblAlert(ActivityTypeId);
 GO
+
 
 -- 9) tblLoginAttempt
 CREATE TABLE dbo.tblLoginAttempt (
     LoginAttemptId      INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    ClientMachineId     INT NOT NULL,
+    ClientMachineId     INT NULL, --ClientMachineId     INT NOT NULL, --v2
     UserId              INT NULL,
     UsernameEntered     NVARCHAR(50) NOT NULL,
     AttemptedAt         DATETIME NOT NULL CONSTRAINT DF_tblLoginAttempt_AttemptedAt DEFAULT (GETDATE()),
     IsSuccess           BIT NOT NULL,
-    FailureReason       NVARCHAR(30) NULL
+    FailureReason       NVARCHAR(30) NULL -- InvalidPassword/UnknownUser/BlockedUser/ServerUnreachable
 );
 GO
 
 ALTER TABLE dbo.tblLoginAttempt
 ADD CONSTRAINT FK_tblLoginAttempt_tblClientMachine
 FOREIGN KEY (ClientMachineId) REFERENCES dbo.tblClientMachine(ClientMachineId)
-ON DELETE NO ACTION ON UPDATE NO ACTION;
+ON DELETE NO ACTION
+ON UPDATE NO ACTION;
 GO
 
 ALTER TABLE dbo.tblLoginAttempt
 ADD CONSTRAINT FK_tblLoginAttempt_tblUser
 FOREIGN KEY (UserId) REFERENCES dbo.tblUser(UserId)
-ON DELETE SET NULL ON UPDATE NO ACTION;
+ON DELETE SET NULL
+ON UPDATE NO ACTION;
 GO
 
 CREATE INDEX IX_tblLoginAttempt_ClientMachineId ON dbo.tblLoginAttempt(ClientMachineId);
+GO
 CREATE INDEX IX_tblLoginAttempt_UserId ON dbo.tblLoginAttempt(UserId);
 GO
+
 
 -- 10) tblSystemLog
 CREATE TABLE dbo.tblSystemLog (
     SystemLogId       INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    LogedAt           DATETIME NOT NULL CONSTRAINT DF_tblSystemLog_LogedAt DEFAULT (GETDATE()),
+    LoggedAt          DATETIME NOT NULL CONSTRAINT DF_tblSystemLog_LoggedAt DEFAULT (GETDATE()),
     Category          NVARCHAR(20) NOT NULL,
-    Type              NVARCHAR(50) NOT NULL,
+    Type              NVARCHAR(50) NOT NULL, -- Login/StartSession/Termination/BillingFinalized/AlertGenerated/Error/SyncIssue...
     Message           NVARCHAR(2000) NOT NULL,
     Source            NVARCHAR(10) NULL,
     SessionId         INT NULL,
     UserId            INT NULL,
     ClientMachineId   INT NULL,
     AdminUserId       INT NULL,
-    CONSTRAINT CK_tblSystemLog_Category CHECK (Category IN ('Auth','Session','Billing','Security','System')),
-    CONSTRAINT CK_tblSystemLog_Source CHECK (Source IS NULL OR Source IN ('Client','Server'))
+    CONSTRAINT CK_tblSystemLog_Category CHECK (Category IN ('Auth', 'Session', 'Billing', 'Security', 'System')),
+    CONSTRAINT CK_tblSystemLog_Source CHECK (Source IS NULL OR Source IN ('Client', 'Server'))
 );
 GO
 
 ALTER TABLE dbo.tblSystemLog
 ADD CONSTRAINT FK_tblSystemLog_tblSession
 FOREIGN KEY (SessionId) REFERENCES dbo.tblSession(SessionId)
-ON DELETE SET NULL ON UPDATE NO ACTION;
+ON DELETE SET NULL
+ON UPDATE NO ACTION;
 GO
 
 ALTER TABLE dbo.tblSystemLog
 ADD CONSTRAINT FK_tblSystemLog_tblUser
 FOREIGN KEY (UserId) REFERENCES dbo.tblUser(UserId)
-ON DELETE SET NULL ON UPDATE NO ACTION;
+ON DELETE SET NULL
+ON UPDATE NO ACTION;
 GO
 
 ALTER TABLE dbo.tblSystemLog
 ADD CONSTRAINT FK_tblSystemLog_tblClientMachine
 FOREIGN KEY (ClientMachineId) REFERENCES dbo.tblClientMachine(ClientMachineId)
-ON DELETE SET NULL ON UPDATE NO ACTION;
+ON DELETE SET NULL
+ON UPDATE NO ACTION;
 GO
 
 ALTER TABLE dbo.tblSystemLog
 ADD CONSTRAINT FK_tblSystemLog_AdminUser
 FOREIGN KEY (AdminUserId) REFERENCES dbo.tblUser(UserId)
-ON DELETE NO ACTION ON UPDATE NO ACTION;
+ON DELETE NO ACTION
+ON UPDATE NO ACTION;
 GO
 
 CREATE INDEX IX_tblSystemLog_SessionId ON dbo.tblSystemLog(SessionId);
+GO
 CREATE INDEX IX_tblSystemLog_UserId ON dbo.tblSystemLog(UserId);
+GO
 CREATE INDEX IX_tblSystemLog_ClientMachineId ON dbo.tblSystemLog(ClientMachineId);
 GO
+
 
 /* ============================================================
    PART 3: CREATE STORED PROCEDURES
    ============================================================ */
 
 -- sp_StartSession
-CREATE PROCEDURE sp_StartSession
+CREATE PROCEDURE dbo.sp_StartSession
     @UserId INT,
     @ClientMachineId INT,
     @SelectedDurationMinutes INT
@@ -384,82 +429,98 @@ BEGIN
     DECLARE @SessionId INT;
 
     BEGIN TRY
-        INSERT INTO dbo.tblSession 
-        (UserId, ClientMachineId, LoginAt, StartedAt, SelectedDurationMinutes, Status)
-        VALUES 
-        (@UserId, @ClientMachineId, GETDATE(), GETDATE(), @SelectedDurationMinutes, 'Active');
+        INSERT INTO dbo.tblSession
+            (UserId, ClientMachineId, LoginAt, StartedAt, SelectedDurationMinutes, Status)
+        VALUES
+            (@UserId, @ClientMachineId, GETDATE(), GETDATE(), @SelectedDurationMinutes, 'Active');
 
         SET @SessionId = SCOPE_IDENTITY();
 
-        -- Log system event
-        INSERT INTO dbo.tblSystemLog 
-        (Category, Type, Message, Source, SessionId, UserId, ClientMachineId)
-        VALUES 
-        ('Session', 'StartSession', 'Session started for ' + CAST(@SelectedDurationMinutes AS NVARCHAR(10)) + ' minutes', 
-         'Server', @SessionId, @UserId, @ClientMachineId);
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source, SessionId, UserId, ClientMachineId)
+        VALUES
+            ('Session', 'StartSession',
+             'Session started for ' + CAST(@SelectedDurationMinutes AS NVARCHAR(10)) + ' minutes',
+             'Server', @SessionId, @UserId, @ClientMachineId);
 
-        SELECT @SessionId;
+        SELECT @SessionId AS SessionId;
     END TRY
     BEGIN CATCH
-        INSERT INTO dbo.tblSystemLog 
-        (Category, Type, Message, Source)
-        VALUES 
-        ('System', 'Error', 'Error in sp_StartSession: ' + ERROR_MESSAGE(), 'Server');
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source)
+        VALUES
+            ('System', 'Error', 'Error in sp_StartSession: ' + ERROR_MESSAGE(), 'Server');
 
-        SELECT 0;
+        SELECT 0 AS SessionId;
     END CATCH
 END;
 GO
 
+
 -- sp_EndSession
-CREATE PROCEDURE sp_EndSession
+CREATE PROCEDURE dbo.sp_EndSession
     @SessionId INT,
     @TerminationReason NVARCHAR(30)
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @UserId INT, @ClientMachineId INT;
+    DECLARE @UserId INT,
+            @MachineId INT,
+            @NewStatus NVARCHAR(20);
 
     BEGIN TRY
-        SELECT @UserId = UserId, @ClientMachineId = ClientMachineId 
-        FROM dbo.tblSession 
+        SELECT
+            @UserId = UserId,
+            @MachineId = ClientMachineId
+        FROM dbo.tblSession
         WHERE SessionId = @SessionId;
 
-        UPDATE dbo.tblSession 
-        SET EndedAt = GETDATE(), 
-            Status = 'Terminated', 
+        SET @NewStatus =
+            CASE @TerminationReason
+                WHEN 'AdminTerminate' THEN 'Terminated'
+                WHEN 'AutoExpiry' THEN 'Expired'
+                WHEN 'UserLogout' THEN 'Completed'
+                WHEN 'Crash' THEN 'Terminated'
+                WHEN 'SystemError' THEN 'Terminated'
+                ELSE 'Completed'
+            END;
+
+        UPDATE dbo.tblSession
+        SET EndedAt = GETDATE(),
+            Status = @NewStatus,
             TerminationReason = @TerminationReason,
             ActualDurationMinutes = DATEDIFF(MINUTE, StartedAt, GETDATE())
         WHERE SessionId = @SessionId;
 
-        -- Log system event
-        INSERT INTO dbo.tblSystemLog 
-        (Category, Type, Message, Source, SessionId, UserId, ClientMachineId)
-        VALUES 
-        ('Session', 'EndSession', 'Session terminated - Reason: ' + @TerminationReason, 
-         'Server', @SessionId, @UserId, @ClientMachineId);
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source, SessionId, UserId, ClientMachineId)
+        VALUES
+            ('Session', 'SessionEnded',
+             'Session ' + CAST(@SessionId AS NVARCHAR(20)) + ' ended - ' + @TerminationReason,
+             'Server', @SessionId, @UserId, @MachineId);
 
-        SELECT 1;
+        SELECT 1 AS Result;
     END TRY
     BEGIN CATCH
-        INSERT INTO dbo.tblSystemLog 
-        (Category, Type, Message, Source)
-        VALUES 
-        ('System', 'Error', 'Error in sp_EndSession: ' + ERROR_MESSAGE(), 'Server');
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source)
+        VALUES
+            ('System', 'Error', 'sp_EndSession: ' + ERROR_MESSAGE(), 'Server');
 
-        SELECT 0;
+        SELECT 0 AS Result;
     END CATCH
 END;
 GO
 
+
 -- sp_GetActiveSessions
-CREATE PROCEDURE sp_GetActiveSessions
+CREATE PROCEDURE dbo.sp_GetActiveSessions
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    SELECT 
+    SELECT
         s.SessionId,
         s.UserId,
         u.Username,
@@ -485,8 +546,9 @@ BEGIN
 END;
 GO
 
+
 -- sp_LogSecurityAlert
-CREATE PROCEDURE sp_LogSecurityAlert
+CREATE PROCEDURE dbo.sp_LogSecurityAlert
     @ActivityTypeName NVARCHAR(100),
     @SessionId INT = NULL,
     @ClientMachineId INT = NULL,
@@ -500,134 +562,144 @@ BEGIN
     DECLARE @ActivityTypeId INT;
 
     BEGIN TRY
-        -- Get or create activity type
-        SELECT @ActivityTypeId = ActivityTypeId 
-        FROM dbo.tblActivityType 
+        SELECT @ActivityTypeId = ActivityTypeId
+        FROM dbo.tblActivityType
         WHERE Name = @ActivityTypeName;
 
         IF @ActivityTypeId IS NULL
         BEGIN
-            INSERT INTO dbo.tblActivityType (Name, DefaultSeverity, IsActive)
-            VALUES (@ActivityTypeName, @Severity, 1);
+            INSERT INTO dbo.tblActivityType (Name, Description, DefaultSeverity, IsActive)
+            VALUES (@ActivityTypeName, NULL, @Severity, 1);
+
             SET @ActivityTypeId = SCOPE_IDENTITY();
-        END
+        END;
 
-        -- Insert alert
-        INSERT INTO dbo.tblAlert 
-        (ActivityTypeId, SessionId, ClientMachineId, UserId, DetectedAt, Severity, Status, Details)
-        VALUES 
-        (@ActivityTypeId, @SessionId, @ClientMachineId, @UserId, GETDATE(), @Severity, 'New', @Details);
+        INSERT INTO dbo.tblAlert
+            (ActivityTypeId, SessionId, ClientMachineId, UserId, DetectedAt, Severity, Status, Details)
+        VALUES
+            (@ActivityTypeId, @SessionId, @ClientMachineId, @UserId, GETDATE(), @Severity, 'New', @Details);
 
-        -- Log system event
-        INSERT INTO dbo.tblSystemLog 
-        (Category, Type, Message, Source, SessionId, UserId, ClientMachineId)
-        VALUES 
-        ('Security', 'Alert', 'Security Alert: ' + @ActivityTypeName + ' - ' + @Details, 
-         'Server', @SessionId, @UserId, @ClientMachineId);
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source, SessionId, UserId, ClientMachineId)
+        VALUES
+            ('Security', 'Alert',
+             'Security Alert: ' + @ActivityTypeName + ' - ' + @Details,
+             'Server', @SessionId, @UserId, @ClientMachineId);
 
-        SELECT 1;
+        SELECT 1 AS Result;
     END TRY
     BEGIN CATCH
-        INSERT INTO dbo.tblSystemLog 
-        (Category, Type, Message, Source)
-        VALUES 
-        ('System', 'Error', 'Error in sp_LogSecurityAlert: ' + ERROR_MESSAGE(), 'Server');
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source)
+        VALUES
+            ('System', 'Error', 'Error in sp_LogSecurityAlert: ' + ERROR_MESSAGE(), 'Server');
 
-        SELECT 0;
+        SELECT 0 AS Result;
     END CATCH
 END;
 GO
 
+
 -- sp_CalculateSessionBilling
-CREATE PROCEDURE sp_CalculateSessionBilling
+CREATE PROCEDURE dbo.sp_CalculateSessionBilling
     @SessionId INT
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @BillingRateId INT, @RatePerMinute DECIMAL(10,2), @ElapsedMinutes INT, @Amount DECIMAL(10,2);
+    DECLARE @BillingRateId INT,
+            @RatePerMinute DECIMAL(10,2),
+            @ElapsedMinutes INT,
+            @Amount DECIMAL(10,2);
 
     BEGIN TRY
-        -- Get session details
         SELECT @ElapsedMinutes = DATEDIFF(MINUTE, StartedAt, GETDATE())
-        FROM dbo.tblSession 
+        FROM dbo.tblSession
         WHERE SessionId = @SessionId;
 
-        -- Get active billing rate
-        SELECT @BillingRateId = BillingRateId, @RatePerMinute = RatePerMinute
-        FROM dbo.tblBillingRate 
-        WHERE IsActive = 1 AND IsDefault = 1;
+        SELECT @BillingRateId = BillingRateId,
+               @RatePerMinute = RatePerMinute
+        FROM dbo.tblBillingRate
+        WHERE IsActive = 1
+          AND IsDefault = 1;
 
         IF @BillingRateId IS NULL
         BEGIN
-            SELECT @BillingRateId = BillingRateId, @RatePerMinute = RatePerMinute
-            FROM dbo.tblBillingRate 
+            SELECT TOP 1
+                @BillingRateId = BillingRateId,
+                @RatePerMinute = RatePerMinute
+            FROM dbo.tblBillingRate
             WHERE IsActive = 1
             ORDER BY CreatedAt DESC;
-        END
+        END;
 
-        SET @Amount = @ElapsedMinutes * @RatePerMinute;
+        SET @Amount = ISNULL(@ElapsedMinutes, 0) * ISNULL(@RatePerMinute, 0);
 
-        -- Update or insert billing record
         IF EXISTS (SELECT 1 FROM dbo.tblBillingRecord WHERE SessionId = @SessionId)
         BEGIN
-            UPDATE dbo.tblBillingRecord 
-            SET BillableMinutes = @ElapsedMinutes, Amount = @Amount
+            UPDATE dbo.tblBillingRecord
+            SET BillableMinutes = @ElapsedMinutes,
+                Amount = @Amount,
+                BillingRateId = @BillingRateId,
+                CalculatedAt = GETDATE()
             WHERE SessionId = @SessionId;
         END
         ELSE
         BEGIN
-            INSERT INTO dbo.tblBillingRecord 
-            (SessionId, BillingRateId, BillableMinutes, Amount, Status)
-            VALUES 
-            (@SessionId, @BillingRateId, @ElapsedMinutes, @Amount, 'Running');
-        END
+            INSERT INTO dbo.tblBillingRecord
+                (SessionId, BillingRateId, BillableMinutes, Amount, Status)
+            VALUES
+                (@SessionId, @BillingRateId, @ElapsedMinutes, @Amount, 'Running');
+        END;
 
-        SELECT @Amount;
+        SELECT @Amount AS Amount;
     END TRY
     BEGIN CATCH
-        INSERT INTO dbo.tblSystemLog 
-        (Category, Type, Message, Source, SessionId)
-        VALUES 
-        ('Billing', 'Error', 'Error in sp_CalculateSessionBilling: ' + ERROR_MESSAGE(), 'Server', @SessionId);
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source, SessionId)
+        VALUES
+            ('Billing', 'Error', 'Error in sp_CalculateSessionBilling: ' + ERROR_MESSAGE(), 'Server', @SessionId);
 
-        SELECT 0;
+        SELECT 0 AS Amount;
     END CATCH
 END;
 GO
 
+
 -- sp_FinalizeSessionBilling
-CREATE PROCEDURE sp_FinalizeSessionBilling
+CREATE PROCEDURE dbo.sp_FinalizeSessionBilling
     @SessionId INT
 AS
 BEGIN
     SET NOCOUNT ON;
 
     BEGIN TRY
-        UPDATE dbo.tblBillingRecord 
-        SET Status = 'Finalized'
+        UPDATE dbo.tblBillingRecord
+        SET Status = 'Finalized',
+            CalculatedAt = GETDATE()
         WHERE SessionId = @SessionId;
 
-        INSERT INTO dbo.tblSystemLog 
-        (Category, Type, Message, Source, SessionId)
-        VALUES 
-        ('Billing', 'BillingFinalized', 'Session billing finalized', 'Server', @SessionId);
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source, SessionId)
+        VALUES
+            ('Billing', 'BillingFinalized', 'Session billing finalized', 'Server', @SessionId);
 
-        SELECT 1;
+        SELECT 1 AS Result;
     END TRY
     BEGIN CATCH
-        INSERT INTO dbo.tblSystemLog 
-        (Category, Type, Message, Source, SessionId)
-        VALUES 
-        ('System', 'Error', 'Error in sp_FinalizeSessionBilling: ' + ERROR_MESSAGE(), 'Server', @SessionId);
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source, SessionId)
+        VALUES
+            ('System', 'Error', 'Error in sp_FinalizeSessionBilling: ' + ERROR_MESSAGE(), 'Server', @SessionId);
 
-        SELECT 0;
+        SELECT 0 AS Result;
     END CATCH
 END;
 GO
 
+
 -- sp_RegisterClient
-CREATE PROCEDURE sp_RegisterClient
+CREATE PROCEDURE dbo.sp_RegisterClient
     @ClientCode NVARCHAR(50),
     @MachineName NVARCHAR(50),
     @IPAddress NVARCHAR(45),
@@ -636,47 +708,143 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
+    DECLARE @MachineId INT;
+
     BEGIN TRY
-        -- Check if client already exists
+        IF EXISTS (
+            SELECT 1
+            FROM dbo.tblClientMachine
+            WHERE IPAddress = @IPAddress
+              AND ClientCode <> @ClientCode
+        )
+        BEGIN
+            RAISERROR('IPAddress already assigned to another client.', 16, 1);
+            RETURN;
+        END;
+
         IF EXISTS (SELECT 1 FROM dbo.tblClientMachine WHERE ClientCode = @ClientCode)
         BEGIN
-            UPDATE dbo.tblClientMachine 
-            SET Status = 'Idle', LastSeenAt = GETDATE()
+            UPDATE dbo.tblClientMachine
+            SET MachineName = @MachineName,
+                IPAddress = @IPAddress,
+                MACAddress = ISNULL(@MACAddress, MACAddress),
+                Status = 'Idle',
+                LastSeenAt = GETDATE()
+            WHERE ClientCode = @ClientCode;
+
+            SELECT @MachineId = ClientMachineId
+            FROM dbo.tblClientMachine
             WHERE ClientCode = @ClientCode;
         END
         ELSE
         BEGIN
-            INSERT INTO dbo.tblClientMachine 
-            (ClientCode, MachineName, IPAddress, MACAddress, Status, IsActive)
-            VALUES 
-            (@ClientCode, @MachineName, @IPAddress, @MACAddress, 'Idle', 1);
-        END
+            INSERT INTO dbo.tblClientMachine
+                (ClientCode, MachineName, IPAddress, MACAddress, Status, IsActive)
+            VALUES
+                (@ClientCode, @MachineName, @IPAddress, @MACAddress, 'Idle', 1);
 
-        INSERT INTO dbo.tblSystemLog 
-        (Category, Type, Message, Source)
-        VALUES 
-        ('System', 'ClientRegistration', 'Client ' + @ClientCode + ' registered/updated', 'Server');
+            SET @MachineId = SCOPE_IDENTITY();
+        END;
 
-        SELECT 1;
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source, ClientMachineId)
+        VALUES
+            ('System', 'ClientRegistered',
+             'Client ' + @ClientCode + ' (' + @MachineName + ') registered/updated',
+             'Server', @MachineId);
+
+        SELECT @MachineId AS ClientMachineId;
     END TRY
     BEGIN CATCH
-        INSERT INTO dbo.tblSystemLog 
-        (Category, Type, Message, Source)
-        VALUES 
-        ('System', 'Error', 'Error in sp_RegisterClient: ' + ERROR_MESSAGE(), 'Server');
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source)
+        VALUES
+            ('System', 'Error', 'sp_RegisterClient: ' + ERROR_MESSAGE(), 'Server');
 
-        SELECT 0;
+        SELECT 0 AS ClientMachineId;
     END CATCH
 END;
 GO
+--sp_RegisterClientUser
+CREATE OR ALTER PROCEDURE dbo.sp_RegisterClientUser
+    @Username NVARCHAR(50),
+    @PasswordHash NVARCHAR(255),
+    @FullName NVARCHAR(100) = NULL,
+    @Phone NVARCHAR(30) = NULL,
+    @Address NVARCHAR(200) = NULL,
+    @AdminUserId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @UserId INT;
+
+    BEGIN TRY
+        -- Insert user
+        INSERT INTO dbo.tblUser
+        (
+            Username, PasswordHash, FullName, Role, Status,
+            Phone, Address, CreatedByUserId
+        )
+        VALUES
+        (
+            @Username, @PasswordHash, @FullName,
+            'ClientUser', 'Active',
+            @Phone, @Address, @AdminUserId
+        );
+
+        SET @UserId = SCOPE_IDENTITY();
+
+        -- Return new user id
+        SELECT @UserId AS UserId;
+    END TRY
+    BEGIN CATCH
+        -- Duplicate username
+        IF ERROR_NUMBER() IN (2627, 2601)
+        BEGIN
+            SELECT -1 AS UserId;
+
+            INSERT INTO dbo.tblSystemLog
+            (
+                Category, Type, Message, Source
+            )
+            VALUES
+            (
+                'User',
+                'Duplicate',
+                'Duplicate username attempt: "' + @Username + '"',
+                'Server'
+            );
+        END
+        ELSE
+        BEGIN
+            SELECT 0 AS UserId;
+
+            INSERT INTO dbo.tblSystemLog
+            (
+                Category, Type, Message, Source
+            )
+            VALUES
+            (
+                'System',
+                'Error',
+                'sp_RegisterClientUser: ' + ERROR_MESSAGE(),
+                'Server'
+            );
+        END
+    END CATCH
+END
+GO
+
 
 /* ============================================================
    PART 4: CREATE VIEWS
    ============================================================ */
 
 -- vw_SessionReport
-CREATE VIEW vw_SessionReport AS
-SELECT 
+CREATE VIEW dbo.vw_SessionReport
+AS
+SELECT
     s.SessionId,
     s.UserId,
     u.Username,
@@ -691,85 +859,638 @@ SELECT
     s.Status,
     s.TerminationReason,
     br.RatePerMinute,
+    bil.BillingRateId,
+    bil.BillableMinutes,
     bil.Amount AS BillingAmount,
     bil.Status AS BillingStatus
 FROM dbo.tblSession s
-INNER JOIN dbo.tblUser u ON s.UserId = u.UserId
-INNER JOIN dbo.tblClientMachine c ON s.ClientMachineId = c.ClientMachineId
-LEFT JOIN dbo.tblBillingRate br ON br.IsActive = 1
-LEFT JOIN dbo.tblBillingRecord bil ON s.SessionId = bil.SessionId;
+INNER JOIN dbo.tblUser u
+    ON u.UserId = s.UserId
+INNER JOIN dbo.tblClientMachine c
+    ON c.ClientMachineId = s.ClientMachineId
+LEFT JOIN dbo.tblBillingRecord bil
+    ON bil.SessionId = s.SessionId
+LEFT JOIN dbo.tblBillingRate br
+    ON br.BillingRateId = bil.BillingRateId;
 GO
 
+
 -- vw_ActiveSessionsSummary
-CREATE VIEW vw_ActiveSessionsSummary AS
-SELECT 
+CREATE VIEW dbo.vw_ActiveSessionsSummary
+AS
+SELECT
     COUNT(*) AS TotalActiveSessions,
     COUNT(DISTINCT s.UserId) AS UniqueUsers,
     COUNT(DISTINCT s.ClientMachineId) AS ActiveClients,
-    SUM(CAST(DATEDIFF(MINUTE, s.StartedAt, GETDATE()) * br.RatePerMinute AS DECIMAL(10,2))) AS TotalCurrentBilling
+    SUM(CAST(DATEDIFF(MINUTE, s.StartedAt, GETDATE()) * ISNULL(br.RatePerMinute, 0) AS DECIMAL(10,2))) AS TotalCurrentBilling
 FROM dbo.tblSession s
-LEFT JOIN dbo.tblBillingRate br ON br.IsActive = 1 AND br.IsDefault = 1
+LEFT JOIN dbo.tblBillingRate br
+    ON br.IsActive = 1 AND br.IsDefault = 1
 WHERE s.Status = 'Active';
 GO
+
 
 /* ============================================================
    PART 5: INSERT SEED DATA
    ============================================================ */
-
--- Admin User
+   -- Admin User
 -- Password: Admin@123456
--- Hash generated with: BCrypt.Net-Next (WorkFactor=12)
-INSERT INTO dbo.tblUser 
-(Username, PasswordHash, FullName, Role, Status, Phone, Address, CreatedAt)
-VALUES 
-('admin', '$2a$12$R9h/cIPz0gi.URNNX3kh2OPST9/PgBkqquzi.Ss7KIUgO2t0jKMm2', 'System Administrator', 'Admin', 'Active', '1234567890', 'Admin Office', GETDATE());
-
--- Sample Users
+-- Client Users
 -- Password: User1@123456
 -- Password: User2@123456
 -- Password: User3@123456
 -- Hash generated with: BCrypt.Net-Next (WorkFactor=12)
-INSERT INTO dbo.tblUser 
-(Username, PasswordHash, FullName, Role, Status, Phone, Address, CreatedAt)
-VALUES 
-('user1', '$2a$12$HNu1AEwqg7FaRJx0vxFPauZMvAiEYJdM9k4kqJxVz1nH7L5nVJyR.', 'John Doe', 'ClientUser', 'Active', '1111111111', '123 Main St', GETDATE()),
-('user2', '$2a$12$kCvZqVz.QNSHpI2kbDJbvOCYvN5qQXcnCn7OPdJvWvhDQSoWVJIui', 'Jane Smith', 'ClientUser', 'Active', '2222222222', '456 Oak Ave', GETDATE()),
-('user3', '$2a$12$pVS9HB0VJcbQGGYO7jLDyuS3Z8x9n2B7CmKPpZwWQNvJhFkXLJG4u', 'Bob Johnson', 'ClientUser', 'Active', '3333333333', '789 Pine Rd', GETDATE());
+
+-- Admin User
+INSERT INTO dbo.tblUser
+    (Username, PasswordHash, FullName, Role, Status, Phone, Address, CreatedAt)
+VALUES
+    ('Admin', '$2a$12$cidj..ohW.bgKXVPBdVyH.VbvmIrOxVmFGqV3Y/lZDGC0utA685vm', 'System Administrator', 'Admin', 'Active', '1234567890', 'Admin Office', GETDATE());
+GO
+
+-- Sample Users
+INSERT INTO dbo.tblUser
+    (Username, PasswordHash, FullName, Role, Status, Phone, Address, CreatedAt)
+VALUES
+    ('User1', '$2a$12$NS2X3ReuBdhFzxdrmy03XuTNUhu.nNyOsgWEL4eAVH3bC46Ua2rWW', 'John Doe', 'ClientUser', 'Active', '1111111111', '123 Main St', GETDATE()),
+    ('User2', '$2a$12$Y69.hwCn9FHHa8lHLyI.XOxPzCd8YdJY1vSchS9U7k10N5/bdpAYC', 'Jane Smith', 'ClientUser', 'Active', '2222222222', '456 Oak Ave', GETDATE()),
+    ('User3', '$2a$12$5nX6ETKBzk9d8yHfJMN65uNr6Gk4lhxr4siODdQxbj42/Ewpgn9k6', 'Bob Johnson', 'ClientUser', 'Active', '3333333333', '789 Pine Rd', GETDATE());
+GO
 
 -- Client Machines
-INSERT INTO dbo.tblClientMachine 
-(ClientCode, MachineName, IPAddress, MACAddress, Location, Status, IsActive)
-VALUES 
-('CLIENT001', 'WORKSTATION01', '192.168.1.10', '00:1A:2B:3C:4D:5E', 'Floor 1', 'Idle', 1),
-('CLIENT002', 'WORKSTATION02', '192.168.1.11', '00:1A:2B:3C:4D:5F', 'Floor 1', 'Idle', 1),
-('CLIENT003', 'WORKSTATION03', '192.168.1.12', '00:1A:2B:3C:4D:60', 'Floor 2', 'Idle', 1);
+INSERT INTO dbo.tblClientMachine
+    (ClientCode, MachineName, IPAddress, MACAddress, Location, Status, IsActive)
+VALUES
+    ('CL001', 'CLIENT-PC-01', '192.168.1.100', '00:1A:2B:3C:4D:5E', 'Floor 1', 'Idle', 1),
+    ('CL002', 'CLIENT-PC-02', '192.168.1.101', '00:1A:2B:3C:4D:5F', 'Floor 1', 'Idle', 1),
+    ('CL003', 'CLIENT-PC-03', '192.168.1.102', '00:1A:2B:3C:4D:60', 'Floor 2', 'Idle', 1);
+GO
 
 -- Billing Rates
-INSERT INTO dbo.tblBillingRate 
-(Name, RatePerMinute, Currency, IsActive, IsDefault)
-VALUES 
-('Standard Rate', 0.50, 'USD', 1, 1),
-('Premium Rate', 1.00, 'USD', 1, 0),
-('Discount Rate', 0.25, 'USD', 1, 0);
+INSERT INTO dbo.tblBillingRate
+    (Name, RatePerMinute, Currency, IsActive, IsDefault)
+VALUES
+    ('Standard Rate', 0.50, 'USD', 1, 1),
+    ('Premium Rate', 1.00, 'USD', 1, 0),
+    ('Discount Rate', 0.25, 'USD', 1, 0);
+GO
 
 -- Activity Types
-INSERT INTO dbo.tblActivityType 
-(Name, Description, DefaultSeverity, IsActive)
-VALUES 
-('UnauthorizedAccess', 'Attempt to access unauthorized resources', 'High', 1),
-('SessionExpired', 'Session expired due to timeout', 'Medium', 1),
-('LoginFailure', 'Failed login attempt', 'Medium', 1),
-('DataTransfer', 'Large data transfer detected', 'Low', 1),
-('SystemError', 'System error occurred', 'High', 1),
-('ConfigChange', 'Configuration change detected', 'Medium', 1);
+INSERT INTO dbo.tblActivityType
+    (Name, Description, DefaultSeverity, IsActive)
+VALUES
+    ('UnauthorizedAccess', 'Attempt to access unauthorized resources', 'High', 1),
+    ('SessionExpired', 'Session expired due to timeout', 'Medium', 1),
+    ('LoginFailure', 'Failed login attempt', 'Medium', 1),
+    ('DataTransfer', 'Large data transfer detected', 'Low', 1),
+    ('SystemError', 'System error occurred', 'High', 1),
+    ('ConfigChange', 'Configuration change detected', 'Medium', 1);
+GO
 
 /* ============================================================
    SUMMARY
    ============================================================ */
-SELECT 
+SELECT
     'Database Setup Complete' AS Status,
     (SELECT COUNT(*) FROM dbo.tblUser) AS TotalUsers,
     (SELECT COUNT(*) FROM dbo.tblClientMachine) AS TotalClients,
     (SELECT COUNT(*) FROM dbo.tblBillingRate) AS TotalBillingRates,
     (SELECT COUNT(*) FROM dbo.tblActivityType) AS TotalActivityTypes;
+GO
+
+
+-- ============================================================
+-- PATCH: Fix sp_RegisterClientUser CHECK constraint violation
+-- The tblSystemLog.Category column only allows:
+--   Auth | Session | Billing | Security | System
+-- The existing procedure used 'User' which violates the CHECK.
+-- ============================================================
+
+USE ClientServerSessionDB;
+GO
+
+-- Also add the activity types needed for illegal activity detection
+-- if they are not already present
+IF NOT EXISTS (SELECT 1 FROM dbo.tblActivityType WHERE Name = 'ProxySettingsEnabled')
+    INSERT INTO dbo.tblActivityType (Name, Description, DefaultSeverity, IsActive)
+    VALUES ('ProxySettingsEnabled', 'System proxy settings were enabled during session', 'High', 1);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.tblActivityType WHERE Name = 'ProxyAutoConfigDetected')
+    INSERT INTO dbo.tblActivityType (Name, Description, DefaultSeverity, IsActive)
+    VALUES ('ProxyAutoConfigDetected', 'PAC/Auto-config proxy URL detected during session', 'Medium', 1);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.tblActivityType WHERE Name = 'BlacklistedProcessRunning')
+    INSERT INTO dbo.tblActivityType (Name, Description, DefaultSeverity, IsActive)
+    VALUES ('BlacklistedProcessRunning', 'A blacklisted proxy/VPN process was running during session', 'High', 1);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.tblActivityType WHERE Name = 'VpnAdapterActive')
+    INSERT INTO dbo.tblActivityType (Name, Description, DefaultSeverity, IsActive)
+    VALUES ('VpnAdapterActive', 'A VPN/tunneling network adapter was active during session', 'High', 1);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.tblActivityType WHERE Name = 'RepeatedLoginFailure')
+    INSERT INTO dbo.tblActivityType (Name, Description, DefaultSeverity, IsActive)
+    VALUES ('RepeatedLoginFailure', 'Repeated failed login attempts from a client machine', 'High', 1);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.tblActivityType WHERE Name = 'CameraUnavailable')
+    INSERT INTO dbo.tblActivityType (Name, Description, DefaultSeverity, IsActive)
+    VALUES ('CameraUnavailable', 'Webcam was not available at login time', 'Low', 1);
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.tblActivityType WHERE Name = 'ImageCaptureFailed')
+    INSERT INTO dbo.tblActivityType (Name, Description, DefaultSeverity, IsActive)
+    VALUES ('ImageCaptureFailed', 'Webcam capture failed after retry', 'Low', 1);
+GO
+
+-- Fix the stored procedure: change Category from 'User' to 'Auth'
+-- (tblSystemLog.Category CHECK only allows Auth/Session/Billing/Security/System)
+ALTER PROCEDURE dbo.sp_RegisterClientUser
+    @Username     NVARCHAR(50),
+    @PasswordHash NVARCHAR(255),
+    @FullName     NVARCHAR(100) = NULL,
+    @Phone        NVARCHAR(30)  = NULL,
+    @Address      NVARCHAR(200) = NULL,
+    @AdminUserId  INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DECLARE @UserId INT;
+    BEGIN TRY
+        INSERT INTO dbo.tblUser
+            (Username, PasswordHash, FullName, Role, Status,
+             Phone, Address, CreatedByUserId)
+        VALUES
+            (@Username, @PasswordHash, @FullName, 'ClientUser', 'Active',
+             @Phone, @Address, @AdminUserId);
+
+        SET @UserId = SCOPE_IDENTITY();
+        SELECT @UserId AS UserId;
+    END TRY
+    BEGIN CATCH
+        IF ERROR_NUMBER() IN (2627, 2601)
+        BEGIN
+            SELECT -1 AS UserId;
+            INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+            VALUES ('Auth', 'DuplicateUser',           -- fixed: was 'User'
+                'Duplicate username attempt: "' + @Username + '"', 'Server');
+        END
+        ELSE
+        BEGIN
+            SELECT 0 AS UserId;
+            INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+            VALUES ('System', 'Error',
+                'sp_RegisterClientUser: ' + ERROR_MESSAGE(), 'Server');
+        END
+    END CATCH
+END
+GO
+
+-- Verification
+SELECT 'PATCH COMPLETE' AS Status;
+SELECT Name, DefaultSeverity FROM dbo.tblActivityType ORDER BY Name;
+GO
+
+
+-- ============================================================
+-- Detection Activity Types PATCH
+-- Run against ClientServerSessionDB after the main SQL script.
+-- Adds activity types for every new detection rule.
+-- ============================================================
+
+USE ClientServerSessionDB;
+GO
+
+-- ── Helper procedure to upsert an activity type ───────────────
+CREATE OR ALTER PROCEDURE dbo.sp_UpsertActivityType
+    @Name           NVARCHAR(100),
+    @Description    NVARCHAR(500),
+    @DefaultSeverity NVARCHAR(10)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF EXISTS (SELECT 1 FROM dbo.tblActivityType WHERE Name = @Name)
+        UPDATE dbo.tblActivityType
+        SET Description    = @Description,
+            DefaultSeverity = @DefaultSeverity,
+            IsActive        = 1
+        WHERE Name = @Name;
+    ELSE
+        INSERT INTO dbo.tblActivityType (Name, Description, DefaultSeverity, IsActive)
+        VALUES (@Name, @Description, @DefaultSeverity, 1);
+END
+GO
+
+-- ── FR-12 Rule 2 — Proxy ──────────────────────────────────────
+EXEC dbo.sp_UpsertActivityType
+    'ProxySettingsEnabled',
+    'WinINet system proxy settings were enabled during an active session',
+    'High';
+GO
+
+EXEC dbo.sp_UpsertActivityType
+    'WinHttpProxyEnabled',
+    'WinHTTP proxy configured (used by services and PowerShell) during session',
+    'High';
+GO
+
+EXEC dbo.sp_UpsertActivityType
+    'ProxyAutoConfigDetected',
+    'PAC / auto-config proxy script URL set during active session',
+    'Medium';
+GO
+
+-- ── FR-12 Rule 1 — VPN / Tunneling ───────────────────────────
+EXEC dbo.sp_UpsertActivityType
+    'VpnAdapterActive',
+    'A VPN, TAP, TUN, or Wintun network adapter was active during session',
+    'High';
+GO
+
+-- ── FR-12 Rule 3 — Blacklisted processes ─────────────────────
+EXEC dbo.sp_UpsertActivityType
+    'BlacklistedProcessRunning',
+    'A blacklisted proxy, VPN, Tor, or remote-access process was running',
+    'High';
+GO
+
+-- ── Rule 5 — Mobile hotspot ───────────────────────────────────
+EXEC dbo.sp_UpsertActivityType
+    'MobileHotspotDetected',
+    'Client connected via mobile hotspot instead of authorised LAN',
+    'High';
+GO
+
+-- ── Rule 6 — Network switching ────────────────────────────────
+EXEC dbo.sp_UpsertActivityType
+    'NetworkTypeSwitched',
+    'Network connection type changed during session (e.g. Ethernet to WiFi)',
+    'Medium';
+GO
+
+-- ── Rule 7 — Clock tamper ─────────────────────────────────────
+EXEC dbo.sp_UpsertActivityType
+    'SystemTimeTampered',
+    'System clock was moved forward or backward during an active session',
+    'High';
+GO
+
+-- ── Rule 8 — Remote Desktop ───────────────────────────────────
+EXEC dbo.sp_UpsertActivityType
+    'RemoteDesktopSessionDetected',
+    'Client application is running inside an RDP / Remote Desktop session',
+    'High';
+GO
+
+-- ── Rule 9 — Virtual webcam ───────────────────────────────────
+EXEC dbo.sp_UpsertActivityType
+    'VirtualCameraDetected',
+    'A virtual or fake webcam (OBS, DroidCam, ManyCam, etc.) was detected',
+    'Medium';
+GO
+
+-- ── FR-12 Rule 4 — Repeated login failures ────────────────────
+EXEC dbo.sp_UpsertActivityType
+    'RepeatedLoginFailure',
+    'Repeated failed login attempts from a client machine in a short window',
+    'High';
+GO
+
+-- ── Webcam availability ───────────────────────────────────────
+EXEC dbo.sp_UpsertActivityType
+    'CameraUnavailable',
+    'Webcam was not available at login time (camera not connected)',
+    'Low';
+GO
+
+EXEC dbo.sp_UpsertActivityType
+    'ImageCaptureFailed',
+    'Webcam image capture failed even after one retry',
+    'Low';
+GO
+
+-- ── Verify ────────────────────────────────────────────────────
+SELECT Name, DefaultSeverity, Description
+FROM   dbo.tblActivityType
+ORDER  BY DefaultSeverity DESC, Name;
+GO
+
+SELECT 'PATCH COMPLETE — ' + CAST(COUNT(*) AS VARCHAR) + ' activity types registered' AS Status
+FROM   dbo.tblActivityType;
+GO
+
+/* ============================================================
+   PART 3B: BILLING RATE MANAGEMENT PROCEDURES
+   ============================================================ */
+
+-- ═══════════════════════════════════════════════════════════
+--  sp_InsertBillingRate
+--  Inserts a new billing rate. If IsDefault=1, sets all others
+--  to IsDefault=0 before insertion.
+-- ═══════════════════════════════════════════════════════════
+CREATE or alter PROCEDURE dbo.sp_InsertBillingRate
+    @Name NVARCHAR(100),
+    @RatePerMinute DECIMAL(10,2),
+    @Currency NVARCHAR(10),
+    @EffectiveFrom DATE = NULL,
+    @EffectiveTo DATE = NULL,
+    @IsDefault BIT = 0,
+    @SetByAdminUserId INT,
+    @Notes NVARCHAR(500) = NULL,
+    @NewBillingRateId INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        -- Validate rate
+        IF @RatePerMinute < 0
+        BEGIN
+            RAISERROR('Rate cannot be negative.', 16, 1);
+            RETURN;
+        END;
+
+        -- If this is being set as default, unset all others
+        IF @IsDefault = 1
+        BEGIN
+            UPDATE dbo.tblBillingRate SET IsDefault = 0;
+        END;
+
+        -- Insert new rate
+        INSERT INTO dbo.tblBillingRate
+            (Name, RatePerMinute, Currency, EffectiveFrom, EffectiveTo, IsActive, IsDefault, SetByAdminUserId, Notes, CreatedAt)
+        VALUES
+            (@Name, @RatePerMinute, @Currency, @EffectiveFrom, @EffectiveTo, 1, @IsDefault, @SetByAdminUserId, @Notes, GETDATE());
+
+        SET @NewBillingRateId = SCOPE_IDENTITY();
+
+        -- Log the action
+        --INSERT INTO dbo.tblSystemLog
+        --    (Category, Type, Message, Source)
+        --VALUES
+        --    ('Billing', 'RateCreated', 
+        --     'Billing rate created: ' + @Name + ' (' + CAST(@RatePerMinute AS NVARCHAR(20)) + ' ' + @Currency + '/min)',
+        --     'Admin');
+
+        SELECT @NewBillingRateId AS BillingRateId;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source)
+        VALUES
+            ('Billing', 'Error', 'Error in sp_InsertBillingRate: ' + ERROR_MESSAGE(), 'Admin');
+
+        SELECT -1 AS BillingRateId;
+    END CATCH
+END;
+GO
+
+-- ═══════════════════════════════════════════════════════════
+--  sp_UpdateBillingRate
+--  Updates an existing billing rate. If IsDefault=1, unsets
+--  other defaults before updating.
+-- ═══════════════════════════════════════════════════════════
+CREATE OR ALTER PROCEDURE dbo.sp_UpdateBillingRate
+    @BillingRateId INT,
+    @Name NVARCHAR(100),
+    @RatePerMinute DECIMAL(10,2),
+    @Currency NVARCHAR(10),
+    @EffectiveFrom DATE = NULL,
+    @EffectiveTo DATE = NULL,
+    @IsActive BIT,
+    @IsDefault BIT = 0,
+    @Notes NVARCHAR(500) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @OldIsDefault BIT;
+
+    BEGIN TRY
+        -- Validate inputs
+        IF @RatePerMinute < 0
+        BEGIN
+            RAISERROR('Rate cannot be negative.', 16, 1);
+            RETURN;
+        END;
+
+        IF NOT EXISTS (SELECT 1 FROM dbo.tblBillingRate WHERE BillingRateId = @BillingRateId)
+        BEGIN
+            RAISERROR('Billing rate not found.', 16, 1);
+            RETURN;
+        END;
+
+        -- Get the old IsDefault value
+        SELECT @OldIsDefault = IsDefault FROM dbo.tblBillingRate WHERE BillingRateId = @BillingRateId;
+
+        -- If setting this as default and it wasn't before, unset others
+        IF @IsDefault = 1 AND @OldIsDefault = 0
+        BEGIN
+            UPDATE dbo.tblBillingRate SET IsDefault = 0 WHERE BillingRateId <> @BillingRateId;
+        END;
+
+        -- If unsetting as default, ensure at least one other is default
+        IF @IsDefault = 0 AND @OldIsDefault = 1
+        BEGIN
+            -- Check if there are other active rates
+            IF NOT EXISTS (SELECT 1 FROM dbo.tblBillingRate WHERE IsDefault = 1 AND BillingRateId <> @BillingRateId)
+            BEGIN
+                RAISERROR('At least one default rate must exist. Cannot unset as default.', 16, 1);
+                RETURN;
+            END;
+        END;
+
+        -- Update the rate
+        UPDATE dbo.tblBillingRate
+        SET Name = @Name,
+            RatePerMinute = @RatePerMinute,
+            Currency = @Currency,
+            EffectiveFrom = @EffectiveFrom,
+            EffectiveTo = @EffectiveTo,
+            IsActive = @IsActive,
+            IsDefault = @IsDefault,
+            Notes = @Notes
+        WHERE BillingRateId = @BillingRateId;
+
+        -- Log the action
+        --INSERT INTO dbo.tblSystemLog
+        --    (Category, Type, Message, Source)
+        --VALUES
+        --    ('Billing', 'RateUpdated',
+        --     'Billing rate updated: ' + @Name + ' (' + CAST(@RatePerMinute AS NVARCHAR(20)) + ' ' + @Currency + '/min)',
+        --     'Admin');
+
+        SELECT 1 AS Result;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source)
+        VALUES
+            ('Billing', 'Error', 'Error in sp_UpdateBillingRate: ' + ERROR_MESSAGE(), 'Admin');
+
+        SELECT 0 AS Result;
+    END CATCH
+END;
+GO
+
+
+-- ═══════════════════════════════════════════════════════════
+--  sp_DeleteBillingRate
+--  Deletes a billing rate only if:
+--  1. At least one other rate exists
+--  2. If this rate is default, at least one other default exists
+-- ═══════════════════════════════════════════════════════════
+CREATE OR Alter PROCEDURE dbo.sp_DeleteBillingRate
+    @BillingRateId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @RateName NVARCHAR(100),
+            @RateCount INT,
+            @IsDefault BIT,
+            @DefaultCount INT,
+            @BillingRecordCount INT;
+
+    BEGIN TRY
+        -- Get rate details
+        SELECT @RateName = Name, @IsDefault = IsDefault FROM dbo.tblBillingRate WHERE BillingRateId = @BillingRateId;
+
+        IF @RateName IS NULL
+        BEGIN
+            RAISERROR('Billing rate not found.', 16, 1);
+            RETURN;
+        END;
+
+        -- Count total rates
+        SELECT @RateCount = COUNT(*) FROM dbo.tblBillingRate;
+
+        -- Check if this is the only rate
+        IF @RateCount = 1
+        BEGIN
+            RAISERROR('Cannot delete the last billing rate. At least one rate must exist.', 16, 1);
+            RETURN;
+        END;
+
+        -- If this rate is default, check if another default exists
+        IF @IsDefault = 1
+        BEGIN
+            SELECT @DefaultCount = COUNT(*) FROM dbo.tblBillingRate WHERE IsDefault = 1;
+
+            IF @DefaultCount = 1
+            BEGIN
+                RAISERROR('Cannot delete the only default rate. At least one default rate must exist.', 16, 1);
+                RETURN;
+            END;
+        END;
+
+        -- Check if this rate is used in billing records (informational, but allow deletion)
+        SELECT @BillingRecordCount = COUNT(*) FROM dbo.tblBillingRecord WHERE BillingRateId = @BillingRateId;
+
+        -- Delete the rate
+        DELETE FROM dbo.tblBillingRate WHERE BillingRateId = @BillingRateId;
+
+        -- Log the action
+        --INSERT INTO dbo.tblSystemLog
+        --    (Category, Type, Message, Source)
+        --VALUES
+        --    ('Billing', 'RateDeleted',
+        --     'Billing rate deleted: ' + @RateName + ' (was used in ' + CAST(@BillingRecordCount AS NVARCHAR(10)) + ' records)',
+        --     'Admin');
+
+        SELECT 1 AS Result;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source)
+        VALUES
+            ('Billing', 'Error', 'Error in sp_DeleteBillingRate: ' + ERROR_MESSAGE(), 'Admin');
+
+        SELECT 0 AS Result;
+    END CATCH
+END;
+GO
+
+
+-- ═══════════════════════════════════════════════════════════
+--  sp_GetAllBillingRates
+--  Retrieves all billing rates ordered by IsDefault DESC, then by CreatedAt DESC
+-- ═══════════════════════════════════════════════════════════
+CREATE OR ALTER PROCEDURE dbo.sp_GetAllBillingRates
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        SELECT BillingRateId,
+               Name,
+               RatePerMinute,
+               Currency,
+               EffectiveFrom,
+               EffectiveTo,
+               IsActive,
+               IsDefault,
+               SetByAdminUserId,
+               Notes,
+               CreatedAt
+        FROM dbo.tblBillingRate
+        ORDER BY IsDefault DESC, CreatedAt DESC;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source)
+        VALUES
+            ('Billing', 'Error', 'Error in sp_GetAllBillingRates: ' + ERROR_MESSAGE(), 'Admin');
+    END CATCH
+END;
+GO
+
+
+-- ═══════════════════════════════════════════════════════════
+--  sp_SetDefaultBillingRate
+--  Sets a specific rate as default and unsets all others
+-- ═══════════════════════════════════════════════════════════
+CREATE or Alter PROCEDURE dbo.sp_SetDefaultBillingRate
+    @BillingRateId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @RateName NVARCHAR(100);
+
+    BEGIN TRY
+        IF NOT EXISTS (SELECT 1 FROM dbo.tblBillingRate WHERE BillingRateId = @BillingRateId)
+        BEGIN
+            RAISERROR('Billing rate not found.', 16, 1);
+            RETURN;
+        END;
+
+        SELECT @RateName = Name FROM dbo.tblBillingRate WHERE BillingRateId = @BillingRateId;
+
+        -- Unset all other defaults
+        UPDATE dbo.tblBillingRate SET IsDefault = 0 WHERE BillingRateId <> @BillingRateId;
+
+        -- Set this one as default
+        UPDATE dbo.tblBillingRate SET IsDefault = 1 WHERE BillingRateId = @BillingRateId;
+
+        -- Log the action
+        --INSERT INTO dbo.tblSystemLog
+        --    (Category, Type, Message, Source)
+        --VALUES
+        --    ('Billing', 'DefaultRateSet', 'Default billing rate set to: ' + @RateName, 'Admin');
+
+        SELECT 1 AS Result;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source)
+        VALUES
+            ('Billing', 'Error', 'Error in sp_SetDefaultBillingRate: ' + ERROR_MESSAGE(), 'Admin');
+
+        SELECT 0 AS Result;
+    END CATCH
+END;
 GO

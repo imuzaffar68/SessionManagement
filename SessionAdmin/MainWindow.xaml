@@ -1,260 +1,1686 @@
-﻿<Window x:Class="SessionAdmin.MainWindow"
+<Window x:Class="SessionAdmin.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Session Management - Admin Dashboard" Height="700" Width="1200"
-        WindowStartupLocation="CenterScreen">
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="*"/>
-        </Grid.RowDefinitions>
+        Title="NetCafé Admin — Session Management"
+        Height="820" Width="1380"
+        MinHeight="700" MinWidth="1100"
+        WindowStartupLocation="CenterScreen"
+        Background="#0F1117">
 
-        <!-- Header -->
-        <Border Grid.Row="0" Background="#34495E" Padding="20">
+    <Window.Resources>
+        <!-- ═══ DESIGN TOKENS ═══ -->
+        <Color x:Key="BgDeep">#0F1117</Color>
+        <Color x:Key="BgCard">#171B26</Color>
+        <Color x:Key="BgElevated">#1E2433</Color>
+        <Color x:Key="BgHover">#252D42</Color>
+        <Color x:Key="Accent">#4F8EF7</Color>
+        <Color x:Key="AccentHot">#6EA6FF</Color>
+        <Color x:Key="AccentGreen">#34D399</Color>
+        <Color x:Key="AccentAmber">#FBBF24</Color>
+        <Color x:Key="AccentRed">#F87171</Color>
+        <Color x:Key="AccentPurple">#A78BFA</Color>
+        <Color x:Key="TextPrimary">#F1F5F9</Color>
+        <Color x:Key="TextSecondary">#94A3B8</Color>
+        <Color x:Key="TextMuted">#475569</Color>
+        <Color x:Key="Border">#2D3748</Color>
+        <Color x:Key="SidebarBg">#13161F</Color>
+
+        <SolidColorBrush x:Key="BgDeepBrush" Color="#0F1117"/>
+        <SolidColorBrush x:Key="BgCardBrush" Color="#171B26"/>
+        <SolidColorBrush x:Key="BgElevatedBrush" Color="#1E2433"/>
+        <SolidColorBrush x:Key="BgHoverBrush" Color="#252D42"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#4F8EF7"/>
+        <SolidColorBrush x:Key="AccentGreenBrush" Color="#34D399"/>
+        <SolidColorBrush x:Key="AccentAmberBrush" Color="#FBBF24"/>
+        <SolidColorBrush x:Key="AccentRedBrush" Color="#F87171"/>
+        <SolidColorBrush x:Key="AccentPurpleBrush" Color="#A78BFA"/>
+        <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F1F5F9"/>
+        <SolidColorBrush x:Key="TextSecondaryBrush" Color="#94A3B8"/>
+        <SolidColorBrush x:Key="TextMutedBrush" Color="#475569"/>
+        <SolidColorBrush x:Key="BorderBrush2" Color="#2D3748"/>
+        <SolidColorBrush x:Key="SidebarBgBrush" Color="#13161F"/>
+
+        <!-- ═══ GLOBAL FONT ═══ -->
+        <Style TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        </Style>
+
+        <!-- ═══ CARD STYLE ═══ -->
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource BgCardBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush2}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="12"/>
+            <Setter Property="Padding" Value="20"/>
+        </Style>
+
+        <Style x:Key="CardElevated" TargetType="Border" BasedOn="{StaticResource Card}">
+            <Setter Property="Background" Value="{StaticResource BgElevatedBrush}"/>
+        </Style>
+
+        <!-- ═══ SIDEBAR NAV BUTTON ═══ -->
+        <Style x:Key="NavBtn" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="13.5"/>
+            <Setter Property="Height" Value="46"/>
+            <Setter Property="HorizontalContentAlignment" Value="Left"/>
+            <Setter Property="Padding" Value="16,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" Background="Transparent" CornerRadius="10"
+                                Margin="6,2" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#1E293B"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#253048"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="NavBtnActive" TargetType="Button" BasedOn="{StaticResource NavBtn}">
+            <Setter Property="Foreground" Value="{StaticResource AccentBrush}"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" CornerRadius="10" Margin="6,2"
+                                Padding="{TemplateBinding Padding}">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#1A2E4A" Offset="0"/>
+                                    <GradientStop Color="#0F1117" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <Border.BorderBrush>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Color="#4F8EF7" Offset="0"/>
+                                    <GradientStop Color="Transparent" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.BorderBrush>
+                            <Border.BorderThickness>2,0,0,0</Border.BorderThickness>
+                            <ContentPresenter VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- ═══ PRIMARY BUTTON ═══ -->
+        <Style x:Key="BtnPrimary" TargetType="Button">
+            <Setter Property="Background" Value="#4F8EF7"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="20,9"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root" Background="{TemplateBinding Background}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#6EA6FF"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#3A7AE0"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="BtnDanger" TargetType="Button" BasedOn="{StaticResource BtnPrimary}">
+            <Setter Property="Background" Value="#DC2626"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#EF4444"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="BtnSuccess" TargetType="Button" BasedOn="{StaticResource BtnPrimary}">
+            <Setter Property="Background" Value="#059669"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#10B981"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="BtnGhost" TargetType="Button" BasedOn="{StaticResource BtnPrimary}">
+            <Setter Property="Background" Value="#1E2433"/>
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#252D42"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="BtnAmber" TargetType="Button" BasedOn="{StaticResource BtnPrimary}">
+            <Setter Property="Background" Value="#B45309"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#D97706"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="BtnPurple" TargetType="Button" BasedOn="{StaticResource BtnPrimary}">
+            <Setter Property="Background" Value="#7C3AED"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#8B5CF6"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- ═══ INPUT STYLE ═══ -->
+        <Style x:Key="ModernInput" TargetType="TextBox">
+            <Setter Property="Background" Value="#1E2433"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="BorderBrush" Value="#2D3748"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="CaretBrush" Value="#4F8EF7"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8">
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
+                                          VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter Property="BorderBrush" Value="#4F8EF7"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ModernPassword" TargetType="PasswordBox">
+            <Setter Property="Background" Value="#1E2433"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="BorderBrush" Value="#2D3748"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="PasswordBox">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8">
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
+                                          VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter Property="BorderBrush" Value="#4F8EF7"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ModernCombo" TargetType="ComboBox">
+            <Setter Property="Background" Value="#1E2433"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="BorderBrush" Value="#2D3748"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Padding" Value="10,7"/>
+            <Setter Property="Height" Value="38"/>
+        </Style>
+
+        <!-- ═══ DATAGRID STYLE ═══ -->
+        <Style TargetType="DataGrid">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="RowBackground" Value="Transparent"/>
+            <Setter Property="AlternatingRowBackground" Value="#0D1420"/>
+            <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+            <Setter Property="HorizontalGridLinesBrush" Value="#1E2433"/>
+            <Setter Property="VerticalGridLinesBrush" Value="Transparent"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="12.5"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="RowHeight" Value="44"/>
+            <Setter Property="SelectionMode" Value="Single"/>
+            <Setter Property="CanUserResizeRows" Value="False"/>
+            <Setter Property="HeadersVisibility" Value="Column"/>
+        </Style>
+
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#1E2433"/>
+            <Setter Property="Foreground" Value="#94A3B8"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Padding" Value="14,10"/>
+            <Setter Property="BorderBrush" Value="#2D3748"/>
+            <Setter Property="BorderThickness" Value="0,0,0,2"/>
+        </Style>
+
+        <Style TargetType="DataGridRow">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#1A2030"/>
+                </Trigger>
+                <Trigger Property="IsSelected" Value="True">
+                    <Setter Property="Background" Value="#1D3461"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style TargetType="DataGridCell">
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="14,0"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+        </Style>
+
+        <!-- ═══ CHECKBOX ═══ -->
+        <Style TargetType="CheckBox">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+
+        <!-- ═══ DATE PICKER ═══ -->
+        <Style TargetType="DatePicker">
+            <Setter Property="Background" Value="#1E2433"/>
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}"/>
+            <Setter Property="BorderBrush" Value="#2D3748"/>
+            <Setter Property="FontFamily" Value="Segoe UI"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Height" Value="38"/>
+        </Style>
+
+        <!-- ═══ LABEL / BADGE STYLES ═══ -->
+        <Style x:Key="BadgeGreen" TargetType="Border">
+            <Setter Property="Background" Value="#064E3B"/>
+            <Setter Property="BorderBrush" Value="#065F46"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="8,3"/>
+        </Style>
+        <Style x:Key="BadgeRed" TargetType="Border">
+            <Setter Property="Background" Value="#450A0A"/>
+            <Setter Property="BorderBrush" Value="#7F1D1D"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="8,3"/>
+        </Style>
+        <Style x:Key="BadgeAmber" TargetType="Border">
+            <Setter Property="Background" Value="#451A03"/>
+            <Setter Property="BorderBrush" Value="#78350F"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="8,3"/>
+        </Style>
+        <Style x:Key="BadgeBlue" TargetType="Border">
+            <Setter Property="Background" Value="#1E3A5F"/>
+            <Setter Property="BorderBrush" Value="#1D4ED8"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="8,3"/>
+        </Style>
+
+        <!-- ═══ SECTION LABEL ═══ -->
+        <Style x:Key="SectionLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#475569"/>
+            <!--<Setter Property="LetterSpacing" Value="1"/>-->
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+
+        <!-- ═══ SCROLLBAR ═══ -->
+        <Style TargetType="ScrollBar">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Width" Value="6"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="220"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ══════════════════════════════════════════════════════════
+             SIDEBAR
+        ══════════════════════════════════════════════════════════ -->
+        <Border Grid.Column="0" Background="#13161F"
+                BorderBrush="#1E2433" BorderThickness="0,0,1,0">
             <Grid>
-                <TextBlock Text="Admin Dashboard - Session Management System" 
-                          Foreground="White" 
-                          FontSize="24" 
-                          FontWeight="Bold"
-                          VerticalAlignment="Center"/>
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                    <TextBlock x:Name="lblAdminUser" 
-                              Text="Admin: " 
-                              Foreground="White" 
-                              FontSize="14" 
-                              VerticalAlignment="Center"
-                              Margin="0,0,20,0"/>
-                    <Button x:Name="btnLogout" 
-                           Content="Logout" 
-                           Height="30" 
-                           Width="80" 
-                           Background="#E74C3C" 
-                           Foreground="White"
-                           Click="btnLogout_Click"/>
-                </StackPanel>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Logo / Brand -->
+                <Border Grid.Row="0" Padding="20,24,20,20"
+                        BorderBrush="#1E2433" BorderThickness="0,0,0,1">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                            <Border Width="36" Height="36" CornerRadius="10" Margin="0,0,10,0">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop Color="#4F8EF7" Offset="0"/>
+                                        <GradientStop Color="#7C3AED" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <TextBlock Text="⚡" FontSize="18" HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="NetCafé" FontSize="15" FontWeight="Bold"
+                                           Foreground="#F1F5F9"/>
+                                <TextBlock Text="Admin Console" FontSize="10"
+                                           Foreground="#475569"/>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Connection indicator -->
+                        <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                            <Ellipse x:Name="ellipseConnectionStatus" Width="8" Height="8"
+                                     Fill="#F87171" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="lblConnectionStatus" Text="Disconnected"
+                                       FontSize="11" Foreground="#64748B" VerticalAlignment="Center"/>
+                            <Button x:Name="btnConnect" Content="↺ Connect" Height="22" Width="70"
+                                    Margin="8,0,0,0" FontSize="10" Visibility="Collapsed"
+                                    Style="{StaticResource BtnGhost}"
+                                    Click="btnConnect_Click" Padding="6,2"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Nav Items -->
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden">
+                    <StackPanel Margin="0,12,0,0">
+                        <TextBlock Text="MAIN" Style="{StaticResource SectionLabel}" Margin="22,8,0,6"/>
+
+                        <!-- Dashboard -->
+                        <Button x:Name="btnNavDashboard" Style="{StaticResource NavBtnActive}"
+                                Click="btnNavDashboard_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="▦" FontSize="15" Width="22" VerticalAlignment="Center"/>
+                                <TextBlock Text="Dashboard" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Active Sessions -->
+                        <Button x:Name="btnNavSessions" Style="{StaticResource NavBtn}"
+                                Click="btnNavSessions_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="◈" FontSize="15" Width="22" VerticalAlignment="Center"/>
+                                <TextBlock Text="Active Sessions" VerticalAlignment="Center"/>
+                                <Border CornerRadius="10" Background="#1D3461" Margin="8,0,0,0"
+                                        Padding="6,1">
+                                    <TextBlock x:Name="sidebarSessionCount" Text="0"
+                                               FontSize="10" Foreground="#4F8EF7" FontWeight="SemiBold"/>
+                                </Border>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Client Machines -->
+                        <Button x:Name="btnNavClients" Style="{StaticResource NavBtn}"
+                                Click="btnNavClients_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="⊟" FontSize="15" Width="22" VerticalAlignment="Center"/>
+                                <TextBlock Text="Client Machines" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <TextBlock Text="USERS" Style="{StaticResource SectionLabel}" Margin="22,16,0,6"/>
+
+                        <!-- User Management -->
+                        <Button x:Name="btnNavUsers" Style="{StaticResource NavBtn}"
+                                Click="btnNavUsers_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="◉" FontSize="15" Width="22" VerticalAlignment="Center"/>
+                                <TextBlock Text="User Management" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <TextBlock Text="BILLING" Style="{StaticResource SectionLabel}" Margin="22,16,0,6"/>
+
+                        <!-- Billing Rates -->
+                        <Button x:Name="btnNavBilling" Style="{StaticResource NavBtn}"
+                                Click="btnNavBilling_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="◎" FontSize="15" Width="22" VerticalAlignment="Center"/>
+                                <TextBlock Text="Billing Rates" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <TextBlock Text="MONITORING" Style="{StaticResource SectionLabel}" Margin="22,16,0,6"/>
+
+                        <!-- Security Alerts -->
+                        <Button x:Name="btnNavAlerts" Style="{StaticResource NavBtn}"
+                                Click="btnNavAlerts_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="⚠" FontSize="15" Width="22" VerticalAlignment="Center"/>
+                                <TextBlock Text="Security Alerts" VerticalAlignment="Center"/>
+                                <Border x:Name="alertBadge" CornerRadius="10" Background="#450A0A"
+                                        Margin="8,0,0,0" Padding="6,1" Visibility="Collapsed">
+                                    <TextBlock x:Name="sidebarAlertCount" Text="0"
+                                               FontSize="10" Foreground="#F87171" FontWeight="SemiBold"/>
+                                </Border>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Session Logs -->
+                        <Button x:Name="btnNavLogs" Style="{StaticResource NavBtn}"
+                                Click="btnNavLogs_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="≡" FontSize="15" Width="22" VerticalAlignment="Center"/>
+                                <TextBlock Text="Session Logs" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Reports -->
+                        <Button x:Name="btnNavReports" Style="{StaticResource NavBtn}"
+                                Click="btnNavReports_Click">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="▣" FontSize="15" Width="22" VerticalAlignment="Center"/>
+                                <TextBlock Text="Reports" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </ScrollViewer>
+
+                <!-- Bottom: Admin Info + Logout -->
+                <Border Grid.Row="2" Padding="12,14"
+                        BorderBrush="#1E2433" BorderThickness="0,1,0,0">
+                    <StackPanel x:Name="AdminHeaderPanel" Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                            <Border Width="32" Height="32" CornerRadius="16" Margin="0,0,10,0">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop Color="#4F8EF7" Offset="0"/>
+                                        <GradientStop Color="#A78BFA" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <TextBlock Text="A" FontSize="13" FontWeight="Bold"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                           Foreground="White"/>
+                            </Border>
+                            <StackPanel VerticalAlignment="Center">
+                                <TextBlock x:Name="lblAdminUser" Text="Admin" FontSize="12"
+                                           FontWeight="SemiBold" Foreground="#F1F5F9"/>
+                                <TextBlock Text="Administrator" FontSize="10" Foreground="#475569"/>
+                            </StackPanel>
+                        </StackPanel>
+                        <Button x:Name="btnLogout" Content="⎋  Sign Out"
+                                Style="{StaticResource BtnDanger}"
+                                Height="34" FontSize="12" Padding="0,0"
+                                Click="btnLogout_Click"/>
+                    </StackPanel>
+                </Border>
             </Grid>
         </Border>
 
-        <!-- Login Panel -->
-        <Grid x:Name="LoginPanel" Grid.Row="1">
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Width="400">
-                <TextBlock Text="Admin Login" FontSize="28" FontWeight="Bold" Margin="0,0,0,30" HorizontalAlignment="Center"/>
+        <!-- ══════════════════════════════════════════════════════════
+             MAIN CONTENT AREA
+        ══════════════════════════════════════════════════════════ -->
+        <Grid Grid.Column="1">
 
-                <TextBlock Text="Username:" FontSize="14" Margin="0,0,0,5"/>
-                <TextBox x:Name="txtAdminUsername" Height="35" FontSize="14" Padding="10,5"/>
+            <!-- ─── LOGIN PANEL ─── -->
+            <Grid x:Name="LoginPanel">
+                <Grid.Background>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                        <GradientStop Color="#0F1117" Offset="0"/>
+                        <GradientStop Color="#131A2E" Offset="1"/>
+                    </LinearGradientBrush>
+                </Grid.Background>
 
-                <TextBlock Text="Password:" FontSize="14" Margin="0,20,0,5"/>
-                <PasswordBox x:Name="txtAdminPassword" Height="35" FontSize="14" Padding="10,5"/>
+                <Border Width="420" VerticalAlignment="Center" HorizontalAlignment="Center"
+                        Style="{StaticResource Card}">
+                    <StackPanel>
+                        <!-- Header -->
+                        <StackPanel HorizontalAlignment="Center" Margin="0,0,0,32">
+                            <Border Width="56" Height="56" CornerRadius="16"
+                                    HorizontalAlignment="Center" Margin="0,0,0,16">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop Color="#4F8EF7" Offset="0"/>
+                                        <GradientStop Color="#7C3AED" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <TextBlock Text="⚡" FontSize="26" HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                            </Border>
+                            <TextBlock Text="Admin Sign In" FontSize="22" FontWeight="Bold"
+                                       HorizontalAlignment="Center" Foreground="#F1F5F9"/>
+                            <TextBlock Text="NetCafé Session Management Console"
+                                       FontSize="12" Foreground="#475569"
+                                       HorizontalAlignment="Center" Margin="0,4,0,0"/>
+                        </StackPanel>
 
-                <TextBlock x:Name="lblAdminLoginError" 
-                          Foreground="Red" 
-                          FontSize="12" 
-                          Margin="0,10,0,0" 
-                          Visibility="Collapsed"/>
+                        <!-- Username -->
+                        <TextBlock Text="USERNAME" FontSize="10" FontWeight="SemiBold"
+                                   Foreground="#475569" Margin="0,0,0,6"/>
+                        <TextBox x:Name="txtAdminUsername" Style="{StaticResource ModernInput}"
+                                 Height="42" Margin="0,0,0,16"/>
 
-                <Button x:Name="btnAdminLogin" 
-                       Content="Login" 
-                       Height="40" 
-                       Margin="0,30,0,0" 
-                       Background="#3498DB" 
-                       Foreground="White" 
-                       FontSize="16" 
-                       FontWeight="Bold"
-                       Click="btnAdminLogin_Click"/>
-            </StackPanel>
+                        <!-- Password -->
+                        <TextBlock Text="PASSWORD" FontSize="10" FontWeight="SemiBold"
+                                   Foreground="#475569" Margin="0,0,0,6"/>
+                        <Grid Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="42"/>
+                            </Grid.ColumnDefinitions>
+                            <PasswordBox x:Name="txtAdminPassword" Grid.Column="0"
+                                         Style="{StaticResource ModernPassword}" Height="42"/>
+                            <TextBox x:Name="txtAdminPasswordPlain" Grid.Column="0"
+                                     Style="{StaticResource ModernInput}" Height="42"
+                                     Visibility="Collapsed"/>
+                            <Button x:Name="btnShowAdminPassword" Grid.Column="1"
+                                    Content="👁" FontSize="16" Background="Transparent"
+                                    BorderThickness="0" Foreground="#475569" Cursor="Hand"
+                                    Click="btnShowAdminPassword_Click" Margin="4,0,0,0"/>
+                        </Grid>
+
+                        <!-- Error -->
+                        <Border x:Name="loginErrorBorder" Background="#2D0A0A" CornerRadius="8"
+                                BorderBrush="#7F1D1D" BorderThickness="1"
+                                Padding="12,10" Margin="0,8,0,0" Visibility="Collapsed">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="⚠ " Foreground="#F87171" FontSize="13"/>
+                                <TextBlock x:Name="lblAdminLoginError" Foreground="#FCA5A5"
+                                           FontSize="12" TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Login Button -->
+                        <Button x:Name="btnAdminLogin" Content="Sign In →"
+                                Style="{StaticResource BtnPrimary}"
+                                Height="44" FontSize="14" Margin="0,20,0,0"
+                                Click="btnAdminLogin_Click"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- ─── DASHBOARD PANEL ─── -->
+            <Grid x:Name="DashboardPanel" Visibility="Collapsed">
+
+                <!-- Page Header -->
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="64"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Top Bar -->
+                <Border Grid.Row="0" Background="#13161F"
+                        BorderBrush="#1E2433" BorderThickness="0,0,0,1">
+                    <Grid Margin="24,0">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock x:Name="lblPageTitle" Text="Dashboard"
+                                       FontSize="18" FontWeight="SemiBold" Foreground="#F1F5F9"/>
+                            <TextBlock x:Name="lblPageSubtitle" Text=" — Live Overview"
+                                       FontSize="13" Foreground="#475569" VerticalAlignment="Bottom"
+                                       Margin="0,0,0,2"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                    VerticalAlignment="Center">
+                            <TextBlock x:Name="lblLastUpdate" Text="Updated just now"
+                                       FontSize="11" Foreground="#475569" VerticalAlignment="Center"
+                                       Margin="0,0,16,0"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Content -->
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled">
+                    <Grid>
+                        <!-- All pages stacked, visibility toggled -->
+
+                        <!-- ═══ OVERVIEW / KANBAN PAGE ═══ -->
+                        <Grid x:Name="PageDashboard" Margin="24">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- KPI Cards Row -->
+                            <UniformGrid Grid.Row="0" Columns="4" Margin="0,0,0,20">
+
+                                <!-- Active Sessions -->
+                                <Border Style="{StaticResource Card}" Margin="0,0,12,0">
+                                    <Grid>
+                                        <StackPanel>
+                                            <TextBlock Text="ACTIVE SESSIONS" FontSize="10"
+                                                       FontWeight="SemiBold" Foreground="#475569"
+                                                       Margin="0,0,0,12"/>
+                                            <TextBlock x:Name="kpiActiveSessions" Text="0"
+                                                       FontSize="36" FontWeight="Bold"
+                                                       Foreground="#4F8EF7"/>
+                                            <TextBlock Text="Live right now"
+                                                       FontSize="11" Foreground="#475569"
+                                                       Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="◈" FontSize="28" Foreground="#1D3461"
+                                                   HorizontalAlignment="Right"
+                                                   VerticalAlignment="Top"/>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Today Revenue -->
+                                <Border Style="{StaticResource Card}" Margin="0,0,12,0">
+                                    <Grid>
+                                        <StackPanel>
+                                            <TextBlock Text="TODAY'S REVENUE" FontSize="10"
+                                                       FontWeight="SemiBold" Foreground="#475569"
+                                                       Margin="0,0,0,12"/>
+                                            <TextBlock x:Name="kpiRevenue" Text="$0.00"
+                                                       FontSize="36" FontWeight="Bold"
+                                                       Foreground="#34D399"/>
+                                            <TextBlock Text="Billing accumulated"
+                                                       FontSize="11" Foreground="#475569"
+                                                       Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="◎" FontSize="28" Foreground="#064E3B"
+                                                   HorizontalAlignment="Right"
+                                                   VerticalAlignment="Top"/>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Security Alerts -->
+                                <Border Style="{StaticResource Card}" Margin="0,0,12,0">
+                                    <Grid>
+                                        <StackPanel>
+                                            <TextBlock Text="ACTIVE ALERTS" FontSize="10"
+                                                       FontWeight="SemiBold" Foreground="#475569"
+                                                       Margin="0,0,0,12"/>
+                                            <TextBlock x:Name="kpiAlerts" Text="0"
+                                                       FontSize="36" FontWeight="Bold"
+                                                       Foreground="#F87171"/>
+                                            <TextBlock Text="Unacknowledged"
+                                                       FontSize="11" Foreground="#475569"
+                                                       Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="⚠" FontSize="28" Foreground="#450A0A"
+                                                   HorizontalAlignment="Right"
+                                                   VerticalAlignment="Top"/>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Total Clients -->
+                                <Border Style="{StaticResource Card}">
+                                    <Grid>
+                                        <StackPanel>
+                                            <TextBlock Text="REGISTERED CLIENTS" FontSize="10"
+                                                       FontWeight="SemiBold" Foreground="#475569"
+                                                       Margin="0,0,0,12"/>
+                                            <TextBlock x:Name="kpiClients" Text="0"
+                                                       FontSize="36" FontWeight="Bold"
+                                                       Foreground="#FBBF24"/>
+                                            <TextBlock Text="Machines"
+                                                       FontSize="11" Foreground="#475569"
+                                                       Margin="0,4,0,0"/>
+                                        </StackPanel>
+                                        <TextBlock Text="⊟" FontSize="28" Foreground="#451A03"
+                                                   HorizontalAlignment="Right"
+                                                   VerticalAlignment="Top"/>
+                                    </Grid>
+                                </Border>
+                            </UniformGrid>
+
+                            <!-- Kanban: Session Status Columns -->
+                            <Border Grid.Row="1" Style="{StaticResource Card}" Margin="0,0,0,20">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                                        <TextBlock Text="Session Board" FontSize="15"
+                                                   FontWeight="SemiBold" Foreground="#F1F5F9"
+                                                   VerticalAlignment="Center"/>
+                                        <TextBlock Text=" — Kanban View" FontSize="12"
+                                                   Foreground="#475569" VerticalAlignment="Bottom"
+                                                   Margin="0,0,0,1"/>
+                                        <Button Content="↺ Refresh" Style="{StaticResource BtnGhost}"
+                                                Height="30" Padding="12,0" FontSize="11"
+                                                HorizontalAlignment="Right" Margin="16,0,0,0"
+                                                Click="btnRefreshSessions_Click"/>
+                                    </StackPanel>
+                                    <UniformGrid Columns="3">
+                                        <!-- Active -->
+                                        <Border Background="#0A1628" CornerRadius="10"
+                                                Padding="14" Margin="0,0,8,0">
+                                            <StackPanel>
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                                    <Ellipse Width="8" Height="8" Fill="#34D399"
+                                                             VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                    <TextBlock Text="ACTIVE" FontSize="11"
+                                                               FontWeight="SemiBold" Foreground="#34D399"/>
+                                                    <Border CornerRadius="8" Background="#064E3B"
+                                                            Padding="6,1" Margin="8,0,0,0">
+                                                        <TextBlock x:Name="kanbanActiveCount" Text="0"
+                                                                   FontSize="10" Foreground="#34D399"
+                                                                   FontWeight="Bold"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <ItemsControl x:Name="kanbanActiveSessions">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Background="#1E2433" CornerRadius="8"
+                                                                    Padding="12,10" Margin="0,0,0,8">
+                                                                <StackPanel>
+                                                                    <StackPanel Orientation="Horizontal"
+                                                                                Margin="0,0,0,4">
+                                                                        <TextBlock Text="{Binding Username}"
+                                                                                   FontSize="13" FontWeight="SemiBold"
+                                                                                   Foreground="#F1F5F9"/>
+                                                                    </StackPanel>
+                                                                    <TextBlock Text="{Binding ClientId}"
+                                                                               FontSize="11" Foreground="#64748B"/>
+                                                                    <StackPanel Orientation="Horizontal"
+                                                                                Margin="0,6,0,0">
+                                                                        <Border Style="{StaticResource BadgeGreen}" Padding="6,2">
+                                                                            <TextBlock Text="{Binding RemainingTime}"
+                                                                                       FontSize="10" Foreground="#34D399"/>
+                                                                        </Border>
+                                                                        <TextBlock Text="{Binding CurrentBilling}"
+                                                                                   FontSize="11" Foreground="#FBBF24"
+                                                                                   Margin="8,0,0,0" VerticalAlignment="Center"/>
+                                                                    </StackPanel>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Idle Clients -->
+                                        <Border Background="#0A1210" CornerRadius="10"
+                                                Padding="14" Margin="0,0,8,0">
+                                            <StackPanel>
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                                    <Ellipse Width="8" Height="8" Fill="#FBBF24"
+                                                             VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                    <TextBlock Text="IDLE CLIENTS" FontSize="11"
+                                                               FontWeight="SemiBold" Foreground="#FBBF24"/>
+                                                    <Border CornerRadius="8" Background="#451A03"
+                                                            Padding="6,1" Margin="8,0,0,0">
+                                                        <TextBlock x:Name="kanbanIdleCount" Text="0"
+                                                                   FontSize="10" Foreground="#FBBF24"
+                                                                   FontWeight="Bold"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <ItemsControl x:Name="kanbanIdleClients">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Background="#1E2433" CornerRadius="8"
+                                                                    Padding="12,10" Margin="0,0,0,8">
+                                                                <StackPanel>
+                                                                    <TextBlock Text="{Binding MachineName}"
+                                                                               FontSize="13" FontWeight="SemiBold"
+                                                                               Foreground="#F1F5F9"/>
+                                                                    <TextBlock Text="{Binding ClientId}"
+                                                                               FontSize="11" Foreground="#64748B"
+                                                                               Margin="0,2,0,0"/>
+                                                                    <Border Style="{StaticResource BadgeAmber}"
+                                                                            Padding="6,2" Margin="0,6,0,0"
+                                                                            HorizontalAlignment="Left">
+                                                                        <TextBlock Text="Available"
+                                                                                   FontSize="10" Foreground="#FBBF24"/>
+                                                                    </Border>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Recent Alerts -->
+                                        <Border Background="#1A0A0A" CornerRadius="10" Padding="14">
+                                            <StackPanel>
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                                    <Ellipse Width="8" Height="8" Fill="#F87171"
+                                                             VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                    <TextBlock Text="RECENT ALERTS" FontSize="11"
+                                                               FontWeight="SemiBold" Foreground="#F87171"/>
+                                                </StackPanel>
+                                                <ItemsControl x:Name="kanbanAlerts">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Background="#1E2433" CornerRadius="8"
+                                                                    Padding="12,10" Margin="0,0,0,8">
+                                                                <StackPanel>
+                                                                    <TextBlock Text="{Binding AlertType}"
+                                                                               FontSize="12" FontWeight="SemiBold"
+                                                                               Foreground="#FCA5A5"/>
+                                                                    <TextBlock Text="{Binding Description}"
+                                                                               FontSize="10" Foreground="#64748B"
+                                                                               TextTrimming="CharacterEllipsis"
+                                                                               Margin="0,2,0,0"/>
+                                                                    <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                                                        <Border Style="{StaticResource BadgeRed}" Padding="6,2">
+                                                                            <TextBlock Text="{Binding Severity}"
+                                                                                       FontSize="10" Foreground="#F87171"/>
+                                                                        </Border>
+                                                                    </StackPanel>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                            </StackPanel>
+                                        </Border>
+                                    </UniformGrid>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- ═══ ACTIVE SESSIONS PAGE ═══ -->
+                        <Grid x:Name="PageSessions" Margin="24" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,16">
+                                <Button Content="↺ Refresh" Style="{StaticResource BtnGhost}"
+                                        Height="36" Padding="16,0" Click="btnRefreshSessions_Click"/>
+                                <Button Content="🖼 View Image" Style="{StaticResource BtnPurple}"
+                                        Height="36" Padding="16,0" Margin="8,0,0,0"
+                                        Click="btnViewImage_Click"/>
+                                <TextBlock x:Name="lblActiveCount" Text="0 sessions"
+                                           FontSize="12" Foreground="#475569"
+                                           VerticalAlignment="Center" Margin="16,0,0,0"/>
+                            </StackPanel>
+
+                            <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
+                                <DataGrid x:Name="dgActiveSessions" AutoGenerateColumns="False"
+                                          IsReadOnly="True" CanUserAddRows="False"
+                                          SelectionMode="Single" Margin="0">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="SESSION ID" Binding="{Binding SessionId}" Width="90"/>
+                                        <DataGridTextColumn Header="CLIENT" Binding="{Binding ClientId}" Width="90"/>
+                                        <DataGridTextColumn Header="USERNAME" Binding="{Binding Username}" Width="140"/>
+                                        <DataGridTextColumn Header="STARTED" Binding="{Binding StartTime}" Width="110"/>
+                                        <DataGridTextColumn Header="DURATION" Binding="{Binding Duration}" Width="90"/>
+                                        <DataGridTextColumn Header="REMAINING" Binding="{Binding RemainingTime}" Width="100"/>
+                                        <DataGridTextColumn Header="BILLING" Binding="{Binding CurrentBilling}" Width="90"/>
+                                        <DataGridTextColumn Header="STATUS" Binding="{Binding Status}" Width="90"/>
+                                        <DataGridTemplateColumn Header="ACTIONS" Width="130">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Content="⬛ Terminate"
+                                                            Background="#7F1D1D" Foreground="#FCA5A5"
+                                                            BorderThickness="0" Padding="10,6"
+                                                            FontSize="11" FontFamily="Segoe UI"
+                                                            Cursor="Hand" Margin="8,4"
+                                                            Click="btnTerminateSession_Click">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border x:Name="r" Background="{TemplateBinding Background}"
+                                                                        CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                    <ContentPresenter HorizontalAlignment="Center"/>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter TargetName="r" Property="Background" Value="#991B1B"/>
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Border>
+                        </Grid>
+
+                        <!-- ═══ CLIENT MACHINES PAGE ═══ -->
+                        <Grid x:Name="PageClients" Margin="24" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,16">
+                                <Button Content="↺ Refresh" Style="{StaticResource BtnGhost}"
+                                        Height="36" Padding="16,0" Click="btnRefreshSessions_Click"/>
+                            </StackPanel>
+
+                            <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
+                                <DataGrid x:Name="dgClients" AutoGenerateColumns="False"
+                                          IsReadOnly="True" CanUserAddRows="False">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="CODE" Binding="{Binding ClientId}" Width="80"/>
+                                        <DataGridTextColumn Header="MACHINE" Binding="{Binding MachineName}" Width="150"/>
+                                        <DataGridTextColumn Header="IP ADDRESS" Binding="{Binding IpAddress}" Width="130"/>
+                                        <DataGridTextColumn Header="MAC" Binding="{Binding MacAddress}" Width="140"/>
+                                        <DataGridTextColumn Header="LOCATION" Binding="{Binding Location}" Width="110"/>
+                                        <DataGridTextColumn Header="SESSION" Binding="{Binding Status}" Width="90"/>
+                                        <DataGridTextColumn Header="MACHINE" Binding="{Binding ClientMachineStatus}" Width="90"/>
+                                        <DataGridTextColumn Header="CURRENT USER" Binding="{Binding CurrentUser}" Width="140"/>
+                                        <DataGridTextColumn Header="LAST SEEN" Binding="{Binding LastActive}" Width="*"/>
+                                        <DataGridTemplateColumn Header="ACTIONS" Width="170">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Orientation="Horizontal" Margin="8,4">
+                                                        <Button Content="✓ Enable"
+                                                                Background="#064E3B" Foreground="#34D399"
+                                                                BorderThickness="0" Padding="8,5"
+                                                                FontSize="11" FontFamily="Segoe UI"
+                                                                Cursor="Hand" Margin="0,0,4,0"
+                                                                Click="btnEnableClient_Click">
+                                                            <Button.Style>
+                                                                <Style TargetType="Button">
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                    <Setter Property="Template">
+                                                                        <Setter.Value>
+                                                                            <ControlTemplate TargetType="Button">
+                                                                                <Border x:Name="r" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                                    <ContentPresenter HorizontalAlignment="Center"/>
+                                                                                </Border>
+                                                                                <ControlTemplate.Triggers>
+                                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                                        <Setter TargetName="r" Property="Background" Value="#065F46"/>
+                                                                                    </Trigger>
+                                                                                </ControlTemplate.Triggers>
+                                                                            </ControlTemplate>
+                                                                        </Setter.Value>
+                                                                    </Setter>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Button.Style>
+                                                        </Button>
+                                                        <Button Content="✕ Disable"
+                                                                Background="#450A0A" Foreground="#F87171"
+                                                                BorderThickness="0" Padding="8,5"
+                                                                FontSize="11" FontFamily="Segoe UI"
+                                                                Cursor="Hand" Click="btnDisableClient_Click">
+                                                            <Button.Style>
+                                                                <Style TargetType="Button">
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                    <Setter Property="Template">
+                                                                        <Setter.Value>
+                                                                            <ControlTemplate TargetType="Button">
+                                                                                <Border x:Name="r" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                                    <ContentPresenter HorizontalAlignment="Center"/>
+                                                                                </Border>
+                                                                                <ControlTemplate.Triggers>
+                                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                                        <Setter TargetName="r" Property="Background" Value="#7F1D1D"/>
+                                                                                    </Trigger>
+                                                                                </ControlTemplate.Triggers>
+                                                                            </ControlTemplate>
+                                                                        </Setter.Value>
+                                                                    </Setter>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsActive}" Value="False">
+                                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Button.Style>
+                                                        </Button>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Border>
+                        </Grid>
+
+                        <!-- ═══ USER MANAGEMENT PAGE ═══ -->
+                        <Grid x:Name="PageUsers" Margin="24" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Register Form -->
+                            <Border Grid.Row="0" Style="{StaticResource Card}" Margin="0,0,0,16">
+                                <StackPanel>
+                                    <TextBlock Text="Register New Client User"
+                                               FontSize="14" FontWeight="SemiBold"
+                                               Foreground="#F1F5F9" Margin="0,0,0,16"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                            <TextBlock Text="USERNAME" FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="#475569" Margin="0,0,0,6"/>
+                                            <TextBox x:Name="txtUsername" Style="{StaticResource ModernInput}" Height="38"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                                            <TextBlock Text="FULL NAME" FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="#475569" Margin="0,0,0,6"/>
+                                            <TextBox x:Name="txtFullName" Style="{StaticResource ModernInput}" Height="38"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2" Margin="0,0,12,0">
+                                            <TextBlock Text="PASSWORD" FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="#475569" Margin="0,0,0,6"/>
+                                            <PasswordBox x:Name="txtPassword"
+                                                         Style="{StaticResource ModernPassword}" Height="38"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="3">
+                                            <TextBlock Text="PHONE" FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="#475569" Margin="0,0,0,6"/>
+                                            <TextBox x:Name="txtPhone" Style="{StaticResource ModernInput}" Height="38"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="ADDRESS" FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="#475569" Margin="0,0,0,6"/>
+                                            <TextBox x:Name="txtAddress" Style="{StaticResource ModernInput}" Height="38"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                                    VerticalAlignment="Bottom" Margin="12,0,0,0">
+                                            <Button x:Name="btnGeneratePassword"
+                                                    Content="⚡ Auto Password"
+                                                    Style="{StaticResource BtnPurple}"
+                                                    Height="38" Padding="14,0" FontSize="12"
+                                                    Click="btnGeneratePassword_Click"/>
+                                            <Button x:Name="btnClearForm" Content="✕ Clear"
+                                                    Style="{StaticResource BtnGhost}"
+                                                    Height="38" Padding="14,0" FontSize="12"
+                                                    Margin="8,0,0,0" Click="btnClearForm_Click"/>
+                                            <Button x:Name="btnRegisterUser"
+                                                    Content="+ Register User"
+                                                    Style="{StaticResource BtnSuccess}"
+                                                    Height="38" Padding="16,0" FontSize="12"
+                                                    FontWeight="SemiBold" Margin="8,0,0,0"
+                                                    Click="btnRegisterUser_Click"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <!-- Messages -->
+                                    <Border x:Name="regErrorBorder" Background="#2D0A0A" CornerRadius="8"
+                                            BorderBrush="#7F1D1D" BorderThickness="1"
+                                            Padding="12,8" Margin="0,12,0,0" Visibility="Collapsed">
+                                        <TextBlock x:Name="lblRegError" Foreground="#FCA5A5" FontSize="12"/>
+                                    </Border>
+                                    <Border x:Name="regSuccessBorder" Background="#022C22" CornerRadius="8"
+                                            BorderBrush="#065F46" BorderThickness="1"
+                                            Padding="12,8" Margin="0,12,0,0" Visibility="Collapsed">
+                                        <TextBlock x:Name="lblRegSuccess" Foreground="#6EE7B7" FontSize="12"/>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Users List Header -->
+                            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
+                                <TextBlock Text="Registered Users" FontSize="14" FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                                <Border CornerRadius="10" Background="#1E2433" Padding="8,2"
+                                        Margin="10,0">
+                                    <TextBlock x:Name="lblUserCount" Text="0"
+                                               FontSize="11" Foreground="#4F8EF7" FontWeight="Bold"/>
+                                </Border>
+                                <Button x:Name="btnRefreshUsers" Content="↺ Refresh"
+                                        Style="{StaticResource BtnGhost}"
+                                        Height="32" Padding="12,0" FontSize="11"
+                                        Click="btnRefreshUsers_Click"/>
+                            </StackPanel>
+
+                            <!-- Users Table -->
+                            <Border Grid.Row="2" Style="{StaticResource Card}" Padding="0">
+                                <DataGrid x:Name="dgUsers" AutoGenerateColumns="False"
+                                          IsReadOnly="True" CanUserAddRows="False"
+                                          SelectionMode="Single">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="ID" Binding="{Binding UserId}" Width="55"/>
+                                        <DataGridTextColumn Header="USERNAME" Binding="{Binding Username}" Width="130"/>
+                                        <DataGridTextColumn Header="FULL NAME" Binding="{Binding FullName}" Width="160"/>
+                                        <DataGridTextColumn Header="PHONE" Binding="{Binding Phone}" Width="120"/>
+                                        <DataGridTextColumn Header="ADDRESS" Binding="{Binding Address}" Width="180"/>
+                                        <DataGridTextColumn Header="STATUS" Binding="{Binding Status}" Width="80"/>
+                                        <DataGridTextColumn Header="CREATED" Binding="{Binding CreatedAt}" Width="140"/>
+                                        <DataGridTextColumn Header="LAST LOGIN" Binding="{Binding LastLogin}" Width="140"/>
+                                        <DataGridTemplateColumn Header="ACTIONS" Width="180">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Orientation="Horizontal" Margin="8,4">
+                                                        <Button Content="✎" Height="28" Width="32"
+                                                                Background="#1D3461" Foreground="#60A5FA"
+                                                                BorderThickness="0" Cursor="Hand"
+                                                                FontFamily="Segoe UI" FontSize="13"
+                                                                ToolTip="Edit User"
+                                                                Click="btnEditUserInline_Click">
+                                                            <Button.Template>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border x:Name="r" Background="{TemplateBinding Background}" CornerRadius="6">
+                                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="r" Property="Background" Value="#1E40AF"/>
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Button.Template>
+                                                        </Button>
+                                                        <Button Content="🔑" Height="28" Width="32"
+                                                                Background="#3B0764" Foreground="#C4B5FD"
+                                                                BorderThickness="0" Cursor="Hand"
+                                                                FontFamily="Segoe UI" FontSize="13"
+                                                                ToolTip="Reset Password" Margin="4,0"
+                                                                Click="btnResetPasswordInline_Click">
+                                                            <Button.Template>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border x:Name="r" Background="{TemplateBinding Background}" CornerRadius="6">
+                                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="r" Property="Background" Value="#4C1D95"/>
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Button.Template>
+                                                        </Button>
+                                                        <Button Content="⊕" Height="28" Width="32"
+                                                                Background="#064E3B" Foreground="#34D399"
+                                                                BorderThickness="0" Cursor="Hand"
+                                                                FontFamily="Segoe UI" FontSize="13"
+                                                                ToolTip="Toggle Status"
+                                                                Click="btnToggleStatusInline_Click">
+                                                            <Button.Template>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border x:Name="r" Background="{TemplateBinding Background}" CornerRadius="6">
+                                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="r" Property="Background" Value="#065F46"/>
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Button.Template>
+                                                        </Button>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Border>
+
+                            <!-- User Action Messages -->
+                            <Border Grid.Row="3" Background="#1E2433" CornerRadius="8"
+                                    Padding="14,10" Margin="0,12,0,0">
+                                <StackPanel>
+                                    <TextBlock x:Name="lblUserActionError" Foreground="#FCA5A5"
+                                               FontSize="12" Visibility="Collapsed"/>
+                                    <TextBlock x:Name="lblUserActionSuccess" Foreground="#6EE7B7"
+                                               FontSize="12" Visibility="Collapsed"/>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- ═══ BILLING RATES PAGE ═══ -->
+                        <Grid x:Name="PageBilling" Margin="24" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Add/Edit Form -->
+                            <Border Grid.Row="0" Style="{StaticResource Card}" Margin="0,0,0,16">
+                                <StackPanel>
+                                    <TextBlock Text="Add / Edit Billing Rate"
+                                               FontSize="14" FontWeight="SemiBold"
+                                               Foreground="#F1F5F9" Margin="0,0,0,16"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="120"/>
+                                            <ColumnDefinition Width="120"/>
+                                            <ColumnDefinition Width="140"/>
+                                            <ColumnDefinition Width="140"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                            <TextBlock Text="RATE NAME" FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="#475569" Margin="0,0,0,6"/>
+                                            <TextBox x:Name="txtRateName" Style="{StaticResource ModernInput}" Height="38"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" Margin="0,0,12,0">
+                                            <TextBlock Text="RATE/MIN" FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="#475569" Margin="0,0,0,6"/>
+                                            <TextBox x:Name="txtRatePerMinute" Style="{StaticResource ModernInput}" Height="38"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2" Margin="0,0,12,0">
+                                            <TextBlock Text="CURRENCY" FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="#475569" Margin="0,0,0,6"/>
+                                            <ComboBox x:Name="cboCurrency"
+                                                      Style="{StaticResource ModernCombo}"
+                                                      SelectedIndex="0">
+                                                <ComboBoxItem Content="USD"/>
+                                                <ComboBoxItem Content="EUR"/>
+                                                <ComboBoxItem Content="GBP"/>
+                                                <ComboBoxItem Content="INR"/>
+                                                <ComboBoxItem Content="PKR"/>
+                                            </ComboBox>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="3" Margin="0,0,12,0">
+                                            <TextBlock Text="EFFECTIVE FROM" FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="#475569" Margin="0,0,0,6"/>
+                                            <DatePicker x:Name="dpEffectiveFrom" Height="38"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="4">
+                                            <TextBlock Text="EFFECTIVE TO" FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="#475569" Margin="0,0,0,6"/>
+                                            <DatePicker x:Name="dpEffectiveTo" Height="38"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <Grid Margin="0,12,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="NOTES" FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="#475569" Margin="0,0,0,6"/>
+                                            <TextBox x:Name="txtNotes" Style="{StaticResource ModernInput}" Height="38"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Bottom" Margin="12,0,0,0">
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                                <CheckBox x:Name="chkIsActive" Content="Active"
+                                                          IsChecked="True" VerticalAlignment="Center"
+                                                          Margin="0,0,16,0"/>
+                                                <CheckBox x:Name="chkIsDefault" Content="Set as Default"
+                                                          VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button x:Name="btnAddBillingRate" Content="+ Add Rate"
+                                                        Style="{StaticResource BtnSuccess}"
+                                                        Height="38" Padding="16,0" FontSize="12"
+                                                        Click="btnAddBillingRate_Click"/>
+                                                <Button x:Name="btnUpdateBillingRate" Content="↑ Update Rate"
+                                                        Style="{StaticResource BtnPrimary}"
+                                                        Height="38" Padding="16,0" FontSize="12"
+                                                        Margin="8,0,0,0" Visibility="Collapsed"
+                                                        Click="btnUpdateBillingRate_Click"/>
+                                                <Button x:Name="btnClearBillingRateForm" Content="✕ Clear"
+                                                        Style="{StaticResource BtnGhost}"
+                                                        Height="38" Padding="14,0" FontSize="12"
+                                                        Margin="8,0,0,0"
+                                                        Click="btnClearBillingRateForm_Click"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Grid>
+                                    <Border x:Name="billingErrorBorder" Background="#2D0A0A" CornerRadius="8"
+                                            BorderBrush="#7F1D1D" BorderThickness="1"
+                                            Padding="12,8" Margin="0,12,0,0" Visibility="Collapsed">
+                                        <TextBlock x:Name="lblBillingRateError" Foreground="#FCA5A5" FontSize="12"/>
+                                    </Border>
+                                    <Border x:Name="billingSuccessBorder" Background="#022C22" CornerRadius="8"
+                                            BorderBrush="#065F46" BorderThickness="1"
+                                            Padding="12,8" Margin="0,12,0,0" Visibility="Collapsed">
+                                        <TextBlock x:Name="lblBillingRateSuccess" Foreground="#6EE7B7" FontSize="12"/>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Rates List Header -->
+                            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
+                                <TextBlock Text="Billing Rates" FontSize="14" FontWeight="SemiBold"
+                                           VerticalAlignment="Center"/>
+                                <Border CornerRadius="10" Background="#1E2433" Padding="8,2" Margin="10,0">
+                                    <TextBlock x:Name="lblBillingRateCount" Text="0"
+                                               FontSize="11" Foreground="#4F8EF7" FontWeight="Bold"/>
+                                </Border>
+                                <Button x:Name="btnRefreshBillingRates" Content="↺ Refresh"
+                                        Style="{StaticResource BtnGhost}"
+                                        Height="32" Padding="12,0" FontSize="11"
+                                        Click="btnRefreshBillingRates_Click"/>
+                            </StackPanel>
+
+                            <!-- Rates Table -->
+                            <Border Grid.Row="2" Style="{StaticResource Card}" Padding="0">
+                                <DataGrid x:Name="dgBillingRates" AutoGenerateColumns="False"
+                                          IsReadOnly="True" CanUserAddRows="False"
+                                          SelectionMode="Single">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="ID" Binding="{Binding BillingRateId}" Width="50"/>
+                                        <DataGridTextColumn Header="NAME" Binding="{Binding Name}" Width="140"/>
+                                        <DataGridTextColumn Header="RATE/MIN" Binding="{Binding RatePerMinute}" Width="90"/>
+                                        <DataGridTextColumn Header="CURRENCY" Binding="{Binding Currency}" Width="80"/>
+                                        <DataGridTextColumn Header="EFF. FROM" Binding="{Binding EffectiveFrom}" Width="110"/>
+                                        <DataGridTextColumn Header="EFF. TO" Binding="{Binding EffectiveTo}" Width="110"/>
+                                        <DataGridTextColumn Header="ACTIVE" Binding="{Binding IsActive}" Width="70"/>
+                                        <DataGridTextColumn Header="DEFAULT" Binding="{Binding IsDefault}" Width="75"/>
+                                        <DataGridTextColumn Header="CREATED" Binding="{Binding CreatedAt}" Width="140"/>
+                                        <DataGridTextColumn Header="NOTES" Binding="{Binding Notes}" Width="*"/>
+                                        <DataGridTemplateColumn Header="ACTIONS" Width="230">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel Orientation="Horizontal" Margin="8,4">
+                                                        <Button Content="✎ Edit"
+                                                                Background="#1D3461" Foreground="#60A5FA"
+                                                                BorderThickness="0" Padding="8,5"
+                                                                FontSize="11" FontFamily="Segoe UI"
+                                                                Cursor="Hand" Margin="0,0,4,0"
+                                                                Click="btnEditBillingRate_Click">
+                                                            <Button.Template>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border x:Name="r" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                        <ContentPresenter HorizontalAlignment="Center"/>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="r" Property="Background" Value="#1E40AF"/>
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Button.Template>
+                                                        </Button>
+                                                        <Button Content="★ Default"
+                                                                Background="#451A03" Foreground="#FBBF24"
+                                                                BorderThickness="0" Padding="8,5"
+                                                                FontSize="11" FontFamily="Segoe UI"
+                                                                Cursor="Hand" Margin="0,0,4,0"
+                                                                Click="btnSetDefaultBillingRate_Click">
+                                                            <Button.Style>
+                                                                <Style TargetType="Button">
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                    <Setter Property="Template">
+                                                                        <Setter.Value>
+                                                                            <ControlTemplate TargetType="Button">
+                                                                                <Border x:Name="r" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                                    <ContentPresenter HorizontalAlignment="Center"/>
+                                                                                </Border>
+                                                                                <ControlTemplate.Triggers>
+                                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                                        <Setter TargetName="r" Property="Background" Value="#78350F"/>
+                                                                                    </Trigger>
+                                                                                </ControlTemplate.Triggers>
+                                                                            </ControlTemplate>
+                                                                        </Setter.Value>
+                                                                    </Setter>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsDefault}" Value="1">
+                                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Button.Style>
+                                                        </Button>
+                                                        <Button Content="🗑 Delete"
+                                                                Background="#450A0A" Foreground="#F87171"
+                                                                BorderThickness="0" Padding="8,5"
+                                                                FontSize="11" FontFamily="Segoe UI"
+                                                                Cursor="Hand" Click="btnDeleteBillingRate_Click">
+                                                            <Button.Template>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border x:Name="r" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                        <ContentPresenter HorizontalAlignment="Center"/>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="r" Property="Background" Value="#7F1D1D"/>
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Button.Template>
+                                                        </Button>
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Border>
+                        </Grid>
+
+                        <!-- ═══ SECURITY ALERTS PAGE ═══ -->
+                        <Grid x:Name="PageAlerts" Margin="24" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,16">
+                                <Border Style="{StaticResource BadgeRed}" Padding="10,4" Margin="0,0,12,0">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="⚠ " Foreground="#F87171" FontSize="12"/>
+                                        <TextBlock x:Name="lblAlertCount" Text="0 unresolved"
+                                                   Foreground="#F87171" FontSize="12" FontWeight="SemiBold"/>
+                                    </StackPanel>
+                                </Border>
+                                <Button Content="↺ Refresh" Style="{StaticResource BtnGhost}"
+                                        Height="34" Padding="14,0" FontSize="11"
+                                        Click="btnRefreshSessions_Click"/>
+                            </StackPanel>
+                            <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
+                                <DataGrid x:Name="dgAlerts" AutoGenerateColumns="False" IsReadOnly="True">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="TIME" Binding="{Binding Timestamp}" Width="150"/>
+                                        <DataGridTextColumn Header="SEVERITY" Binding="{Binding Severity}" Width="80"/>
+                                        <DataGridTextColumn Header="CLIENT" Binding="{Binding ClientId}" Width="90"/>
+                                        <DataGridTextColumn Header="USER" Binding="{Binding Username}" Width="120"/>
+                                        <DataGridTextColumn Header="TYPE" Binding="{Binding AlertType}" Width="180"/>
+                                        <DataGridTextColumn Header="DESCRIPTION" Binding="{Binding Description}" Width="*"/>
+                                        <DataGridTemplateColumn Header="ACTION" Width="140">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Button Content="✓ Acknowledge"
+                                                            Background="#064E3B" Foreground="#34D399"
+                                                            BorderThickness="0" Padding="10,6"
+                                                            FontSize="11" FontFamily="Segoe UI"
+                                                            Cursor="Hand" Margin="8,4"
+                                                            Click="btnAcknowledgeAlert_Click">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border x:Name="r" Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                    <ContentPresenter HorizontalAlignment="Center"/>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter TargetName="r" Property="Background" Value="#065F46"/>
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Border>
+                        </Grid>
+
+                        <!-- ═══ SESSION LOGS PAGE ═══ -->
+                        <Grid x:Name="PageLogs" Margin="24" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Border Grid.Row="0" Style="{StaticResource Card}" Margin="0,0,0,16">
+                                <StackPanel Orientation="Horizontal" Margin="0,0,0,0">
+                                    <StackPanel Margin="0,0,16,0">
+                                        <TextBlock Text="FROM" FontSize="10" FontWeight="SemiBold"
+                                                   Foreground="#475569" Margin="0,0,0,6"/>
+                                        <DatePicker x:Name="dpLogFrom" Width="150" Height="38"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,0,16,0">
+                                        <TextBlock Text="TO" FontSize="10" FontWeight="SemiBold"
+                                                   Foreground="#475569" Margin="0,0,0,6"/>
+                                        <DatePicker x:Name="dpLogTo" Width="150" Height="38"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,0,16,0">
+                                        <TextBlock Text="CATEGORY" FontSize="10" FontWeight="SemiBold"
+                                                   Foreground="#475569" Margin="0,0,0,6"/>
+                                        <ComboBox x:Name="cboLogCategory" Width="140" Height="38"
+                                                  Style="{StaticResource ModernCombo}" SelectedIndex="0">
+                                            <ComboBoxItem Content="All"/>
+                                            <ComboBoxItem Content="Auth"/>
+                                            <ComboBoxItem Content="Session"/>
+                                            <ComboBoxItem Content="Billing"/>
+                                            <ComboBoxItem Content="Security"/>
+                                            <ComboBoxItem Content="System"/>
+                                        </ComboBox>
+                                    </StackPanel>
+                                    <StackPanel VerticalAlignment="Bottom">
+                                        <Button x:Name="btnLoadLogs" Content="⊳ Load Logs"
+                                                Style="{StaticResource BtnPrimary}"
+                                                Height="38" Padding="18,0" FontSize="12"
+                                                Click="btnLoadLogs_Click"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
+                                <DataGrid x:Name="dgLogs" AutoGenerateColumns="False" IsReadOnly="True">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="TIME" Binding="{Binding LogTime}" Width="150"/>
+                                        <DataGridTextColumn Header="CATEGORY" Binding="{Binding Category}" Width="90"/>
+                                        <DataGridTextColumn Header="TYPE" Binding="{Binding LogType}" Width="160"/>
+                                        <DataGridTextColumn Header="SOURCE" Binding="{Binding Source}" Width="70"/>
+                                        <DataGridTextColumn Header="CLIENT" Binding="{Binding ClientCode}" Width="80"/>
+                                        <DataGridTextColumn Header="USER" Binding="{Binding Username}" Width="110"/>
+                                        <DataGridTextColumn Header="MESSAGE" Binding="{Binding Message}" Width="*"/>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Border>
+                        </Grid>
+
+                        <!-- ═══ REPORTS PAGE ═══ -->
+                        <Grid x:Name="PageReports" Margin="24" Visibility="Collapsed">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+                            <Border Grid.Row="0" Style="{StaticResource Card}" Margin="0,0,0,16">
+                                <StackPanel Orientation="Horizontal">
+                                    <StackPanel Margin="0,0,16,0">
+                                        <TextBlock Text="REPORT TYPE" FontSize="10" FontWeight="SemiBold"
+                                                   Foreground="#475569" Margin="0,0,0,6"/>
+                                        <ComboBox x:Name="cboReportType" Width="160" Height="38"
+                                                  Style="{StaticResource ModernCombo}" SelectedIndex="0">
+                                            <ComboBoxItem Content="Session Usage"/>
+                                            <ComboBoxItem Content="Billing Summary"/>
+                                            <ComboBoxItem Content="Security Alerts"/>
+                                        </ComboBox>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,0,16,0">
+                                        <TextBlock Text="FROM" FontSize="10" FontWeight="SemiBold"
+                                                   Foreground="#475569" Margin="0,0,0,6"/>
+                                        <DatePicker x:Name="dpFromDate" Width="150" Height="38"/>
+                                    </StackPanel>
+                                    <StackPanel Margin="0,0,16,0">
+                                        <TextBlock Text="TO" FontSize="10" FontWeight="SemiBold"
+                                                   Foreground="#475569" Margin="0,0,0,6"/>
+                                        <DatePicker x:Name="dpToDate" Width="150" Height="38"/>
+                                    </StackPanel>
+                                    <StackPanel VerticalAlignment="Bottom" Orientation="Horizontal">
+                                        <Button x:Name="btnGenerateReport" Content="⊳ Generate"
+                                                Style="{StaticResource BtnSuccess}"
+                                                Height="38" Padding="18,0" FontSize="12"
+                                                Click="btnGenerateReport_Click"/>
+                                        <Button x:Name="btnExportReport" Content="↓ Export .txt"
+                                                Style="{StaticResource BtnGhost}"
+                                                Height="38" Padding="16,0" FontSize="12"
+                                                Margin="8,0,0,0" Click="btnExportReport_Click"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Row="1" Style="{StaticResource Card}">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <TextBox x:Name="txtReportOutput"
+                                             FontFamily="Consolas" FontSize="12"
+                                             Background="Transparent" BorderThickness="0"
+                                             Foreground="#94A3B8" IsReadOnly="True"
+                                             TextWrapping="Wrap"
+                                             Text="Generate a report to see results here…"/>
+                                </ScrollViewer>
+                            </Border>
+                        </Grid>
+
+                    </Grid>
+                </ScrollViewer>
+            </Grid>
         </Grid>
 
-        <!-- Dashboard Panel -->
-        <Grid x:Name="DashboardPanel" Grid.Row="1" Margin="20" Visibility="Collapsed">
-            <TabControl>
-                <!-- Active Sessions Tab -->
-                <TabItem Header="Active Sessions">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-
-                        <StackPanel Grid.Row="0" Margin="0,10,0,20">
-                            <TextBlock Text="Active Sessions Monitor" FontSize="20" FontWeight="Bold" Margin="0,0,0,10"/>
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Total Active Sessions: " FontSize="14" Margin="0,0,5,0"/>
-                                <TextBlock x:Name="lblActiveCount" Text="0" FontSize="14" FontWeight="Bold" Foreground="#27AE60"/>
-                                <Button x:Name="btnRefreshSessions" 
-                                       Content="Refresh" 
-                                       Height="30" 
-                                       Width="100" 
-                                       Margin="20,0,0,0"
-                                       Click="btnRefreshSessions_Click"/>
-                            </StackPanel>
-                        </StackPanel>
-
-                        <DataGrid Grid.Row="1" 
-                                 x:Name="dgActiveSessions" 
-                                 AutoGenerateColumns="False" 
-                                 IsReadOnly="True"
-                                 SelectionMode="Single"
-                                 CanUserAddRows="False">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="Client ID" Binding="{Binding ClientId}" Width="100"/>
-                                <DataGridTextColumn Header="Username" Binding="{Binding Username}" Width="150"/>
-                                <DataGridTextColumn Header="Start Time" Binding="{Binding StartTime}" Width="150"/>
-                                <DataGridTextColumn Header="Duration" Binding="{Binding Duration}" Width="100"/>
-                                <DataGridTextColumn Header="Remaining" Binding="{Binding RemainingTime}" Width="100"/>
-                                <DataGridTextColumn Header="Billing ($)" Binding="{Binding CurrentBilling}" Width="100"/>
-                                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="100"/>
-                                <DataGridTemplateColumn Header="Actions" Width="150">
-                                    <DataGridTemplateColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <Button Content="Terminate" 
-                                                   Background="#E74C3C" 
-                                                   Foreground="White"
-                                                   Click="btnTerminateSession_Click"/>
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellTemplate>
-                                </DataGridTemplateColumn>
-                            </DataGrid.Columns>
-                        </DataGrid>
-
-                        <Border Grid.Row="2" Background="#ECF0F1" Padding="15" Margin="0,10,0,0">
-                            <TextBlock x:Name="lblLastUpdate" 
-                                      Text="Last updated: --" 
-                                      FontSize="12" 
-                                      Foreground="#7F8C8D"/>
-                        </Border>
-                    </Grid>
-                </TabItem>
-
-                <!-- Client List Tab -->
-                <TabItem Header="Client Status">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-
-                        <TextBlock Grid.Row="0" 
-                                  Text="All Clients Status" 
-                                  FontSize="20" 
-                                  FontWeight="Bold" 
-                                  Margin="0,10,0,20"/>
-
-                        <DataGrid Grid.Row="1" 
-                                 x:Name="dgClients" 
-                                 AutoGenerateColumns="False" 
-                                 IsReadOnly="True">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="Client ID" Binding="{Binding ClientId}" Width="120"/>
-                                <DataGridTextColumn Header="Machine Name" Binding="{Binding MachineName}" Width="200"/>
-                                <DataGridTextColumn Header="IP Address" Binding="{Binding IpAddress}" Width="150"/>
-                                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="120"/>
-                                <DataGridTextColumn Header="Current User" Binding="{Binding CurrentUser}" Width="150"/>
-                                <DataGridTextColumn Header="Last Active" Binding="{Binding LastActive}" Width="*"/>
-                            </DataGrid.Columns>
-                        </DataGrid>
-                    </Grid>
-                </TabItem>
-
-                <!-- Alerts Tab -->
-                <TabItem Header="Security Alerts">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-
-                        <StackPanel Grid.Row="0" Margin="0,10,0,20">
-                            <TextBlock Text="Security Alerts" FontSize="20" FontWeight="Bold" Margin="0,0,0,10"/>
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="Unresolved Alerts: " FontSize="14" Margin="0,0,5,0"/>
-                                <TextBlock x:Name="lblAlertCount" Text="0" FontSize="14" FontWeight="Bold" Foreground="#E74C3C"/>
-                            </StackPanel>
-                        </StackPanel>
-
-                        <DataGrid Grid.Row="1" 
-                                 x:Name="dgAlerts" 
-                                 AutoGenerateColumns="False" 
-                                 IsReadOnly="True">
-                            <DataGrid.Columns>
-                                <DataGridTextColumn Header="Time" Binding="{Binding Timestamp}" Width="150"/>
-                                <DataGridTextColumn Header="Client ID" Binding="{Binding ClientId}" Width="100"/>
-                                <DataGridTextColumn Header="Username" Binding="{Binding Username}" Width="150"/>
-                                <DataGridTextColumn Header="Alert Type" Binding="{Binding AlertType}" Width="200"/>
-                                <DataGridTextColumn Header="Description" Binding="{Binding Description}" Width="*"/>
-                                <DataGridTemplateColumn Header="Actions" Width="150">
-                                    <DataGridTemplateColumn.CellTemplate>
-                                        <DataTemplate>
-                                            <Button Content="Acknowledge" 
-                                                   Background="#3498DB" 
-                                                   Foreground="White"
-                                                   Click="btnAcknowledgeAlert_Click"/>
-                                        </DataTemplate>
-                                    </DataGridTemplateColumn.CellTemplate>
-                                </DataGridTemplateColumn>
-                            </DataGrid.Columns>
-                        </DataGrid>
-                    </Grid>
-                </TabItem>
-
-                <!-- Reports Tab -->
-                <TabItem Header="Reports">
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="*"/>
-                        </Grid.RowDefinitions>
-
-                        <StackPanel Grid.Row="0" Margin="0,10,0,20">
-                            <TextBlock Text="Generate Reports" FontSize="20" FontWeight="Bold" Margin="0,0,0,20"/>
-
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="200"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="150"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="150"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-
-                                <TextBlock Grid.Column="0" Text="Report Type:" VerticalAlignment="Center" Margin="0,0,10,0"/>
-                                <ComboBox Grid.Column="1" x:Name="cboReportType" SelectedIndex="0" Height="30">
-                                    <ComboBoxItem Content="Session Usage"/>
-                                    <ComboBoxItem Content="Billing Summary"/>
-                                    <ComboBoxItem Content="Security Alerts"/>
-                                </ComboBox>
-
-                                <TextBlock Grid.Column="2" Text="From:" VerticalAlignment="Center" Margin="20,0,10,0"/>
-                                <DatePicker Grid.Column="3" x:Name="dpFromDate" Height="30"/>
-
-                                <TextBlock Grid.Column="4" Text="To:" VerticalAlignment="Center" Margin="20,0,10,0"/>
-                                <DatePicker Grid.Column="5" x:Name="dpToDate" Height="30"/>
-
-                                <Button Grid.Column="6" 
-                                       x:Name="btnGenerateReport" 
-                                       Content="Generate Report" 
-                                       Height="35" 
-                                       Width="150"
-                                       Margin="20,0,0,0"
-                                       Background="#27AE60" 
-                                       Foreground="White"
-                                       Click="btnGenerateReport_Click"/>
-                            </Grid>
-                        </StackPanel>
-
-                        <Border Grid.Row="1" BorderBrush="#BDC3C7" BorderThickness="1" Padding="20">
-                            <ScrollViewer>
-                                <TextBlock x:Name="txtReportOutput" 
-                                          FontFamily="Consolas" 
-                                          FontSize="12"
-                                          Text="Report output will appear here..."/>
-                            </ScrollViewer>
-                        </Border>
-                    </Grid>
-                </TabItem>
-            </TabControl>
-        </Grid>
+        <!-- ══════════════════════════════════════════════════════════
+             IMAGE VIEWER OVERLAY
+        ══════════════════════════════════════════════════════════ -->
+        <Border x:Name="ImageViewerPanel" Grid.Column="1"
+                Background="#CC000000" Visibility="Collapsed">
+            <Border Background="#171B26" CornerRadius="16" Padding="24"
+                    HorizontalAlignment="Center" VerticalAlignment="Center"
+                    Width="700" Height="540"
+                    BorderBrush="#2D3748" BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,16">
+                        <TextBlock x:Name="lblImageTitle" Text="Session Image"
+                                   FontSize="16" FontWeight="SemiBold"
+                                   Foreground="#F1F5F9" VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <Border Grid.Row="1" Background="#0F1117" CornerRadius="10">
+                        <Image x:Name="imgSessionPhoto" Stretch="Uniform" Margin="8"/>
+                    </Border>
+                    <Button Grid.Row="2" Content="✕ Close" Style="{StaticResource BtnGhost}"
+                            Height="36" Width="100" Margin="0,16,0,0"
+                            HorizontalAlignment="Right" Click="btnCloseImage_Click"/>
+                </Grid>
+            </Border>
+        </Border>
     </Grid>
 </Window>
