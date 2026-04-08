@@ -1,9 +1,266 @@
-﻿<Application x:Class="SessionClient.App"
+<Application x:Class="SessionClient.App"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:SessionClient"
              StartupUri="MainWindow.xaml">
     <Application.Resources>
-         
+        <ResourceDictionary>
+
+            <!-- ═══════════════════════════════════════════════════════════════
+                 DESIGN TOKENS — Final Hybrid (matches Admin theme exactly)
+                 Single source of truth for all colors in SessionClient.
+            ═══════════════════════════════════════════════════════════════════ -->
+
+            <!-- Background layers -->
+            <SolidColorBrush x:Key="BgDeep"      Color="#0A0E1A"/>
+            <SolidColorBrush x:Key="BgSidebar"   Color="#13161F"/>
+            <SolidColorBrush x:Key="BgCard"      Color="#171B26"/>
+            <SolidColorBrush x:Key="BgElevated"  Color="#1E2433"/>
+            <SolidColorBrush x:Key="BgHover"     Color="#252D42"/>
+
+            <!-- Borders -->
+            <SolidColorBrush x:Key="BorderColor" Color="#2D3748"/>
+            <SolidColorBrush x:Key="BorderSoft"  Color="#1E2433"/>
+
+            <!-- Accent palette -->
+            <SolidColorBrush x:Key="AccentBlue"   Color="#4F8EF7"/>
+            <SolidColorBrush x:Key="AccentGreen"  Color="#34D399"/>
+            <SolidColorBrush x:Key="AccentAmber"  Color="#FBBF24"/>
+            <SolidColorBrush x:Key="AccentRed"    Color="#F87171"/>
+            <SolidColorBrush x:Key="AccentPurple" Color="#A78BFA"/>
+
+            <!-- Typography -->
+            <SolidColorBrush x:Key="TextPrimary"   Color="#F1F5F9"/>
+            <SolidColorBrush x:Key="TextSecondary" Color="#94A3B8"/>
+            <SolidColorBrush x:Key="TextMuted"     Color="#475569"/>
+
+            <!-- ═══════════════════════════════════════════════════════════════
+                 GLOBAL FONT DEFAULT
+            ═══════════════════════════════════════════════════════════════════ -->
+            <Style TargetType="TextBlock">
+                <Setter Property="FontFamily" Value="Segoe UI"/>
+                <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+            </Style>
+
+            <!-- ═══════════════════════════════════════════════════════════════
+                 FORM INPUTS  (larger than Admin — kiosk touch-friendly sizing)
+            ═══════════════════════════════════════════════════════════════════ -->
+            <Style x:Key="ClientInput" TargetType="TextBox">
+                <Setter Property="Background"    Value="#1A2035"/>
+                <Setter Property="Foreground"    Value="{StaticResource TextPrimary}"/>
+                <Setter Property="BorderBrush"   Value="#2D3748"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="FontFamily"    Value="Segoe UI"/>
+                <Setter Property="FontSize"      Value="14"/>
+                <Setter Property="Padding"       Value="14,10"/>
+                <Setter Property="CaretBrush"    Value="#4F8EF7"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="TextBox">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="10">
+                                <ScrollViewer x:Name="PART_ContentHost"
+                                              Margin="{TemplateBinding Padding}"
+                                              VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsFocused" Value="True">
+                                    <Setter Property="BorderBrush" Value="#4F8EF7"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="ClientPassword" TargetType="PasswordBox">
+                <Setter Property="Background"    Value="#1A2035"/>
+                <Setter Property="Foreground"    Value="{StaticResource TextPrimary}"/>
+                <Setter Property="BorderBrush"   Value="#2D3748"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="FontFamily"    Value="Segoe UI"/>
+                <Setter Property="FontSize"      Value="14"/>
+                <Setter Property="Padding"       Value="14,10"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="PasswordBox">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="10">
+                                <ScrollViewer x:Name="PART_ContentHost"
+                                              Margin="{TemplateBinding Padding}"
+                                              VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsFocused" Value="True">
+                                    <Setter Property="BorderBrush" Value="#4F8EF7"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- ═══════════════════════════════════════════════════════════════
+                 SHOW-PASSWORD BUTTON  (Redesign quality: styled with border)
+            ═══════════════════════════════════════════════════════════════════ -->
+            <Style x:Key="ShowPasswordBtn" TargetType="Button">
+                <Setter Property="Background"    Value="#1A2035"/>
+                <Setter Property="Foreground"    Value="{StaticResource TextMuted}"/>
+                <Setter Property="BorderBrush"   Value="#2D3748"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="FontSize"      Value="16"/>
+                <Setter Property="Cursor"        Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Root"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="10">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Root" Property="Background" Value="#252D42"/>
+                                    <Setter TargetName="Root" Property="BorderBrush" Value="#4F8EF7"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- ═══════════════════════════════════════════════════════════════
+                 KIOSK BUTTONS  (larger, gradient, touch-friendly)
+            ═══════════════════════════════════════════════════════════════════ -->
+
+            <!-- Primary: Blue gradient -->
+            <Style x:Key="ClientBtnPrimary" TargetType="Button">
+                <Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Foreground"      Value="White"/>
+                <Setter Property="FontFamily"      Value="Segoe UI"/>
+                <Setter Property="FontSize"        Value="15"/>
+                <Setter Property="FontWeight"      Value="SemiBold"/>
+                <Setter Property="Cursor"          Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Root" CornerRadius="12"
+                                    Padding="{TemplateBinding Padding}">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Color="#4F8EF7" Offset="0"/>
+                                        <GradientStop Color="#6366F1" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Root" Property="Opacity" Value="0.9"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Root" Property="Opacity" Value="0.75"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Green gradient (Start Session) -->
+            <Style x:Key="ClientBtnGreen" TargetType="Button" BasedOn="{StaticResource ClientBtnPrimary}">
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Root" CornerRadius="12"
+                                    Padding="{TemplateBinding Padding}">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Color="#059669" Offset="0"/>
+                                        <GradientStop Color="#34D399" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Root" Property="Opacity" Value="0.9"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Root" Property="Opacity" Value="0.75"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Red gradient (End Session) -->
+            <Style x:Key="ClientBtnRed" TargetType="Button" BasedOn="{StaticResource ClientBtnPrimary}">
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Root" CornerRadius="12"
+                                    Padding="{TemplateBinding Padding}">
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Color="#DC2626" Offset="0"/>
+                                        <GradientStop Color="#EF4444" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Root" Property="Opacity" Value="0.9"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Ghost (secondary / back buttons) -->
+            <Style x:Key="ClientBtnGhost" TargetType="Button">
+                <Setter Property="Background"    Value="#1E2433"/>
+                <Setter Property="Foreground"    Value="{StaticResource TextSecondary}"/>
+                <Setter Property="BorderBrush"   Value="#2D3748"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="FontFamily"    Value="Segoe UI"/>
+                <Setter Property="FontSize"      Value="13"/>
+                <Setter Property="Cursor"        Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Root"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="10"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Root" Property="Background" Value="#252D42"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+        </ResourceDictionary>
     </Application.Resources>
 </Application>
