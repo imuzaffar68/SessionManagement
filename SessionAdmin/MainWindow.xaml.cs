@@ -1140,10 +1140,91 @@ namespace SessionAdmin
 
         private void ShowDashboard()
         {
-            LoginPanel.Visibility     = Visibility.Collapsed;
-            DashboardPanel.Visibility = Visibility.Visible;
+            LoginPanel.Visibility       = Visibility.Collapsed;
+            DashboardPanel.Visibility   = Visibility.Visible;
             AdminHeaderPanel.Visibility = Visibility.Visible;
+            NavigateTo("Sessions");
         }
+
+        // ═══════════════════════════════════════════════════════════
+        //  SIDEBAR NAVIGATION
+        // ═══════════════════════════════════════════════════════════
+
+        private string _currentPage = "Sessions";
+
+        private void NavigateTo(string page)
+        {
+            // Hide all pages
+            PageSessions.Visibility = Visibility.Collapsed;
+            PageClients.Visibility  = Visibility.Collapsed;
+            PageUsers.Visibility    = Visibility.Collapsed;
+            PageAlerts.Visibility   = Visibility.Collapsed;
+            PageLogs.Visibility     = Visibility.Collapsed;
+            PageRates.Visibility    = Visibility.Collapsed;
+            PageReports.Visibility  = Visibility.Collapsed;
+
+            // Reset all nav button Tags
+            if (btnNavSessions != null) btnNavSessions.Tag = null;
+            if (btnNavClients  != null) btnNavClients.Tag  = null;
+            if (btnNavUsers    != null) btnNavUsers.Tag     = null;
+            if (btnNavAlerts   != null) btnNavAlerts.Tag    = null;
+            if (btnNavLogs     != null) btnNavLogs.Tag      = null;
+            if (btnNavRates    != null) btnNavRates.Tag     = null;
+            if (btnNavReports  != null) btnNavReports.Tag   = null;
+
+            _currentPage = page;
+
+            switch (page)
+            {
+                case "Sessions":
+                    PageSessions.Visibility = Visibility.Visible;
+                    lblPageTitle.Text = "Active Sessions";
+                    if (btnNavSessions != null) btnNavSessions.Tag = "Active";
+                    break;
+                case "Clients":
+                    PageClients.Visibility = Visibility.Visible;
+                    lblPageTitle.Text = "Client Machines";
+                    if (btnNavClients != null) btnNavClients.Tag = "Active";
+                    LoadClients();
+                    break;
+                case "Users":
+                    PageUsers.Visibility = Visibility.Visible;
+                    lblPageTitle.Text = "User Management";
+                    if (btnNavUsers != null) btnNavUsers.Tag = "Active";
+                    LoadClientUsers();
+                    break;
+                case "Alerts":
+                    PageAlerts.Visibility = Visibility.Visible;
+                    lblPageTitle.Text = "Security Alerts";
+                    if (btnNavAlerts != null) btnNavAlerts.Tag = "Active";
+                    LoadAlerts();
+                    break;
+                case "Logs":
+                    PageLogs.Visibility = Visibility.Visible;
+                    lblPageTitle.Text = "System Logs";
+                    if (btnNavLogs != null) btnNavLogs.Tag = "Active";
+                    break;
+                case "Rates":
+                    PageRates.Visibility = Visibility.Visible;
+                    lblPageTitle.Text = "Billing Rates";
+                    if (btnNavRates != null) btnNavRates.Tag = "Active";
+                    LoadBillingRates();
+                    break;
+                case "Reports":
+                    PageReports.Visibility = Visibility.Visible;
+                    lblPageTitle.Text = "Reports";
+                    if (btnNavReports != null) btnNavReports.Tag = "Active";
+                    break;
+            }
+        }
+
+        private void BtnNavSessions_Click(object sender, RoutedEventArgs e) => NavigateTo("Sessions");
+        private void BtnNavClients_Click(object sender,  RoutedEventArgs e) => NavigateTo("Clients");
+        private void BtnNavUsers_Click(object sender,    RoutedEventArgs e) => NavigateTo("Users");
+        private void BtnNavAlerts_Click(object sender,   RoutedEventArgs e) => NavigateTo("Alerts");
+        private void BtnNavLogs_Click(object sender,     RoutedEventArgs e) => NavigateTo("Logs");
+        private void BtnNavRates_Click(object sender,    RoutedEventArgs e) => NavigateTo("Rates");
+        private void BtnNavReports_Click(object sender,  RoutedEventArgs e) => NavigateTo("Reports");
 
         private void ShowLoginError(string msg)
         {

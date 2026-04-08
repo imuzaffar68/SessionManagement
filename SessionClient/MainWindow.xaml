@@ -9,11 +9,11 @@
         Topmost="True"
         ShowInTaskbar="True"
         AllowsTransparency="False"
-        Background="#1A252F">
+        Background="#0F172A">
 
     <!--
     ═══════════════════════════════════════════════════════════════════════
-    RESTRICTION DESIGN  (matches project statement + SRS)
+    KIOSK DESIGN  (matches project statement + SRS)
     ═══════════════════════════════════════════════════════════════════════
 
     BEFORE session  (Login + Duration screens):
@@ -26,7 +26,7 @@
       • WindowStyle="SingleBorderWindow" → normal title bar
       • WindowState="Normal", fixed 420×320 compact size
       • Topmost="False", hook removed → full desktop access
-      • Window sits top-right as a always-visible session timer
+      • Window sits as a session timer the user can minimize
       → User can Alt-Tab to browser and any application freely
 
     AFTER session ends:
@@ -41,228 +41,504 @@
 
     <Grid>
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="56"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
-        <!-- ── Header (shown on login/duration screens only) ──────────── -->
-        <Border x:Name="HeaderBar" Grid.Row="0" Background="#2C3E50" Padding="20,14">
-            <Grid>
-                <TextBlock Text="Internet Café — Session Management System"
-                           Foreground="White" FontSize="18" FontWeight="Bold"
-                           VerticalAlignment="Center"/>
-                <TextBlock x:Name="lblMachineCode"
-                           HorizontalAlignment="Right" VerticalAlignment="Center"
-                           Foreground="#95A5A6" FontSize="12"/>
-                <!-- Connection Status Indicator -->
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="0,0,0,0">
-                    <Ellipse x:Name="ellipseConnectionStatus" Width="14" Height="14" Fill="Red" Stroke="Black" StrokeThickness="1" Margin="0,0,8,0"/>
-                    <TextBlock x:Name="lblConnectionStatus" Text="Disconnected" Foreground="White" FontSize="12" VerticalAlignment="Center"/>
-                    <Button x:Name="btnConnect" Content="Connect" Height="20" Width="60" Margin="8,0,0,0" Visibility="Collapsed" Click="btnConnect_Click"/>
+        <!-- ══════════════════════════════════════════════════════════════════
+             ROW 0: HEADER BAR
+        ════════════════════════════════════════════════════════════════════ -->
+        <Border x:Name="HeaderBar" Grid.Row="0"
+                Background="#1E293B"
+                BorderBrush="#334155" BorderThickness="0,0,0,1">
+            <Grid Margin="20,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Left: Connection status -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal"
+                            VerticalAlignment="Center">
+                    <Ellipse x:Name="ellipseConnectionStatus"
+                             Width="10" Height="10" Fill="#EF4444"
+                             Margin="0,0,8,0">
+                        <Ellipse.Effect>
+                            <DropShadowEffect Color="#EF4444" BlurRadius="6"
+                                              ShadowDepth="0" Opacity="0.8"/>
+                        </Ellipse.Effect>
+                    </Ellipse>
+                    <TextBlock x:Name="lblConnectionStatus"
+                               Text="Disconnected"
+                               Foreground="#94A3B8" FontSize="12"
+                               VerticalAlignment="Center"/>
+                    <Button x:Name="btnConnect"
+                            Content="Connect"
+                            Style="{StaticResource PrimaryBtn}"
+                            Height="28" FontSize="11" FontWeight="SemiBold"
+                            Margin="10,0,0,0" Padding="10,0"
+                            Visibility="Collapsed"
+                            Click="btnConnect_Click"/>
                 </StackPanel>
+
+                <!-- Center: App title -->
+                <TextBlock Grid.Column="1"
+                           Text="Internet Café — Session Management"
+                           Foreground="#F8FAFC" FontSize="15" FontWeight="Bold"
+                           VerticalAlignment="Center" HorizontalAlignment="Center"/>
+
+                <!-- Right: Machine code -->
+                <TextBlock x:Name="lblMachineCode"
+                           Grid.Column="2"
+                           HorizontalAlignment="Right" VerticalAlignment="Center"
+                           Foreground="#475569" FontSize="12"/>
             </Grid>
         </Border>
 
+        <!-- ══════════════════════════════════════════════════════════════════
+             ROW 1: CONTENT AREA  (panels stacked — only one visible at a time)
+        ════════════════════════════════════════════════════════════════════ -->
         <Grid Grid.Row="1">
 
-            <!-- ══ LOGIN PANEL ══════════════════════════════════════════ -->
-            <Grid x:Name="LoginPanel" Background="#1A252F">
-                <Border Background="#2C3E50" CornerRadius="10" Padding="48"
-                        Width="420" VerticalAlignment="Center" HorizontalAlignment="Center">
+            <!-- ── LOGIN PANEL ────────────────────────────────────────────── -->
+            <Grid x:Name="LoginPanel" Background="#0F172A">
+
+                <!-- decorative radial glow behind card -->
+                <Ellipse Width="480" Height="480"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"
+                         Margin="0,-60,0,0">
+                    <Ellipse.Fill>
+                        <RadialGradientBrush>
+                            <GradientStop Color="#1A2744" Offset="0"/>
+                            <GradientStop Color="#0F172A" Offset="1"/>
+                        </RadialGradientBrush>
+                    </Ellipse.Fill>
+                </Ellipse>
+
+                <!-- Login card -->
+                <Border Background="#1E293B" CornerRadius="12"
+                        Width="440"
+                        VerticalAlignment="Center" HorizontalAlignment="Center"
+                        Padding="52,48">
+                    <Border.Effect>
+                        <DropShadowEffect Color="#000000" BlurRadius="40"
+                                          ShadowDepth="0" Opacity="0.5"/>
+                    </Border.Effect>
                     <StackPanel>
-                        <TextBlock Text="🖥" FontSize="48" HorizontalAlignment="Center"
-                                   Margin="0,0,0,8"/>
-                        <TextBlock Text="User Login" FontSize="28" FontWeight="Bold"
-                                   Foreground="White" HorizontalAlignment="Center"
+
+                        <!-- Icon circle -->
+                        <Border Width="64" Height="64" CornerRadius="32"
+                                HorizontalAlignment="Center"
+                                Margin="0,0,0,20">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#3B82F6" Offset="0"/>
+                                    <GradientStop Color="#2563EB" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <Border.Effect>
+                                <DropShadowEffect Color="#3B82F6" BlurRadius="16"
+                                                  ShadowDepth="0" Opacity="0.6"/>
+                            </Border.Effect>
+                            <TextBlock Text="🔐" FontSize="28"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
+                        </Border>
+
+                        <!-- Title -->
+                        <TextBlock Text="Welcome Back"
+                                   FontSize="28" FontWeight="Bold"
+                                   Foreground="#F8FAFC"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,0,0,6"/>
+
+                        <!-- Subtitle -->
+                        <TextBlock Text="Sign in to start your session"
+                                   FontSize="14" Foreground="#94A3B8"
+                                   HorizontalAlignment="Center"
                                    Margin="0,0,0,28"/>
 
-                        <TextBlock Text="Username" Foreground="#BDC3C7" FontSize="13"
+                        <!-- Username field -->
+                        <TextBlock Text="USERNAME"
+                                   Foreground="#94A3B8" FontSize="11"
+                                   FontWeight="SemiBold"
                                    Margin="0,0,0,6"/>
-                        <TextBox x:Name="txtUsername" Height="38" FontSize="14"
-                                 Padding="10,4" Background="#34495E" Foreground="White"
-                                 BorderBrush="#5D6D7E" BorderThickness="1"/>
+                        <TextBox x:Name="txtUsername"/>
 
-                        <TextBlock Text="Password" Foreground="#BDC3C7" FontSize="13"
-                                   Margin="0,16,0,6"/>
+                        <!-- Password field -->
+                        <TextBlock Text="PASSWORD"
+                                   Foreground="#94A3B8" FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Margin="0,18,0,6"/>
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="44"/>
                             </Grid.ColumnDefinitions>
-                            <PasswordBox x:Name="txtPassword" Grid.Column="0"
-                                         Height="38" FontSize="14" Padding="10,4"
-                                         Background="#34495E" Foreground="White"
-                                         BorderBrush="#5D6D7E" BorderThickness="1"/>
+
+                            <PasswordBox x:Name="txtPassword" Grid.Column="0"/>
+
                             <TextBox x:Name="txtPasswordPlain" Grid.Column="0"
-                                     Height="38" FontSize="14" Padding="10,4"
-                                     Background="#34495E" Foreground="White"
-                                     BorderBrush="#5D6D7E" BorderThickness="1"
                                      Visibility="Collapsed"/>
-                            <Button x:Name="btnShowPassword" Grid.Column="1"
-                                    Content="👁" FontSize="16"
-                                    Background="#34495E" BorderBrush="#5D6D7E"
-                                    Foreground="#BDC3C7" Margin="4,0,0,0"
-                                    Click="btnShowPassword_Click"/>
+
+                            <Button x:Name="btnShowPassword"
+                                    Grid.Column="1"
+                                    Content="👁" FontSize="15"
+                                    Foreground="#94A3B8"
+                                    Margin="6,0,0,0"
+                                    Click="btnShowPassword_Click">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Background" Value="#334155"/>
+                                        <Setter Property="BorderBrush" Value="#475569"/>
+                                        <Setter Property="BorderThickness" Value="1"/>
+                                        <Setter Property="Cursor" Value="Hand"/>
+                                        <Setter Property="Height" Value="40"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="Bd"
+                                                            Background="{TemplateBinding Background}"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                                            CornerRadius="6">
+                                                        <ContentPresenter HorizontalAlignment="Center"
+                                                                          VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="#475569"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
                         </Grid>
 
-                        <Border x:Name="pnlLoginError" Background="#2E1515"
-                                BorderBrush="#E74C3C" BorderThickness="1"
-                                CornerRadius="4" Padding="10,8"
-                                Margin="0,14,0,0" Visibility="Collapsed">
-                            <TextBlock x:Name="lblLoginError" Foreground="#E74C3C"
-                                       FontSize="12" TextWrapping="Wrap"/>
+                        <!-- Error panel -->
+                        <Border x:Name="pnlLoginError"
+                                Background="#2D1515"
+                                BorderBrush="#EF4444" BorderThickness="1"
+                                CornerRadius="6" Padding="12,10"
+                                Margin="0,16,0,0"
+                                Visibility="Collapsed">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="⚠ " Foreground="#EF4444" FontSize="13"/>
+                                <TextBlock x:Name="lblLoginError"
+                                           Foreground="#FCA5A5" FontSize="13"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
                         </Border>
 
-                        <Button x:Name="btnLogin" Content="LOGIN"
-                                Height="42" Margin="0,24,0,0"
-                                Background="#3498DB" Foreground="White"
-                                FontSize="15" FontWeight="Bold" BorderThickness="0"
+                        <!-- Login button -->
+                        <Button x:Name="btnLogin"
+                                Content="LOGIN"
+                                Style="{StaticResource PrimaryBtn}"
+                                Height="48" FontSize="16"
+                                Margin="0,24,0,0"
                                 Click="btnLogin_Click"/>
 
-                        <TextBlock x:Name="lblLoginStatus" Foreground="#7F8C8D"
-                                   FontSize="11" HorizontalAlignment="Center"
-                                   Margin="0,14,0,0" Text="Connecting to server…"
+                        <!-- Status label -->
+                        <TextBlock x:Name="lblLoginStatus"
+                                   Text="Connecting to server…"
+                                   Foreground="#64748B" FontSize="12"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,12,0,0"
                                    Visibility="Collapsed"/>
+
+                        <!-- Card footer: machine + connection -->
+                        <Border Margin="0,28,0,0"
+                                BorderBrush="#334155" BorderThickness="0,1,0,0"
+                                Padding="0,16,0,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0"
+                                           Text="Machine ID"
+                                           Foreground="#475569" FontSize="11"/>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                    <Ellipse Width="7" Height="7" Margin="0,0,5,0"
+                                             VerticalAlignment="Center">
+                                        <Ellipse.Style>
+                                            <Style TargetType="Ellipse">
+                                                <Setter Property="Fill" Value="#EF4444"/>
+                                            </Style>
+                                        </Ellipse.Style>
+                                    </Ellipse>
+                                    <TextBlock Text="Offline" Foreground="#475569"
+                                               FontSize="11"/>
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
                     </StackPanel>
                 </Border>
             </Grid>
 
-            <!-- ══ DURATION PANEL ════════════════════════════════════════ -->
-            <Grid x:Name="DurationPanel" Background="#1A252F" Visibility="Collapsed">
-                <Border Background="#2C3E50" CornerRadius="10" Padding="48"
-                        Width="460" VerticalAlignment="Center" HorizontalAlignment="Center">
-                    <StackPanel>
-                        <TextBlock Text="⏱" FontSize="48" HorizontalAlignment="Center"
-                                   Margin="0,0,0,8"/>
-                        <TextBlock Text="Select Session Duration"
-                                   FontSize="24" FontWeight="Bold" Foreground="White"
-                                   HorizontalAlignment="Center" Margin="0,0,0,8"/>
-                        <TextBlock x:Name="lblWelcome" Text="Welcome"
-                                   FontSize="14" Foreground="#3498DB"
-                                   HorizontalAlignment="Center" Margin="0,0,0,28"/>
+            <!-- ── DURATION PANEL ─────────────────────────────────────────── -->
+            <Grid x:Name="DurationPanel" Background="#0F172A" Visibility="Collapsed">
 
-                        <TextBlock Text="Duration:" Foreground="#BDC3C7"
-                                   FontSize="13" Margin="0,0,0,8"/>
-                        <ComboBox x:Name="cboDuration" Height="38" FontSize="14"
+                <!-- decorative glow -->
+                <Ellipse Width="500" Height="500"
+                         HorizontalAlignment="Center" VerticalAlignment="Center"
+                         Margin="0,-40,0,0">
+                    <Ellipse.Fill>
+                        <RadialGradientBrush>
+                            <GradientStop Color="#1A2020" Offset="0"/>
+                            <GradientStop Color="#0F172A" Offset="1"/>
+                        </RadialGradientBrush>
+                    </Ellipse.Fill>
+                </Ellipse>
+
+                <!-- Duration card -->
+                <Border Background="#1E293B" CornerRadius="12"
+                        Width="480"
+                        VerticalAlignment="Center" HorizontalAlignment="Center"
+                        Padding="52,48">
+                    <Border.Effect>
+                        <DropShadowEffect Color="#000000" BlurRadius="40"
+                                          ShadowDepth="0" Opacity="0.5"/>
+                    </Border.Effect>
+                    <StackPanel>
+
+                        <!-- Icon -->
+                        <Border Width="60" Height="60" CornerRadius="30"
+                                HorizontalAlignment="Center"
+                                Margin="0,0,0,18">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#F59E0B" Offset="0"/>
+                                    <GradientStop Color="#D97706" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <Border.Effect>
+                                <DropShadowEffect Color="#F59E0B" BlurRadius="14"
+                                                  ShadowDepth="0" Opacity="0.5"/>
+                            </Border.Effect>
+                            <TextBlock Text="⏱" FontSize="26"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
+                        </Border>
+
+                        <!-- Title -->
+                        <TextBlock Text="Select Session Duration"
+                                   FontSize="24" FontWeight="Bold"
+                                   Foreground="#F8FAFC"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,0,0,8"/>
+
+                        <!-- Welcome message -->
+                        <TextBlock x:Name="lblWelcome"
+                                   Text="Welcome!"
+                                   FontSize="14" Foreground="#3B82F6"
+                                   HorizontalAlignment="Center"
+                                   Margin="0,0,0,28"/>
+
+                        <!-- Quick-select chips (decorative row) -->
+                        <UniformGrid Columns="4" Margin="0,0,0,16">
+                            <Border Margin="0,0,4,0" Background="#0F172A"
+                                    BorderBrush="#334155" BorderThickness="1"
+                                    CornerRadius="6" Padding="0,8">
+                                <StackPanel HorizontalAlignment="Center">
+                                    <TextBlock Text="15 min" FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="#94A3B8"
+                                               HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Margin="2,0,2,0" Background="#0F172A"
+                                    BorderBrush="#334155" BorderThickness="1"
+                                    CornerRadius="6" Padding="0,8">
+                                <TextBlock Text="30 min" FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Foreground="#94A3B8"
+                                           HorizontalAlignment="Center"/>
+                            </Border>
+                            <Border Margin="2,0,2,0" Background="#0F172A"
+                                    BorderBrush="#334155" BorderThickness="1"
+                                    CornerRadius="6" Padding="0,8">
+                                <TextBlock Text="1 hr" FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Foreground="#94A3B8"
+                                           HorizontalAlignment="Center"/>
+                            </Border>
+                            <Border Margin="4,0,0,0" Background="#0F172A"
+                                    BorderBrush="#334155" BorderThickness="1"
+                                    CornerRadius="6" Padding="0,8">
+                                <TextBlock Text="2 hr" FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Foreground="#94A3B8"
+                                           HorizontalAlignment="Center"/>
+                            </Border>
+                        </UniformGrid>
+
+                        <!-- Duration label -->
+                        <TextBlock Text="DURATION"
+                                   Foreground="#94A3B8" FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Margin="0,0,0,6"/>
+
+                        <!-- Duration ComboBox -->
+                        <ComboBox x:Name="cboDuration"
                                   SelectedIndex="2"
                                   SelectionChanged="cboDuration_SelectionChanged">
-                            <ComboBoxItem Content="15 minutes"/>
-                            <ComboBoxItem Content="30 minutes"/>
-                            <ComboBoxItem Content="60 minutes"/>
-                            <ComboBoxItem Content="120 minutes"/>
+                            <ComboBoxItem Content="15 min"/>
+                            <ComboBoxItem Content="30 min"/>
+                            <ComboBoxItem Content="60 min"/>
+                            <ComboBoxItem Content="120 min"/>
                             <ComboBoxItem Content="Custom…"/>
                         </ComboBox>
 
+                        <!-- Custom duration input -->
                         <StackPanel x:Name="CustomDurationPanel"
-                                    Margin="0,12,0,0" Visibility="Collapsed">
-                            <TextBlock Text="Enter minutes (15 – 480):"
-                                       Foreground="#BDC3C7" FontSize="13" Margin="0,0,0,6"/>
-                            <TextBox x:Name="txtCustomDuration" Height="38"
-                                     FontSize="14" Padding="10,4"
-                                     Background="#34495E" Foreground="White"
-                                     BorderBrush="#5D6D7E" BorderThickness="1"/>
+                                    Margin="0,14,0,0" Visibility="Collapsed">
+                            <TextBlock Text="CUSTOM MINUTES (15 – 480)"
+                                       Foreground="#94A3B8" FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Margin="0,0,0,6"/>
+                            <TextBox x:Name="txtCustomDuration"/>
                         </StackPanel>
 
-                        <Button x:Name="btnStartSession" Content="START SESSION"
-                                Height="42" Margin="0,24,0,10"
-                                Background="#27AE60" Foreground="White"
-                                FontSize="15" FontWeight="Bold" BorderThickness="0"
+                        <!-- Start Session button -->
+                        <Button x:Name="btnStartSession"
+                                Content="START SESSION"
+                                Style="{StaticResource GreenBtn}"
+                                Height="52" FontSize="16"
+                                Margin="0,24,0,10"
                                 Click="btnStartSession_Click"/>
-                        <Button x:Name="btnCancelDuration" Content="← Back to Login"
-                                Height="34" Background="Transparent"
-                                Foreground="#7F8C8D" FontSize="12"
-                                BorderThickness="0"
+
+                        <!-- Back button -->
+                        <Button x:Name="btnCancelDuration"
+                                Content="← Back to Login"
+                                Style="{StaticResource TransparentBtn}"
+                                HorizontalAlignment="Center"
                                 Click="btnCancelDuration_Click"/>
+
                     </StackPanel>
                 </Border>
             </Grid>
 
-            <!-- ══ SESSION PANEL ═════════════════════════════════════════
-                 Shown inside a compact 420×320 normal window during session.
-                 The window is NO LONGER full-screen when this panel is visible.
-                 UnlockScreen() resizes the window SYNCHRONOUSLY before this
-                 panel is shown, so layout is always correct.
-            ════════════════════════════════════════════════════════════ -->
-            <Grid x:Name="SessionPanel" Visibility="Collapsed" Background="#F5F6FA">
+            <!-- ── SESSION PANEL ──────────────────────────────────────────────
+                 Displayed inside a compact 420×320 normal window.
+                 UnlockScreen() resizes and re-styles the window synchronously
+                 BEFORE this panel is shown, so layout is always correct.
+            ──────────────────────────────────────────────────────────────── -->
+            <Grid x:Name="SessionPanel" Visibility="Collapsed" Background="#F8FAFC">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
-                    <!-- info bar: user / duration / billing -->
+                    <!-- info bar -->
                     <RowDefinition Height="*"/>
-                    <!-- countdown timer -->
+                    <!-- countdown -->
                     <RowDefinition Height="Auto"/>
-                    <!-- action buttons -->
+                    <!-- actions -->
                 </Grid.RowDefinitions>
 
-                <!-- Row 0: session info bar -->
-                <Border Grid.Row="0" Background="#2C3E50" Padding="12,10">
+                <!-- Row 0: Session info bar -->
+                <Border Grid.Row="0" Background="#1E293B" Padding="14,10">
                     <Grid>
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
+
                         <StackPanel Grid.Column="0">
-                            <TextBlock Text="USER" FontSize="9" Foreground="#95A5A6"/>
-                            <TextBlock x:Name="lblSessionUser" FontSize="13"
-                                       FontWeight="Bold" Foreground="White"
+                            <TextBlock Text="USER" FontSize="10"
+                                       Foreground="#64748B" FontWeight="SemiBold"
+                                       Margin="0,0,0,2"/>
+                            <TextBlock x:Name="lblSessionUser"
+                                       FontSize="13" FontWeight="Bold"
+                                       Foreground="#F8FAFC"
                                        TextTrimming="CharacterEllipsis"/>
                         </StackPanel>
+
                         <StackPanel Grid.Column="1" HorizontalAlignment="Center">
-                            <TextBlock Text="DURATION" FontSize="9" Foreground="#95A5A6"/>
-                            <TextBlock x:Name="lblSessionDuration" FontSize="13"
-                                       FontWeight="Bold" Foreground="White"/>
-                        </StackPanel>
-                        <StackPanel Grid.Column="2" HorizontalAlignment="Right">
-                            <TextBlock Text="BILLING" FontSize="9" Foreground="#95A5A6"/>
-                            <TextBlock x:Name="lblCurrentBilling" Text="$0.00"
+                            <TextBlock Text="DURATION" FontSize="10"
+                                       Foreground="#64748B" FontWeight="SemiBold"
+                                       Margin="0,0,0,2"/>
+                            <TextBlock x:Name="lblSessionDuration"
                                        FontSize="13" FontWeight="Bold"
-                                       Foreground="#F39C12"/>
+                                       Foreground="#F8FAFC"
+                                       HorizontalAlignment="Center"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="2" HorizontalAlignment="Right">
+                            <TextBlock Text="BILLING" FontSize="10"
+                                       Foreground="#64748B" FontWeight="SemiBold"
+                                       Margin="0,0,0,2"/>
+                            <TextBlock x:Name="lblCurrentBilling"
+                                       Text="$0.00"
+                                       FontSize="13" FontWeight="Bold"
+                                       Foreground="#F59E0B"
+                                       HorizontalAlignment="Right"/>
                         </StackPanel>
                     </Grid>
                 </Border>
 
-                <!-- Row 1: countdown timer display -->
-                <Border Grid.Row="1" Padding="16,12" Background="#F5F6FA">
+                <!-- Row 1: Countdown timer -->
+                <Border Grid.Row="1" Background="#F8FAFC" Padding="20,16">
                     <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="Time Remaining" FontSize="13"
+
+                        <TextBlock Text="Time Remaining"
+                                   FontSize="12" Foreground="#94A3B8"
                                    HorizontalAlignment="Center"
-                                   Foreground="#7F8C8D" Margin="0,0,0,8"/>
-                        <TextBlock x:Name="lblTimeRemaining" Text="00:00:00"
-                                   FontSize="48" FontWeight="Bold"
+                                   Margin="0,0,0,6"/>
+
+                        <TextBlock x:Name="lblTimeRemaining"
+                                   Text="00:00:00"
+                                   FontSize="56" FontWeight="Bold"
                                    HorizontalAlignment="Center"
-                                   Foreground="#2C3E50"/>
-                        <ProgressBar x:Name="progressBar" Height="10"
-                                     Margin="0,12,0,0" Minimum="0" Maximum="100"
-                                     Value="100" Foreground="#27AE60"/>
-                        <TextBlock x:Name="lblWarning" Text=""
-                                   FontSize="12" HorizontalAlignment="Center"
-                                   Foreground="#E74C3C" Margin="0,8,0,0"
+                                   Foreground="#1E293B"
+                                   Margin="0,0,0,14">
+                            <TextBlock.Effect>
+                                <DropShadowEffect Color="#3B82F6" BlurRadius="0"
+                                                  ShadowDepth="0" Opacity="0"/>
+                            </TextBlock.Effect>
+                        </TextBlock>
+
+                        <ProgressBar x:Name="progressBar"
+                                     Minimum="0" Maximum="100" Value="100"
+                                     Margin="0,0,0,8"/>
+
+                        <TextBlock x:Name="lblWarning"
+                                   Text=""
+                                   FontSize="12" FontWeight="SemiBold"
+                                   HorizontalAlignment="Center"
+                                   Foreground="#EF4444"
+                                   Margin="0,4,0,0"
                                    Visibility="Collapsed"/>
                     </StackPanel>
                 </Border>
 
-                <!-- Row 2: action buttons — BOTH buttons inside this row correctly -->
+                <!-- Row 2: Action buttons -->
                 <Grid Grid.Row="2" Margin="12,0,12,12">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="10"/>
+                        <ColumnDefinition Width="8"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <!-- End Session — primary red button -->
-                    <Button Grid.Column="0" x:Name="btnEndSession"
-                            Content="End Session" Height="40"
-                            Background="#E74C3C" Foreground="White"
-                            FontSize="13" FontWeight="Bold" BorderThickness="0"
+                    <!-- End Session -->
+                    <Button Grid.Column="0"
+                            x:Name="btnEndSession"
+                            Content="End Session"
+                            Style="{StaticResource RedBtn}"
+                            Height="40" FontSize="13"
                             Click="btnEndSession_Click"/>
 
-                    <!-- Minimize timer — secondary compact button -->
-                    <!-- Clicking this minimizes the window to taskbar.         -->
-                    <!-- The timer keeps running; user can restore from taskbar. -->
-                    <Button Grid.Column="2" x:Name="btnMinimizeTimer"
-                            Content="—" Width="40" Height="40"
-                            Background="#7F8C8D" Foreground="White"
-                            FontSize="16" FontWeight="Bold" BorderThickness="0"
+                    <!-- Minimize to taskbar -->
+                    <Button Grid.Column="2"
+                            x:Name="btnMinimizeTimer"
+                            Content="—"
+                            Style="{StaticResource GrayBtn}"
+                            Width="40" Height="40"
+                            FontSize="16" FontWeight="Bold"
                             ToolTip="Minimize to taskbar — timer keeps running"
                             Click="btnMinimizeTimer_Click"/>
                 </Grid>
