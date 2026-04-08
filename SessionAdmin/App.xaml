@@ -115,22 +115,24 @@
                  NavBtnActive  = currently selected page
             ═══════════════════════════════════════════════════════════════════ -->
             <Style x:Key="NavBtn" TargetType="Button">
-                <Setter Property="Background"              Value="Transparent"/>
+                <Setter Property="Background"              Value="#13161F"/>
                 <Setter Property="BorderThickness"         Value="0"/>
-                <Setter Property="Foreground"              Value="{StaticResource TextSecondary}"/>
+                <Setter Property="Foreground"              Value="#94A3B8"/>
                 <Setter Property="FontFamily"              Value="Segoe UI"/>
                 <Setter Property="FontSize"                Value="13.5"/>
                 <Setter Property="Height"                  Value="46"/>
                 <Setter Property="HorizontalContentAlignment" Value="Left"/>
                 <Setter Property="Padding"                 Value="16,0"/>
                 <Setter Property="Cursor"                  Value="Hand"/>
+                <Setter Property="FocusVisualStyle"        Value="{x:Null}"/>
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
-                            <Border x:Name="Root" Background="Transparent"
+                            <Border x:Name="Root" Background="#13161F"
                                     CornerRadius="10" Margin="6,2"
                                     Padding="{TemplateBinding Padding}">
-                                <ContentPresenter VerticalAlignment="Center"/>
+                                <ContentPresenter VerticalAlignment="Center"
+                                                  TextBlock.Foreground="{TemplateBinding Foreground}"/>
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
@@ -266,7 +268,7 @@
             ═══════════════════════════════════════════════════════════════════ -->
             <Style x:Key="ModernInput" TargetType="TextBox">
                 <Setter Property="Background"    Value="#1E2433"/>
-                <Setter Property="Foreground"    Value="{StaticResource TextPrimary}"/>
+                <Setter Property="Foreground"    Value="#F1F5F9"/>
                 <Setter Property="BorderBrush"   Value="#2D3748"/>
                 <Setter Property="BorderThickness" Value="1"/>
                 <Setter Property="FontFamily"    Value="Segoe UI"/>
@@ -296,7 +298,7 @@
 
             <Style x:Key="ModernPassword" TargetType="PasswordBox">
                 <Setter Property="Background"    Value="#1E2433"/>
-                <Setter Property="Foreground"    Value="{StaticResource TextPrimary}"/>
+                <Setter Property="Foreground"    Value="#F1F5F9"/>
                 <Setter Property="BorderBrush"   Value="#2D3748"/>
                 <Setter Property="BorderThickness" Value="1"/>
                 <Setter Property="FontFamily"    Value="Segoe UI"/>
@@ -323,15 +325,116 @@
                 </Setter>
             </Style>
 
+            <!-- ComboBoxItem for ModernCombo dark theme -->
+            <Style x:Key="ModernComboItem" TargetType="ComboBoxItem">
+                <Setter Property="Background"   Value="#1E2433"/>
+                <Setter Property="Foreground"   Value="#F1F5F9"/>
+                <Setter Property="FontFamily"   Value="Segoe UI"/>
+                <Setter Property="FontSize"     Value="13"/>
+                <Setter Property="Padding"      Value="10,8"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ComboBoxItem">
+                            <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsHighlighted" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#252D42"/>
+                                </Trigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter TargetName="Bd" Property="Background" Value="#1D3461"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
             <Style x:Key="ModernCombo" TargetType="ComboBox">
-                <Setter Property="Background"    Value="#1E2433"/>
-                <Setter Property="Foreground"    Value="{StaticResource TextPrimary}"/>
-                <Setter Property="BorderBrush"   Value="#2D3748"/>
-                <Setter Property="BorderThickness" Value="1"/>
-                <Setter Property="FontFamily"    Value="Segoe UI"/>
-                <Setter Property="FontSize"      Value="13"/>
-                <Setter Property="Padding"       Value="10,7"/>
-                <Setter Property="Height"        Value="38"/>
+                <Setter Property="Background"          Value="#1E2433"/>
+                <Setter Property="Foreground"          Value="#F1F5F9"/>
+                <Setter Property="BorderBrush"         Value="#2D3748"/>
+                <Setter Property="BorderThickness"     Value="1"/>
+                <Setter Property="FontFamily"          Value="Segoe UI"/>
+                <Setter Property="FontSize"            Value="13"/>
+                <Setter Property="Height"              Value="38"/>
+                <Setter Property="ItemContainerStyle"  Value="{StaticResource ModernComboItem}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ComboBox">
+                            <Grid>
+                                <!-- Main button area -->
+                                <Border x:Name="Bd" Background="#1E2433"
+                                        BorderBrush="#2D3748" BorderThickness="1"
+                                        CornerRadius="8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="28"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Selected item display -->
+                                        <ContentPresenter x:Name="ContentSite"
+                                                          Grid.Column="0"
+                                                          IsHitTestVisible="False"
+                                                          Content="{TemplateBinding SelectionBoxItem}"
+                                                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                                          Margin="10,0,0,0"
+                                                          VerticalAlignment="Center"
+                                                          TextBlock.Foreground="#F1F5F9"
+                                                          TextBlock.FontFamily="Segoe UI"
+                                                          TextBlock.FontSize="13"/>
+
+                                        <!-- Dropdown arrow -->
+                                        <TextBlock Grid.Column="1" Text="▾"
+                                                   Foreground="#475569" FontSize="11"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"/>
+
+                                        <!-- Invisible toggle button overlay -->
+                                        <ToggleButton Grid.ColumnSpan="2"
+                                                      Focusable="False"
+                                                      IsChecked="{Binding Path=IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                                      ClickMode="Press"
+                                                      Opacity="0"/>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Dropdown popup -->
+                                <Popup x:Name="Popup"
+                                       Placement="Bottom"
+                                       IsOpen="{TemplateBinding IsDropDownOpen}"
+                                       AllowsTransparency="True"
+                                       Focusable="False"
+                                       PopupAnimation="None">
+                                    <Border MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                            MaxHeight="200"
+                                            Background="#1E2433"
+                                            BorderBrush="#4F8EF7"
+                                            BorderThickness="1"
+                                            CornerRadius="0,0,8,8">
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                                      HorizontalScrollBarVisibility="Disabled">
+                                            <StackPanel IsItemsHost="True"
+                                                        KeyboardNavigation.DirectionalNavigation="Contained"/>
+                                        </ScrollViewer>
+                                    </Border>
+                                </Popup>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#4F8EF7"/>
+                                </Trigger>
+                                <Trigger Property="IsDropDownOpen" Value="True">
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#4F8EF7"/>
+                                    <Setter TargetName="Bd" Property="CornerRadius" Value="8,8,0,0"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
 
             <!-- ═══════════════════════════════════════════════════════════════
@@ -426,13 +529,82 @@
                 <Setter Property="VerticalContentAlignment" Value="Center"/>
             </Style>
 
+            <!-- DatePickerTextBox inside DatePicker — override to dark -->
+            <Style TargetType="DatePickerTextBox">
+                <Setter Property="Background"         Value="#1E2433"/>
+                <Setter Property="Foreground"         Value="#F1F5F9"/>
+                <Setter Property="CaretBrush"         Value="#4F8EF7"/>
+                <Setter Property="SelectionBrush"     Value="#4F8EF7"/>
+                <Setter Property="BorderThickness"    Value="0"/>
+                <Setter Property="FontFamily"         Value="Segoe UI"/>
+                <Setter Property="FontSize"           Value="13"/>
+                <Setter Property="Padding"            Value="10,0"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="DatePickerTextBox">
+                            <Border Background="#1E2433">
+                                <ScrollViewer x:Name="PART_ContentHost"
+                                              VerticalAlignment="Center"
+                                              Margin="{TemplateBinding Padding}"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
             <Style TargetType="DatePicker">
                 <Setter Property="Background"    Value="#1E2433"/>
-                <Setter Property="Foreground"    Value="{StaticResource TextPrimary}"/>
+                <Setter Property="Foreground"    Value="#F1F5F9"/>
                 <Setter Property="BorderBrush"   Value="#2D3748"/>
+                <Setter Property="BorderThickness" Value="1"/>
                 <Setter Property="FontFamily"    Value="Segoe UI"/>
                 <Setter Property="FontSize"      Value="13"/>
                 <Setter Property="Height"        Value="38"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="DatePicker">
+                            <Border x:Name="Bd" Background="#1E2433"
+                                    BorderBrush="#2D3748" BorderThickness="1"
+                                    CornerRadius="8">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="32"/>
+                                    </Grid.ColumnDefinitions>
+                                    <DatePickerTextBox x:Name="PART_TextBox"
+                                                       Grid.Column="0"
+                                                       Foreground="#F1F5F9"
+                                                       Background="Transparent"
+                                                       VerticalAlignment="Center"/>
+                                    <Button x:Name="PART_Button" Grid.Column="1"
+                                            Focusable="False" Background="Transparent"
+                                            BorderThickness="0" Cursor="Hand">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="Transparent">
+                                                    <TextBlock Text="📅" FontSize="14"
+                                                               Foreground="#475569"
+                                                               HorizontalAlignment="Center"
+                                                               VerticalAlignment="Center"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+                                    <Popup x:Name="PART_Popup" AllowsTransparency="True"
+                                           Placement="Bottom" StaysOpen="False"/>
+                                </Grid>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#4F8EF7"/>
+                                </Trigger>
+                                <Trigger Property="IsKeyboardFocusWithin" Value="True">
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#4F8EF7"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
 
         </ResourceDictionary>

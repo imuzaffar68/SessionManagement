@@ -39,7 +39,7 @@
             ═══════════════════════════════════════════════════════════════════ -->
             <Style TargetType="TextBlock">
                 <Setter Property="FontFamily" Value="Segoe UI"/>
-                <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                <Setter Property="Foreground" Value="#F1F5F9"/>
             </Style>
 
             <!-- ═══════════════════════════════════════════════════════════════
@@ -47,7 +47,7 @@
             ═══════════════════════════════════════════════════════════════════ -->
             <Style x:Key="ClientInput" TargetType="TextBox">
                 <Setter Property="Background"    Value="#1A2035"/>
-                <Setter Property="Foreground"    Value="{StaticResource TextPrimary}"/>
+                <Setter Property="Foreground"    Value="#F1F5F9"/>
                 <Setter Property="BorderBrush"   Value="#2D3748"/>
                 <Setter Property="BorderThickness" Value="1"/>
                 <Setter Property="FontFamily"    Value="Segoe UI"/>
@@ -77,7 +77,7 @@
 
             <Style x:Key="ClientPassword" TargetType="PasswordBox">
                 <Setter Property="Background"    Value="#1A2035"/>
-                <Setter Property="Foreground"    Value="{StaticResource TextPrimary}"/>
+                <Setter Property="Foreground"    Value="#F1F5F9"/>
                 <Setter Property="BorderBrush"   Value="#2D3748"/>
                 <Setter Property="BorderThickness" Value="1"/>
                 <Setter Property="FontFamily"    Value="Segoe UI"/>
