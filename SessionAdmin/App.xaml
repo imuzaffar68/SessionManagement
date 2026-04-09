@@ -110,11 +110,68 @@
             </Style>
 
             <!-- ═══════════════════════════════════════════════════════════════
-                 SIDEBAR NAV BUTTONS
+                 SIDEBAR NAV — shared brush resources
+            ═══════════════════════════════════════════════════════════════════ -->
+            <LinearGradientBrush x:Key="NavActiveBg" StartPoint="0,0" EndPoint="1,0">
+                <GradientStop Color="#1A2E4A" Offset="0"/>
+                <GradientStop Color="#0F1117" Offset="1"/>
+            </LinearGradientBrush>
+            <LinearGradientBrush x:Key="NavActiveBorder" StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#4F8EF7" Offset="0"/>
+                <GradientStop Color="#7C3AED" Offset="1"/>
+            </LinearGradientBrush>
+
+            <!-- Single RadioButton style — IsChecked trigger handles active/inactive visuals -->
+            <Style x:Key="NavRadioBtn" TargetType="RadioButton">
+                <Setter Property="OverridesDefaultStyle"       Value="True"/>
+                <Setter Property="Background"                  Value="#13161F"/>
+                <Setter Property="Foreground"                  Value="#94A3B8"/>
+                <Setter Property="FontFamily"                  Value="Segoe UI"/>
+                <Setter Property="FontSize"                    Value="13.5"/>
+                <Setter Property="Height"                      Value="46"/>
+                <Setter Property="HorizontalContentAlignment"  Value="Left"/>
+                <Setter Property="Padding"                     Value="16,0"/>
+                <Setter Property="Cursor"                      Value="Hand"/>
+                <Setter Property="FocusVisualStyle"            Value="{x:Null}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="RadioButton">
+                            <Border x:Name="Root"
+                                    Background="#13161F"
+                                    BorderBrush="Transparent"
+                                    BorderThickness="0"
+                                    CornerRadius="10" Margin="6,2"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter VerticalAlignment="Center"
+                                                  TextBlock.Foreground="{TemplateBinding Foreground}"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Root" Property="Background" Value="#1E293B"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Root" Property="Background" Value="#253048"/>
+                                </Trigger>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="Root" Property="Background"      Value="{StaticResource NavActiveBg}"/>
+                                    <Setter TargetName="Root" Property="BorderBrush"     Value="{StaticResource NavActiveBorder}"/>
+                                    <Setter TargetName="Root" Property="BorderThickness" Value="2,0,0,0"/>
+                                    <Setter Property="Foreground" Value="#4F8EF7"/>
+                                    <Setter Property="FontWeight" Value="SemiBold"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- ═══════════════════════════════════════════════════════════════
+                 SIDEBAR NAV BUTTONS (legacy — kept for reference)
                  NavBtn        = default (inactive) state
                  NavBtnActive  = currently selected page
             ═══════════════════════════════════════════════════════════════════ -->
             <Style x:Key="NavBtn" TargetType="Button">
+                <Setter Property="OverridesDefaultStyle"   Value="True"/>
                 <Setter Property="Background"              Value="#13161F"/>
                 <Setter Property="BorderThickness"         Value="0"/>
                 <Setter Property="Foreground"              Value="#94A3B8"/>
@@ -148,6 +205,7 @@
             </Style>
 
             <Style x:Key="NavBtnActive" TargetType="Button" BasedOn="{StaticResource NavBtn}">
+                <Setter Property="OverridesDefaultStyle"   Value="True"/>
                 <Setter Property="Foreground"  Value="{StaticResource AccentBlue}"/>
                 <Setter Property="FontWeight"  Value="SemiBold"/>
                 <Setter Property="Template">
@@ -168,7 +226,8 @@
                                         <GradientStop Color="#7C3AED" Offset="1"/>
                                     </LinearGradientBrush>
                                 </Border.BorderBrush>
-                                <ContentPresenter VerticalAlignment="Center"/>
+                                <ContentPresenter VerticalAlignment="Center"
+                                                  TextBlock.Foreground="{TemplateBinding Foreground}"/>
                             </Border>
                         </ControlTemplate>
                     </Setter.Value>
@@ -282,14 +341,30 @@
                                     BorderBrush="{TemplateBinding BorderBrush}"
                                     BorderThickness="{TemplateBinding BorderThickness}"
                                     CornerRadius="8">
-                                <ScrollViewer x:Name="PART_ContentHost"
-                                              Margin="{TemplateBinding Padding}"
-                                              VerticalAlignment="Center"/>
+                                <Grid>
+                                    <ScrollViewer x:Name="PART_ContentHost"
+                                                  Margin="{TemplateBinding Padding}"
+                                                  VerticalAlignment="Center"/>
+                                    <TextBlock x:Name="Placeholder"
+                                               Text="{TemplateBinding Tag}"
+                                               Margin="{TemplateBinding Padding}"
+                                               Foreground="#475569" FontSize="13"
+                                               VerticalAlignment="Center"
+                                               IsHitTestVisible="False"
+                                               Visibility="Collapsed"/>
+                                </Grid>
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsFocused" Value="True">
                                     <Setter Property="BorderBrush" Value="#4F8EF7"/>
                                 </Trigger>
+                                <MultiTrigger>
+                                    <MultiTrigger.Conditions>
+                                        <Condition Property="Text" Value=""/>
+                                        <Condition Property="IsFocused" Value="False"/>
+                                    </MultiTrigger.Conditions>
+                                    <Setter TargetName="Placeholder" Property="Visibility" Value="Visible"/>
+                                </MultiTrigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
                     </Setter.Value>
@@ -311,13 +386,22 @@
                                     BorderBrush="{TemplateBinding BorderBrush}"
                                     BorderThickness="{TemplateBinding BorderThickness}"
                                     CornerRadius="8">
-                                <ScrollViewer x:Name="PART_ContentHost"
-                                              Margin="{TemplateBinding Padding}"
-                                              VerticalAlignment="Center"/>
+                                <Grid>
+                                    <TextBlock x:Name="Placeholder"
+                                               Text="{TemplateBinding Tag}"
+                                               Margin="{TemplateBinding Padding}"
+                                               Foreground="#475569" FontSize="13"
+                                               VerticalAlignment="Center"
+                                               IsHitTestVisible="False"/>
+                                    <ScrollViewer x:Name="PART_ContentHost"
+                                                  Margin="{TemplateBinding Padding}"
+                                                  VerticalAlignment="Center"/>
+                                </Grid>
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsFocused" Value="True">
                                     <Setter Property="BorderBrush" Value="#4F8EF7"/>
+                                    <Setter TargetName="Placeholder" Property="Visibility" Value="Collapsed"/>
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -517,16 +601,60 @@
                 <Setter Property="BorderThickness" Value="0"/>
                 <Setter Property="Padding"         Value="14,0"/>
                 <Setter Property="Foreground"      Value="{StaticResource TextPrimary}"/>
+                <Setter Property="Background"      Value="Transparent"/>
+                <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                <Style.Triggers>
+                    <Trigger Property="IsSelected" Value="True">
+                        <Setter Property="Background"   Value="Transparent"/>
+                        <Setter Property="BorderBrush"  Value="Transparent"/>
+                        <Setter Property="Foreground"   Value="{StaticResource TextPrimary}"/>
+                    </Trigger>
+                </Style.Triggers>
             </Style>
 
             <!-- ═══════════════════════════════════════════════════════════════
                  MISC CONTROLS
             ═══════════════════════════════════════════════════════════════════ -->
             <Style TargetType="CheckBox">
+                <Setter Property="OverridesDefaultStyle" Value="True"/>
                 <Setter Property="Foreground"            Value="{StaticResource TextSecondary}"/>
                 <Setter Property="FontFamily"            Value="Segoe UI"/>
                 <Setter Property="FontSize"              Value="13"/>
+                <Setter Property="Cursor"                Value="Hand"/>
+                <Setter Property="FocusVisualStyle"      Value="{x:Null}"/>
                 <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="CheckBox">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Border x:Name="Bd" Width="18" Height="18" CornerRadius="5"
+                                        Background="#1E2433" BorderBrush="#2D3748" BorderThickness="1.5"
+                                        VerticalAlignment="Center" Margin="0,0,8,0">
+                                    <TextBlock x:Name="Chk" Text="✓" FontSize="11" FontWeight="Bold"
+                                               Foreground="#4F8EF7" HorizontalAlignment="Center"
+                                               VerticalAlignment="Center" Visibility="Collapsed"/>
+                                </Border>
+                                <ContentPresenter VerticalAlignment="Center"
+                                                  TextBlock.Foreground="{TemplateBinding Foreground}"
+                                                  TextBlock.FontFamily="{TemplateBinding FontFamily}"
+                                                  TextBlock.FontSize="{TemplateBinding FontSize}"/>
+                            </StackPanel>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsChecked" Value="True">
+                                    <Setter TargetName="Chk" Property="Visibility" Value="Visible"/>
+                                    <Setter TargetName="Bd"  Property="BorderBrush" Value="#4F8EF7"/>
+                                    <Setter TargetName="Bd"  Property="Background"  Value="#1A2E4A"/>
+                                </Trigger>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#4F8EF7"/>
+                                </Trigger>
+                                <Trigger Property="IsFocused" Value="True">
+                                    <Setter TargetName="Bd" Property="BorderBrush" Value="#4F8EF7"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
 
             <!-- DatePickerTextBox inside DatePicker — override to dark -->
@@ -553,13 +681,14 @@
             </Style>
 
             <Style TargetType="DatePicker">
-                <Setter Property="Background"    Value="#1E2433"/>
-                <Setter Property="Foreground"    Value="#F1F5F9"/>
-                <Setter Property="BorderBrush"   Value="#2D3748"/>
-                <Setter Property="BorderThickness" Value="1"/>
-                <Setter Property="FontFamily"    Value="Segoe UI"/>
-                <Setter Property="FontSize"      Value="13"/>
-                <Setter Property="Height"        Value="38"/>
+                <Setter Property="Background"       Value="#1E2433"/>
+                <Setter Property="Foreground"       Value="#F1F5F9"/>
+                <Setter Property="BorderBrush"      Value="#2D3748"/>
+                <Setter Property="BorderThickness"  Value="1"/>
+                <Setter Property="FontFamily"       Value="Segoe UI"/>
+                <Setter Property="FontSize"         Value="13"/>
+                <Setter Property="Height"           Value="38"/>
+                <Setter Property="CalendarStyle"    Value="{DynamicResource DarkCalendar}"/>
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="DatePicker">
@@ -602,6 +731,315 @@
                                     <Setter TargetName="Bd" Property="BorderBrush" Value="#4F8EF7"/>
                                 </Trigger>
                             </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- ═══════════════════════════════════════════════════════════════
+                 CALENDAR — dark theme (DatePicker popup)
+            ═══════════════════════════════════════════════════════════════ -->
+            <Style x:Key="DarkCalDayBtn" TargetType="CalendarDayButton">
+                <Setter Property="OverridesDefaultStyle" Value="True"/>
+                <Setter Property="MinWidth"   Value="34"/>
+                <Setter Property="MinHeight"  Value="34"/>
+                <Setter Property="FontFamily" Value="Segoe UI"/>
+                <Setter Property="FontSize"   Value="12"/>
+                <Setter Property="Foreground" Value="#F1F5F9"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                <Setter Property="VerticalContentAlignment"   Value="Center"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="CalendarDayButton">
+                            <Grid>
+                                <Border x:Name="Root" Background="Transparent" CornerRadius="6" Margin="1"/>
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Grid>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Root" Property="Background" Value="#252D42"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Root" Property="Background" Value="#1D3461"/>
+                                </Trigger>
+                                <Trigger Property="IsSelected" Value="True">
+                                    <Setter TargetName="Root" Property="Background" Value="#4F8EF7"/>
+                                    <Setter Property="Foreground" Value="White"/>
+                                </Trigger>
+                                <Trigger Property="IsToday" Value="True">
+                                    <Setter TargetName="Root" Property="Background"      Value="#1D3461"/>
+                                    <Setter TargetName="Root" Property="BorderBrush"     Value="#4F8EF7"/>
+                                    <Setter TargetName="Root" Property="BorderThickness" Value="1"/>
+                                    <Setter Property="Foreground" Value="#4F8EF7"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Foreground" Value="#2D3748"/>
+                                </Trigger>
+                                <Trigger Property="IsInactive" Value="True">
+                                    <Setter Property="Foreground" Value="#2D3748"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="DarkCalBtn" TargetType="CalendarButton">
+                <Setter Property="OverridesDefaultStyle" Value="True"/>
+                <Setter Property="MinWidth"   Value="40"/>
+                <Setter Property="MinHeight"  Value="42"/>
+                <Setter Property="FontFamily" Value="Segoe UI"/>
+                <Setter Property="FontSize"   Value="12"/>
+                <Setter Property="Foreground" Value="#F1F5F9"/>
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                <Setter Property="VerticalContentAlignment"   Value="Center"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="CalendarButton">
+                            <Border x:Name="Root" Background="Transparent" CornerRadius="6" Margin="2">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Root" Property="Background" Value="#252D42"/>
+                                </Trigger>
+                                <Trigger Property="HasSelectedDays" Value="True">
+                                    <Setter TargetName="Root" Property="Background" Value="#4F8EF7"/>
+                                    <Setter Property="Foreground" Value="White"/>
+                                </Trigger>
+                                <Trigger Property="IsInactive" Value="True">
+                                    <Setter Property="Foreground" Value="#475569"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style TargetType="CalendarItem">
+                <Setter Property="OverridesDefaultStyle" Value="True"/>
+                <Setter Property="Background" Value="#1E2433"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="CalendarItem">
+                            <ControlTemplate.Resources>
+                                <DataTemplate x:Key="DayTitleTemplate">
+                                    <TextBlock Text="{Binding}" FontFamily="Segoe UI"
+                                               FontSize="10" FontWeight="SemiBold"
+                                               Foreground="#475569"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"
+                                               Margin="0,4,0,6"/>
+                                </DataTemplate>
+                                <!-- Implicit dark style — applies to day cells CalendarItem creates in PART_MonthView -->
+                                <Style TargetType="CalendarDayButton">
+                                    <Setter Property="OverridesDefaultStyle" Value="True"/>
+                                    <Setter Property="MinWidth"   Value="34"/>
+                                    <Setter Property="MinHeight"  Value="34"/>
+                                    <Setter Property="FontFamily" Value="Segoe UI"/>
+                                    <Setter Property="FontSize"   Value="12"/>
+                                    <Setter Property="Foreground" Value="#F1F5F9"/>
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                                    <Setter Property="VerticalContentAlignment"   Value="Center"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="CalendarDayButton">
+                                                <Grid>
+                                                    <Border x:Name="Root" Background="Transparent" CornerRadius="6" Margin="1"/>
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Grid>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Root" Property="Background" Value="#252D42"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsPressed" Value="True">
+                                                        <Setter TargetName="Root" Property="Background" Value="#1D3461"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsSelected" Value="True">
+                                                        <Setter TargetName="Root" Property="Background" Value="#4F8EF7"/>
+                                                        <Setter Property="Foreground" Value="White"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsToday" Value="True">
+                                                        <Setter TargetName="Root" Property="Background"      Value="#1D3461"/>
+                                                        <Setter TargetName="Root" Property="BorderBrush"     Value="#4F8EF7"/>
+                                                        <Setter TargetName="Root" Property="BorderThickness" Value="1"/>
+                                                        <Setter Property="Foreground" Value="#4F8EF7"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsEnabled" Value="False">
+                                                        <Setter Property="Foreground" Value="#2D3748"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsInactive" Value="True">
+                                                        <Setter Property="Foreground" Value="#2D3748"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                                <!-- Implicit dark style — applies to month/year cells in PART_YearView -->
+                                <Style TargetType="CalendarButton">
+                                    <Setter Property="OverridesDefaultStyle" Value="True"/>
+                                    <Setter Property="MinWidth"   Value="40"/>
+                                    <Setter Property="MinHeight"  Value="42"/>
+                                    <Setter Property="FontFamily" Value="Segoe UI"/>
+                                    <Setter Property="FontSize"   Value="12"/>
+                                    <Setter Property="Foreground" Value="#F1F5F9"/>
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                                    <Setter Property="VerticalContentAlignment"   Value="Center"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="CalendarButton">
+                                                <Border x:Name="Root" Background="Transparent" CornerRadius="6" Margin="2">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Root" Property="Background" Value="#252D42"/>
+                                                    </Trigger>
+                                                    <Trigger Property="HasSelectedDays" Value="True">
+                                                        <Setter TargetName="Root" Property="Background" Value="#4F8EF7"/>
+                                                        <Setter Property="Foreground" Value="White"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsInactive" Value="True">
+                                                        <Setter Property="Foreground" Value="#475569"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ControlTemplate.Resources>
+                            <Border Background="#1E2433" Padding="8">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="34"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+                                    <!-- Navigation header -->
+                                    <Grid Grid.Row="0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="32"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="32"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Button x:Name="PART_PreviousButton" Grid.Column="0"
+                                                OverridesDefaultStyle="True" Cursor="Hand">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="r" Background="Transparent" CornerRadius="6" Width="28" Height="28">
+                                                        <TextBlock Text="‹" FontSize="17" FontWeight="Bold"
+                                                                   Foreground="#94A3B8"
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="r" Property="Background" Value="#252D42"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                        <Button x:Name="PART_HeaderButton" Grid.Column="1"
+                                                OverridesDefaultStyle="True" Cursor="Hand"
+                                                HorizontalAlignment="Center">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="r" Background="Transparent" CornerRadius="6" Padding="8,4">
+                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                                          TextBlock.Foreground="#F1F5F9"
+                                                                          TextBlock.FontSize="13"
+                                                                          TextBlock.FontWeight="SemiBold"
+                                                                          TextBlock.FontFamily="Segoe UI"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="r" Property="Background" Value="#252D42"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                        <Button x:Name="PART_NextButton" Grid.Column="2"
+                                                OverridesDefaultStyle="True" Cursor="Hand">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="r" Background="Transparent" CornerRadius="6" Width="28" Height="28">
+                                                        <TextBlock Text="›" FontSize="17" FontWeight="Bold"
+                                                                   Foreground="#94A3B8"
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="r" Property="Background" Value="#252D42"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                    </Grid>
+                                    <!-- Month day grid -->
+                                    <Grid x:Name="PART_MonthView" Grid.Row="1"
+                                          HorizontalAlignment="Center" Visibility="Visible">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                    </Grid>
+                                    <!-- Year/decade grid -->
+                                    <Grid x:Name="PART_YearView" Grid.Row="1"
+                                          HorizontalAlignment="Center" Visibility="Hidden">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                    </Grid>
+                                </Grid>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <Style x:Key="DarkCalendar" TargetType="Calendar">
+                <Setter Property="OverridesDefaultStyle"    Value="True"/>
+                <Setter Property="Background"               Value="#1E2433"/>
+                <Setter Property="Foreground"               Value="#F1F5F9"/>
+                <Setter Property="BorderThickness"          Value="0"/>
+                <Setter Property="CalendarDayButtonStyle"   Value="{StaticResource DarkCalDayBtn}"/>
+                <Setter Property="CalendarButtonStyle"      Value="{StaticResource DarkCalBtn}"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Calendar">
+                            <Border Background="#1E2433" BorderBrush="#4F8EF7"
+                                    BorderThickness="1" CornerRadius="10">
+                                <CalendarItem x:Name="PART_CalendarItem"
+                                              Background="#1E2433" BorderThickness="0"/>
+                            </Border>
                         </ControlTemplate>
                     </Setter.Value>
                 </Setter>

@@ -99,6 +99,17 @@ namespace SessionAdmin
             lblErrorBorder.Visibility = Visibility.Visible;
         }
 
+        private void TitleBar_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (e.LeftButton == System.Windows.Input.MouseButtonState.Pressed) DragMove();
+        }
+
+        private void btnWindowClose_Click(object sender, RoutedEventArgs e)
+        {
+            DialogResult = false;
+            Close();
+        }
+
         private void btnCancel_Click(object sender, RoutedEventArgs e)
         {
             DialogResult = false;

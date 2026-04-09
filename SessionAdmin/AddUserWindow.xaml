@@ -1,0 +1,103 @@
+<Window x:Class="SessionAdmin.AddUserWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Add Client User"
+        Height="500" Width="480"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#0F1117">
+
+    <Border Background="#171B26">
+        <StackPanel Margin="28">
+
+            <!-- Header -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,20">
+                <Border Width="40" Height="40" CornerRadius="10" Margin="0,0,12,0">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#065F46" Offset="0"/>
+                            <GradientStop Color="#34D399" Offset="1"/>
+                        </LinearGradientBrush>
+                    </Border.Background>
+                    <TextBlock Text="👤" FontSize="18" HorizontalAlignment="Center"
+                               VerticalAlignment="Center"/>
+                </Border>
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="Add Client User" FontSize="16" FontWeight="Bold"
+                               Foreground="#F1F5F9"/>
+                    <TextBlock Text="Register a new client account"
+                               FontSize="11" Foreground="#475569"/>
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Username -->
+            <TextBlock Text="USERNAME *" FontSize="10" FontWeight="SemiBold"
+                       Foreground="#475569" Margin="0,0,0,6"/>
+            <TextBox x:Name="txtUsername" Style="{StaticResource ModernInput}"
+                     Height="40" Margin="0,0,0,14"/>
+
+            <!-- Full Name -->
+            <TextBlock Text="FULL NAME" FontSize="10" FontWeight="SemiBold"
+                       Foreground="#475569" Margin="0,0,0,6"/>
+            <TextBox x:Name="txtFullName" Style="{StaticResource ModernInput}"
+                     Height="40" Margin="0,0,0,14"/>
+
+            <!-- Password -->
+            <TextBlock Text="PASSWORD *" FontSize="10" FontWeight="SemiBold"
+                       Foreground="#475569" Margin="0,0,0,6"/>
+            <Grid Margin="0,0,0,14">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="44"/>
+                    <ColumnDefinition Width="8"/>
+                    <ColumnDefinition Width="76"/>
+                </Grid.ColumnDefinitions>
+                <PasswordBox x:Name="txtPassword" Grid.Column="0"
+                             Style="{StaticResource ModernPassword}" Height="40"/>
+                <TextBox x:Name="txtPasswordPlain" Grid.Column="0"
+                         Style="{StaticResource ModernInput}" Height="40"
+                         Visibility="Collapsed"/>
+                <Button x:Name="btnShowPassword" Grid.Column="1"
+                        Content="👁" Style="{StaticResource ShowPasswordBtn}"
+                        Height="40" Click="btnShowPassword_Click"/>
+                <Button x:Name="btnGenerate" Grid.Column="3"
+                        Content="⚡ Auto" Style="{StaticResource BtnPurple}"
+                        Height="40" FontSize="11" Padding="0"
+                        Click="btnGenerate_Click"/>
+            </Grid>
+
+            <!-- Phone -->
+            <TextBlock Text="PHONE" FontSize="10" FontWeight="SemiBold"
+                       Foreground="#475569" Margin="0,0,0,6"/>
+            <TextBox x:Name="txtPhone" Style="{StaticResource ModernInput}"
+                     Height="40" Margin="0,0,0,14"/>
+
+            <!-- Address -->
+            <TextBlock Text="ADDRESS" FontSize="10" FontWeight="SemiBold"
+                       Foreground="#475569" Margin="0,0,0,6"/>
+            <TextBox x:Name="txtAddress" Style="{StaticResource ModernInput}"
+                     Height="40" Margin="0,0,0,16"/>
+
+            <!-- Error -->
+            <Border x:Name="lblErrorBorder" Background="#2D0A0A" CornerRadius="8"
+                    BorderBrush="#7F1D1D" BorderThickness="1"
+                    Padding="12,8" Margin="0,0,0,16" Visibility="Collapsed">
+                <TextBlock x:Name="lblError" Foreground="#FCA5A5"
+                           FontSize="12" TextWrapping="Wrap"/>
+            </Border>
+
+            <!-- Buttons -->
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="btnCancel" Content="Cancel"
+                        Style="{StaticResource BtnGhost}"
+                        Height="38" Width="90" Margin="0,0,8,0"
+                        Click="btnCancel_Click"/>
+                <Button x:Name="btnSubmit" Content="+ Add User"
+                        Style="{StaticResource BtnSuccess}"
+                        Height="38" Width="110"
+                        Click="btnSubmit_Click"/>
+            </StackPanel>
+
+        </StackPanel>
+    </Border>
+</Window>

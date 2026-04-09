@@ -5,10 +5,99 @@
         Height="820" Width="1380"
         MinHeight="700" MinWidth="1100"
         WindowStartupLocation="CenterScreen"
+        WindowStyle="None"
         Background="#0F1117">
 
-
+    <Border Background="#0F1117" BorderBrush="#2D3748" BorderThickness="1">
     <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="38"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- ══════════════════════════════════════════════════════════
+             CUSTOM TITLE BAR
+        ══════════════════════════════════════════════════════════ -->
+        <Border Grid.Row="0" Background="#0D0F17"
+                MouseLeftButtonDown="TitleBar_MouseDown"
+                Cursor="SizeAll">
+            <Grid Margin="12,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Image Source="/SessionAdmin;component/web-apps.ico"
+                           Width="16" Height="16" Margin="0,0,8,0"
+                           VerticalAlignment="Center"
+                           RenderOptions.BitmapScalingMode="HighQuality"/>
+                    <TextBlock Text="NetCafé Admin — Session Management"
+                               FontSize="12" FontWeight="SemiBold"
+                               Foreground="#94A3B8" VerticalAlignment="Center"/>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                            VerticalAlignment="Center">
+                    <!-- Minimize -->
+                    <Button Content="─" Width="32" Height="28"
+                            Foreground="#475569" Background="Transparent"
+                            BorderThickness="0" FontSize="13" Cursor="Hand"
+                            Click="btnMinimize_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="r" Background="{TemplateBinding Background}" CornerRadius="4">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="r" Property="Background" Value="#1E2433"/>
+                                        <Setter Property="Foreground" Value="#F1F5F9"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    <!-- Maximize / Restore -->
+                    <Button x:Name="btnMaximize" Content="□" Width="32" Height="28"
+                            Foreground="#475569" Background="Transparent"
+                            BorderThickness="0" FontSize="13" Cursor="Hand"
+                            Click="btnMaximize_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="r" Background="{TemplateBinding Background}" CornerRadius="4">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="r" Property="Background" Value="#1E2433"/>
+                                        <Setter Property="Foreground" Value="#F1F5F9"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    <!-- Close -->
+                    <Button Content="✕" Width="32" Height="28"
+                            Foreground="#475569" Background="Transparent"
+                            BorderThickness="0" FontSize="14" Cursor="Hand"
+                            Click="btnWindowClose_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="r" Background="{TemplateBinding Background}" CornerRadius="4">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="r" Property="Background" Value="#7F1D1D"/>
+                                        <Setter Property="Foreground" Value="#F87171"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ══════════════════════════════════════════════════════════
+             MAIN AREA (sidebar + content)
+        ══════════════════════════════════════════════════════════ -->
+        <Grid Grid.Row="1">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="220"/>
             <ColumnDefinition Width="*"/>
@@ -64,22 +153,26 @@
                 </Border>
 
                 <!-- Nav Items -->
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Hidden">
+                <ScrollViewer x:Name="SidebarNav" Grid.Row="1" VerticalScrollBarVisibility="Hidden"
+                              Visibility="Collapsed">
                     <StackPanel Margin="0,12,0,0">
                         <TextBlock Text="MAIN" Style="{StaticResource SectionLabel}" Margin="22,8,0,6"/>
 
                         <!-- Dashboard -->
-                        <Button x:Name="btnNavDashboard" Style="{StaticResource NavBtnActive}"
-                                Click="btnNavDashboard_Click">
+                        <RadioButton x:Name="btnNavDashboard" GroupName="Nav"
+                                     IsChecked="True"
+                                     Style="{StaticResource NavRadioBtn}"
+                                     Click="btnNavDashboard_Click">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="🏠" FontSize="15" Width="22" VerticalAlignment="Center"/>
                                 <TextBlock Text="Dashboard" VerticalAlignment="Center"/>
                             </StackPanel>
-                        </Button>
+                        </RadioButton>
 
                         <!-- Active Sessions -->
-                        <Button x:Name="btnNavSessions" Style="{StaticResource NavBtn}"
-                                Click="btnNavSessions_Click">
+                        <RadioButton x:Name="btnNavSessions" GroupName="Nav"
+                                     Style="{StaticResource NavRadioBtn}"
+                                     Click="btnNavSessions_Click">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="⏱" FontSize="15" Width="22" VerticalAlignment="Center"/>
                                 <TextBlock Text="Active Sessions" VerticalAlignment="Center"/>
@@ -89,44 +182,48 @@
                                                FontSize="10" Foreground="#4F8EF7" FontWeight="SemiBold"/>
                                 </Border>
                             </StackPanel>
-                        </Button>
+                        </RadioButton>
 
                         <!-- Client Machines -->
-                        <Button x:Name="btnNavClients" Style="{StaticResource NavBtn}"
-                                Click="btnNavClients_Click">
+                        <RadioButton x:Name="btnNavClients" GroupName="Nav"
+                                     Style="{StaticResource NavRadioBtn}"
+                                     Click="btnNavClients_Click">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="🖥" FontSize="15" Width="22" VerticalAlignment="Center"/>
                                 <TextBlock Text="Client Machines" VerticalAlignment="Center"/>
                             </StackPanel>
-                        </Button>
+                        </RadioButton>
 
                         <TextBlock Text="USERS" Style="{StaticResource SectionLabel}" Margin="22,16,0,6"/>
 
                         <!-- User Management -->
-                        <Button x:Name="btnNavUsers" Style="{StaticResource NavBtn}"
-                                Click="btnNavUsers_Click">
+                        <RadioButton x:Name="btnNavUsers" GroupName="Nav"
+                                     Style="{StaticResource NavRadioBtn}"
+                                     Click="btnNavUsers_Click">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="👥" FontSize="15" Width="22" VerticalAlignment="Center"/>
                                 <TextBlock Text="User Management" VerticalAlignment="Center"/>
                             </StackPanel>
-                        </Button>
+                        </RadioButton>
 
                         <TextBlock Text="BILLING" Style="{StaticResource SectionLabel}" Margin="22,16,0,6"/>
 
                         <!-- Billing Rates -->
-                        <Button x:Name="btnNavBilling" Style="{StaticResource NavBtn}"
-                                Click="btnNavBilling_Click">
+                        <RadioButton x:Name="btnNavBilling" GroupName="Nav"
+                                     Style="{StaticResource NavRadioBtn}"
+                                     Click="btnNavBilling_Click">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="💰" FontSize="15" Width="22" VerticalAlignment="Center"/>
                                 <TextBlock Text="Billing Rates" VerticalAlignment="Center"/>
                             </StackPanel>
-                        </Button>
+                        </RadioButton>
 
                         <TextBlock Text="MONITORING" Style="{StaticResource SectionLabel}" Margin="22,16,0,6"/>
 
                         <!-- Security Alerts -->
-                        <Button x:Name="btnNavAlerts" Style="{StaticResource NavBtn}"
-                                Click="btnNavAlerts_Click">
+                        <RadioButton x:Name="btnNavAlerts" GroupName="Nav"
+                                     Style="{StaticResource NavRadioBtn}"
+                                     Click="btnNavAlerts_Click">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="⚠" FontSize="15" Width="22" VerticalAlignment="Center"/>
                                 <TextBlock Text="Security Alerts" VerticalAlignment="Center"/>
@@ -136,25 +233,27 @@
                                                FontSize="10" Foreground="#F87171" FontWeight="SemiBold"/>
                                 </Border>
                             </StackPanel>
-                        </Button>
+                        </RadioButton>
 
                         <!-- Session Logs -->
-                        <Button x:Name="btnNavLogs" Style="{StaticResource NavBtn}"
-                                Click="btnNavLogs_Click">
+                        <RadioButton x:Name="btnNavLogs" GroupName="Nav"
+                                     Style="{StaticResource NavRadioBtn}"
+                                     Click="btnNavLogs_Click">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="📋" FontSize="15" Width="22" VerticalAlignment="Center"/>
                                 <TextBlock Text="Session Logs" VerticalAlignment="Center"/>
                             </StackPanel>
-                        </Button>
+                        </RadioButton>
 
                         <!-- Reports -->
-                        <Button x:Name="btnNavReports" Style="{StaticResource NavBtn}"
-                                Click="btnNavReports_Click">
+                        <RadioButton x:Name="btnNavReports" GroupName="Nav"
+                                     Style="{StaticResource NavRadioBtn}"
+                                     Click="btnNavReports_Click">
                             <StackPanel Orientation="Horizontal">
                                 <TextBlock Text="📊" FontSize="15" Width="22" VerticalAlignment="Center"/>
                                 <TextBlock Text="Reports" VerticalAlignment="Center"/>
                             </StackPanel>
-                        </Button>
+                        </RadioButton>
                     </StackPanel>
                 </ScrollViewer>
 
@@ -709,106 +808,35 @@
                         <Grid x:Name="PageUsers" Margin="24" Visibility="Collapsed">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <!-- Register Form -->
-                            <Border Grid.Row="0" Style="{StaticResource Card}" Margin="0,0,0,16">
-                                <StackPanel>
-                                    <TextBlock Text="Register New Client User"
-                                               FontSize="14" FontWeight="SemiBold"
-                                               Foreground="#F1F5F9" Margin="0,0,0,16"/>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                                            <TextBlock Text="USERNAME" FontSize="10" FontWeight="SemiBold"
-                                                       Foreground="#475569" Margin="0,0,0,6"/>
-                                            <TextBox x:Name="txtUsername" Style="{StaticResource ModernInput}" Height="38"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="1" Margin="0,0,12,0">
-                                            <TextBlock Text="FULL NAME" FontSize="10" FontWeight="SemiBold"
-                                                       Foreground="#475569" Margin="0,0,0,6"/>
-                                            <TextBox x:Name="txtFullName" Style="{StaticResource ModernInput}" Height="38"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="2" Margin="0,0,12,0">
-                                            <TextBlock Text="PASSWORD" FontSize="10" FontWeight="SemiBold"
-                                                       Foreground="#475569" Margin="0,0,0,6"/>
-                                            <PasswordBox x:Name="txtPassword"
-                                                         Style="{StaticResource ModernPassword}" Height="38"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="3">
-                                            <TextBlock Text="PHONE" FontSize="10" FontWeight="SemiBold"
-                                                       Foreground="#475569" Margin="0,0,0,6"/>
-                                            <TextBox x:Name="txtPhone" Style="{StaticResource ModernInput}" Height="38"/>
-                                        </StackPanel>
-                                    </Grid>
-                                    <Grid Margin="0,10,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0">
-                                            <TextBlock Text="ADDRESS" FontSize="10" FontWeight="SemiBold"
-                                                       Foreground="#475569" Margin="0,0,0,6"/>
-                                            <TextBox x:Name="txtAddress" Style="{StaticResource ModernInput}" Height="38"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="1" Orientation="Horizontal"
-                                                    VerticalAlignment="Bottom" Margin="12,0,0,0">
-                                            <Button x:Name="btnGeneratePassword"
-                                                    Content="⚡ Auto Password"
-                                                    Style="{StaticResource BtnPurple}"
-                                                    Height="38" Padding="14,0" FontSize="12"
-                                                    Click="btnGeneratePassword_Click"/>
-                                            <Button x:Name="btnClearForm" Content="✕ Clear"
-                                                    Style="{StaticResource BtnGhost}"
-                                                    Height="38" Padding="14,0" FontSize="12"
-                                                    Margin="8,0,0,0" Click="btnClearForm_Click"/>
-                                            <Button x:Name="btnRegisterUser"
-                                                    Content="+ Register User"
-                                                    Style="{StaticResource BtnSuccess}"
-                                                    Height="38" Padding="16,0" FontSize="12"
-                                                    FontWeight="SemiBold" Margin="8,0,0,0"
-                                                    Click="btnRegisterUser_Click"/>
-                                        </StackPanel>
-                                    </Grid>
-                                    <!-- Messages -->
-                                    <Border x:Name="regErrorBorder" Background="#2D0A0A" CornerRadius="8"
-                                            BorderBrush="#7F1D1D" BorderThickness="1"
-                                            Padding="12,8" Margin="0,12,0,0" Visibility="Collapsed">
-                                        <TextBlock x:Name="lblRegError" Foreground="#FCA5A5" FontSize="12"/>
-                                    </Border>
-                                    <Border x:Name="regSuccessBorder" Background="#022C22" CornerRadius="8"
-                                            BorderBrush="#065F46" BorderThickness="1"
-                                            Padding="12,8" Margin="0,12,0,0" Visibility="Collapsed">
-                                        <TextBlock x:Name="lblRegSuccess" Foreground="#6EE7B7" FontSize="12"/>
+                            <!-- REMOVED INLINE FORM - now opens as AddUserWindow popup -->
+                            <!-- Users List Header -->
+                            <Grid Grid.Row="0" Margin="0,0,0,12">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="Registered Users" FontSize="14" FontWeight="SemiBold"
+                                               VerticalAlignment="Center"/>
+                                    <Border CornerRadius="10" Background="#1E2433" Padding="8,2" Margin="10,0">
+                                        <TextBlock x:Name="lblUserCount" Text="0"
+                                                   FontSize="11" Foreground="#4F8EF7" FontWeight="Bold"/>
                                     </Border>
                                 </StackPanel>
-                            </Border>
-
-                            <!-- Users List Header -->
-                            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
-                                <TextBlock Text="Registered Users" FontSize="14" FontWeight="SemiBold"
-                                           VerticalAlignment="Center"/>
-                                <Border CornerRadius="10" Background="#1E2433" Padding="8,2"
-                                        Margin="10,0">
-                                    <TextBlock x:Name="lblUserCount" Text="0"
-                                               FontSize="11" Foreground="#4F8EF7" FontWeight="Bold"/>
-                                </Border>
-                                <Button x:Name="btnRefreshUsers" Content="↺ Refresh"
-                                        Style="{StaticResource BtnGhost}"
-                                        Height="32" Padding="12,0" FontSize="11"
-                                        Click="btnRefreshUsers_Click"/>
-                            </StackPanel>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button x:Name="btnAddNewUser" Content="+ Add New User"
+                                            Style="{StaticResource BtnSuccess}"
+                                            Height="34" Padding="14,0" FontSize="12"
+                                            Click="btnAddNewUser_Click"/>
+                                    <Button x:Name="btnRefreshUsers" Content="↺ Refresh"
+                                            Style="{StaticResource BtnGhost}"
+                                            Height="34" Padding="12,0" FontSize="11"
+                                            Margin="8,0,0,0" Click="btnRefreshUsers_Click"/>
+                                </StackPanel>
+                            </Grid>
 
                             <!-- Users Table -->
-                            <Border Grid.Row="2" Style="{StaticResource Card}" Padding="0">
+                            <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
                                 <DataGrid x:Name="dgUsers" AutoGenerateColumns="False"
                                           IsReadOnly="True" CanUserAddRows="False"
                                           SelectionMode="Single">
@@ -891,7 +919,7 @@
                             </Border>
 
                             <!-- User Action Messages -->
-                            <Border Grid.Row="3" Background="#1E2433" CornerRadius="8"
+                            <Border Grid.Row="2" Background="#1E2433" CornerRadius="8"
                                     Padding="14,10" Margin="0,12,0,0">
                                 <StackPanel>
                                     <TextBlock x:Name="lblUserActionError" Foreground="#FCA5A5"
@@ -906,123 +934,34 @@
                         <Grid x:Name="PageBilling" Margin="24" Visibility="Collapsed">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <!-- Add/Edit Form -->
-                            <Border Grid.Row="0" Style="{StaticResource Card}" Margin="0,0,0,16">
-                                <StackPanel>
-                                    <TextBlock Text="Add / Edit Billing Rate"
-                                               FontSize="14" FontWeight="SemiBold"
-                                               Foreground="#F1F5F9" Margin="0,0,0,16"/>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="120"/>
-                                            <ColumnDefinition Width="120"/>
-                                            <ColumnDefinition Width="140"/>
-                                            <ColumnDefinition Width="140"/>
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                                            <TextBlock Text="RATE NAME" FontSize="10" FontWeight="SemiBold"
-                                                       Foreground="#475569" Margin="0,0,0,6"/>
-                                            <TextBox x:Name="txtRateName" Style="{StaticResource ModernInput}" Height="38"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="1" Margin="0,0,12,0">
-                                            <TextBlock Text="RATE/MIN" FontSize="10" FontWeight="SemiBold"
-                                                       Foreground="#475569" Margin="0,0,0,6"/>
-                                            <TextBox x:Name="txtRatePerMinute" Style="{StaticResource ModernInput}" Height="38"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="2" Margin="0,0,12,0">
-                                            <TextBlock Text="CURRENCY" FontSize="10" FontWeight="SemiBold"
-                                                       Foreground="#475569" Margin="0,0,0,6"/>
-                                            <ComboBox x:Name="cboCurrency"
-                                                      Style="{StaticResource ModernCombo}"
-                                                      SelectedIndex="0">
-                                                <ComboBoxItem Content="USD"/>
-                                                <ComboBoxItem Content="EUR"/>
-                                                <ComboBoxItem Content="GBP"/>
-                                                <ComboBoxItem Content="INR"/>
-                                                <ComboBoxItem Content="PKR"/>
-                                            </ComboBox>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="3" Margin="0,0,12,0">
-                                            <TextBlock Text="EFFECTIVE FROM" FontSize="10" FontWeight="SemiBold"
-                                                       Foreground="#475569" Margin="0,0,0,6"/>
-                                            <DatePicker x:Name="dpEffectiveFrom" Height="38"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="4">
-                                            <TextBlock Text="EFFECTIVE TO" FontSize="10" FontWeight="SemiBold"
-                                                       Foreground="#475569" Margin="0,0,0,6"/>
-                                            <DatePicker x:Name="dpEffectiveTo" Height="38"/>
-                                        </StackPanel>
-                                    </Grid>
-                                    <Grid Margin="0,12,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*"/>
-                                            <ColumnDefinition Width="Auto"/>
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0">
-                                            <TextBlock Text="NOTES" FontSize="10" FontWeight="SemiBold"
-                                                       Foreground="#475569" Margin="0,0,0,6"/>
-                                            <TextBox x:Name="txtNotes" Style="{StaticResource ModernInput}" Height="38"/>
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="1" VerticalAlignment="Bottom" Margin="12,0,0,0">
-                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                                                <CheckBox x:Name="chkIsActive" Content="Active"
-                                                          IsChecked="True" VerticalAlignment="Center"
-                                                          Margin="0,0,16,0"/>
-                                                <CheckBox x:Name="chkIsDefault" Content="Set as Default"
-                                                          VerticalAlignment="Center"/>
-                                            </StackPanel>
-                                            <StackPanel Orientation="Horizontal">
-                                                <Button x:Name="btnAddBillingRate" Content="+ Add Rate"
-                                                        Style="{StaticResource BtnSuccess}"
-                                                        Height="38" Padding="16,0" FontSize="12"
-                                                        Click="btnAddBillingRate_Click"/>
-                                                <Button x:Name="btnUpdateBillingRate" Content="↑ Update Rate"
-                                                        Style="{StaticResource BtnPrimary}"
-                                                        Height="38" Padding="16,0" FontSize="12"
-                                                        Margin="8,0,0,0" Visibility="Collapsed"
-                                                        Click="btnUpdateBillingRate_Click"/>
-                                                <Button x:Name="btnClearBillingRateForm" Content="✕ Clear"
-                                                        Style="{StaticResource BtnGhost}"
-                                                        Height="38" Padding="14,0" FontSize="12"
-                                                        Margin="8,0,0,0"
-                                                        Click="btnClearBillingRateForm_Click"/>
-                                            </StackPanel>
-                                        </StackPanel>
-                                    </Grid>
-                                    <Border x:Name="billingErrorBorder" Background="#2D0A0A" CornerRadius="8"
-                                            BorderBrush="#7F1D1D" BorderThickness="1"
-                                            Padding="12,8" Margin="0,12,0,0" Visibility="Collapsed">
-                                        <TextBlock x:Name="lblBillingRateError" Foreground="#FCA5A5" FontSize="12"/>
-                                    </Border>
-                                    <Border x:Name="billingSuccessBorder" Background="#022C22" CornerRadius="8"
-                                            BorderBrush="#065F46" BorderThickness="1"
-                                            Padding="12,8" Margin="0,12,0,0" Visibility="Collapsed">
-                                        <TextBlock x:Name="lblBillingRateSuccess" Foreground="#6EE7B7" FontSize="12"/>
+                            <!-- Rates List Header -->
+                            <Grid Grid.Row="0" Margin="0,0,0,12">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="Billing Rates" FontSize="14" FontWeight="SemiBold"
+                                               VerticalAlignment="Center"/>
+                                    <Border CornerRadius="10" Background="#1E2433" Padding="8,2" Margin="10,0">
+                                        <TextBlock x:Name="lblBillingRateCount" Text="0"
+                                                   FontSize="11" Foreground="#4F8EF7" FontWeight="Bold"/>
                                     </Border>
                                 </StackPanel>
-                            </Border>
-
-                            <!-- Rates List Header -->
-                            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,12">
-                                <TextBlock Text="Billing Rates" FontSize="14" FontWeight="SemiBold"
-                                           VerticalAlignment="Center"/>
-                                <Border CornerRadius="10" Background="#1E2433" Padding="8,2" Margin="10,0">
-                                    <TextBlock x:Name="lblBillingRateCount" Text="0"
-                                               FontSize="11" Foreground="#4F8EF7" FontWeight="Bold"/>
-                                </Border>
-                                <Button x:Name="btnRefreshBillingRates" Content="↺ Refresh"
-                                        Style="{StaticResource BtnGhost}"
-                                        Height="32" Padding="12,0" FontSize="11"
-                                        Click="btnRefreshBillingRates_Click"/>
-                            </StackPanel>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button x:Name="btnAddNewRate" Content="+ Add New Rate"
+                                            Style="{StaticResource BtnSuccess}"
+                                            Height="34" Padding="14,0" FontSize="12"
+                                            Click="btnAddNewRate_Click"/>
+                                    <Button x:Name="btnRefreshBillingRates" Content="↺ Refresh"
+                                            Style="{StaticResource BtnGhost}"
+                                            Height="34" Padding="12,0" FontSize="11"
+                                            Margin="8,0,0,0" Click="btnRefreshBillingRates_Click"/>
+                                </StackPanel>
+                            </Grid>
 
                             <!-- Rates Table -->
-                            <Border Grid.Row="2" Style="{StaticResource Card}" Padding="0">
+                            <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
                                 <DataGrid x:Name="dgBillingRates" AutoGenerateColumns="False"
                                           IsReadOnly="True" CanUserAddRows="False"
                                           SelectionMode="Single">
@@ -1115,6 +1054,17 @@
                                         </DataGridTemplateColumn>
                                     </DataGrid.Columns>
                                 </DataGrid>
+                            </Border>
+
+                            <!-- Billing Action Messages -->
+                            <Border Grid.Row="2" Background="#1E2433" CornerRadius="8"
+                                    Padding="14,10" Margin="0,12,0,0">
+                                <StackPanel>
+                                    <TextBlock x:Name="lblBillingActionError" Foreground="#FCA5A5"
+                                               FontSize="12" Visibility="Collapsed"/>
+                                    <TextBlock x:Name="lblBillingActionSuccess" Foreground="#6EE7B7"
+                                               FontSize="12" Visibility="Collapsed"/>
+                                </StackPanel>
                             </Border>
                         </Grid>
 
@@ -1315,5 +1265,7 @@
                 </Grid>
             </Border>
         </Border>
-    </Grid>
+        </Grid><!-- /main area Grid -->
+    </Grid><!-- /outer rows Grid -->
+    </Border><!-- /outer border -->
 </Window>
