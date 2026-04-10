@@ -149,9 +149,25 @@ namespace SessionClient
         // ═══════════════════════════════════════════════════════════
         #region Initialization
 
-        public MainWindow()
+        // Called by SplashWindow with an already-connected service and initialized webcam.
+        public MainWindow(SessionServiceClient svc = null, WebcamHelper cam = null)
         {
             InitializeComponent();
+
+            if (svc != null)
+            {
+                _svc = svc;
+                _svc.SessionTerminated += OnSessionTerminated;
+                _svc.TimeWarning       += OnTimeWarning;
+                _svc.ServerMessage     += OnServerMessage;
+            }
+
+            if (cam != null)
+            {
+                _cam = cam;
+                _cam.CaptureError += (s, ev) =>
+                    System.Diagnostics.Debug.WriteLine("[Cam] " + ev.ErrorMessage);
+            }
 
             string kioskSetting = ConfigurationManager.AppSettings["EnableKioskMode"] ?? "true";
             _kioskMode = string.Equals(kioskSetting, "true", StringComparison.OrdinalIgnoreCase);
@@ -175,6 +191,13 @@ namespace SessionClient
         {
             LockScreen();
             lblLoginStatus.Visibility = Visibility.Visible;
+
+            // Skip full init if splash already connected and registered.
+            if (_svc != null && _svc.IsConnected)
+            {
+                lblLoginStatus.Text = "Ready — please sign in.";
+                return;
+            }
 
             try
             {

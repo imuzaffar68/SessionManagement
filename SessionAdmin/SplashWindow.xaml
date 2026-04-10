@@ -1,0 +1,144 @@
+<Window x:Class="SessionAdmin.SplashWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Session Management — Admin"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterScreen"
+        Width="460" Height="290"
+        Background="Transparent"
+        AllowsTransparency="True">
+
+    <Window.Triggers>
+        <EventTrigger RoutedEvent="Window.Loaded">
+            <BeginStoryboard>
+                <Storyboard RepeatBehavior="Forever">
+                    <DoubleAnimation Storyboard.TargetName="Dot1"
+                                     Storyboard.TargetProperty="Opacity"
+                                     From="1" To="0.15" Duration="0:0:0.55"
+                                     AutoReverse="True" BeginTime="0:0:0"/>
+                    <DoubleAnimation Storyboard.TargetName="Dot2"
+                                     Storyboard.TargetProperty="Opacity"
+                                     From="1" To="0.15" Duration="0:0:0.55"
+                                     AutoReverse="True" BeginTime="0:0:0.18"/>
+                    <DoubleAnimation Storyboard.TargetName="Dot3"
+                                     Storyboard.TargetProperty="Opacity"
+                                     From="1" To="0.15" Duration="0:0:0.55"
+                                     AutoReverse="True" BeginTime="0:0:0.36"/>
+                </Storyboard>
+            </BeginStoryboard>
+        </EventTrigger>
+    </Window.Triggers>
+
+    <!-- Drop shadow via outer border -->
+    <Border CornerRadius="16"
+            Background="#0A0E1A"
+            BorderBrush="#2D3748"
+            BorderThickness="1">
+        <Border.Effect>
+            <DropShadowEffect Color="Black" BlurRadius="32" ShadowDepth="0" Opacity="0.7"/>
+        </Border.Effect>
+
+        <Grid>
+            <StackPanel VerticalAlignment="Center"
+                        HorizontalAlignment="Center"
+                        Margin="48,32">
+
+                <!-- Icon -->
+                <TextBlock Text="&#x26A1;"
+                           FontSize="38"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,10"
+                           Foreground="#4F8EF7"/>
+
+                <!-- App name -->
+                <TextBlock Text="Session Management"
+                           FontFamily="Segoe UI"
+                           FontSize="22"
+                           FontWeight="Bold"
+                           Foreground="#F1F5F9"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,4"/>
+
+                <!-- Sub-title badge -->
+                <Border Background="#1E2433"
+                        BorderBrush="#2D3748"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        HorizontalAlignment="Center"
+                        Padding="10,3"
+                        Margin="0,0,0,24">
+                    <TextBlock Text="ADMIN CONSOLE"
+                               FontFamily="Segoe UI"
+                               FontSize="10"
+                               FontWeight="SemiBold"
+                               Foreground="#4F8EF7"
+                               HorizontalAlignment="Center"/>
+                </Border>
+
+                <!-- Animated dots -->
+                <StackPanel Orientation="Horizontal"
+                            HorizontalAlignment="Center"
+                            Margin="0,0,0,14">
+                    <Ellipse x:Name="Dot1" Width="8" Height="8" Fill="#4F8EF7" Margin="5,0" Opacity="1"/>
+                    <Ellipse x:Name="Dot2" Width="8" Height="8" Fill="#4F8EF7" Margin="5,0" Opacity="0.15"/>
+                    <Ellipse x:Name="Dot3" Width="8" Height="8" Fill="#4F8EF7" Margin="5,0" Opacity="0.15"/>
+                </StackPanel>
+
+                <!-- Status label -->
+                <TextBlock x:Name="lblStatus"
+                           Text="Connecting to server…"
+                           FontFamily="Segoe UI"
+                           FontSize="12"
+                           Foreground="#94A3B8"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,14"/>
+
+                <!-- Retry button — hidden until failure -->
+                <Button x:Name="btnRetry"
+                        Content="Retry Connection"
+                        Visibility="Collapsed"
+                        Cursor="Hand"
+                        HorizontalAlignment="Center"
+                        Padding="22,8"
+                        Click="btnRetry_Click">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Background"  Value="#1E2433"/>
+                            <Setter Property="Foreground"  Value="#94A3B8"/>
+                            <Setter Property="BorderBrush" Value="#2D3748"/>
+                            <Setter Property="BorderThickness" Value="1"/>
+                            <Setter Property="FontFamily"  Value="Segoe UI"/>
+                            <Setter Property="FontSize"    Value="12"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border x:Name="Root"
+                                                Background="{TemplateBinding Background}"
+                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                CornerRadius="8"
+                                                Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Root" Property="Background" Value="#252D42"/>
+                                                <Setter TargetName="Root" Property="BorderBrush" Value="#4F8EF7"/>
+                                            </Trigger>
+                                            <Trigger Property="IsPressed" Value="True">
+                                                <Setter TargetName="Root" Property="Opacity" Value="0.8"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

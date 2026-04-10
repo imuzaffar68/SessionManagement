@@ -43,9 +43,16 @@ namespace SessionAdmin
         // ═══════════════════════════════════════════════════════════
         #region Initialization
 
-        public MainWindow()
+        // Called by SplashWindow with an already-connected service client.
+        public MainWindow(SessionServiceClient svc = null)
         {
             InitializeComponent();
+
+            if (svc != null)
+            {
+                _svc = svc;
+                _svc.ServerMessage += OnServerMessage;
+            }
 
             // Bind collections
             dgActiveSessions.ItemsSource = _sessions;
@@ -75,6 +82,9 @@ namespace SessionAdmin
 
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
+            // Skip if splash already connected.
+            if (_svc != null && _svc.IsConnected) return;
+
             try
             {
                 _svc = new SessionServiceClient();

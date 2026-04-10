@@ -6,16 +6,18 @@ namespace SessionAdmin
 {
     public partial class App : Application
     {
-        protected override void OnStartup(StartupEventArgs e)
+        private void OnStartup(object sender, StartupEventArgs e)
         {
-            base.OnStartup(e);
-
-            // When any DatePicker loads, wire up its CalendarOpened event so we can
-            // push the dark styles onto the popup Calendar the moment it appears.
+            // Dark calendar pop-up styling for every DatePicker in the app.
             EventManager.RegisterClassHandler(
                 typeof(DatePicker),
                 FrameworkElement.LoadedEvent,
                 new RoutedEventHandler(OnDatePickerLoaded));
+
+            // Show splash; it connects to WCF then opens MainWindow.
+            var splash = new SplashWindow();
+            MainWindow = splash;
+            splash.Show();
         }
 
         private void OnDatePickerLoaded(object sender, RoutedEventArgs e)
