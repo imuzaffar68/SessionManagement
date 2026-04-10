@@ -219,6 +219,7 @@ namespace SessionManagement.WCF
         [DataMember] public string   SessionStatus    { get; set; }
         [DataMember] public int      RemainingMinutes { get; set; }
         [DataMember] public decimal  CurrentBilling   { get; set; }
+        [DataMember] public string   ImagePath        { get; set; }
     }
 
     [DataContract]

@@ -83,6 +83,8 @@ namespace SessionAdmin
 
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
+            HookPasswordPlaceholder(txtAdminPassword);
+
             // Skip if splash already connected.
             if (_svc != null && _svc.IsConnected) return;
 
@@ -228,6 +230,35 @@ namespace SessionAdmin
         #region Admin Login
 
         private bool _adminPasswordVisible;
+
+        // Fix: PasswordBox.Password is not a DP so XAML triggers can't hide the placeholder
+        // once content has been typed. Hook PasswordChanged to manage Visibility directly.
+        private static void HookPasswordPlaceholder(System.Windows.Controls.PasswordBox pb)
+        {
+            pb.PasswordChanged += (s, _) =>
+            {
+                var box = (System.Windows.Controls.PasswordBox)s;
+                var ph = FindVisualChild<System.Windows.Controls.TextBlock>(box, "Placeholder");
+                if (ph == null) return;
+                if (box.Password.Length > 0)
+                    ph.Visibility = Visibility.Collapsed;
+                else
+                    ph.ClearValue(UIElement.VisibilityProperty);
+            };
+        }
+
+        private static T FindVisualChild<T>(System.Windows.DependencyObject parent, string name)
+            where T : System.Windows.FrameworkElement
+        {
+            for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+                if (child is T t && t.Name == name) return t;
+                var found = FindVisualChild<T>(child, name);
+                if (found != null) return found;
+            }
+            return null;
+        }
 
         private void btnShowAdminPassword_Click(object sender, RoutedEventArgs e)
         {
@@ -385,7 +416,8 @@ namespace SessionAdmin
                         Duration = $"{s.SelectedDuration} min",
                         RemainingTime = $"{s.RemainingMinutes} min",
                         CurrentBilling = $"${s.CurrentBilling:F2}",
-                        Status = s.SessionStatus
+                        Status = s.SessionStatus,
+                        ImagePath = s.ImagePath
                     });
                 }
                 lblActiveCount.Text = $"{_sessions.Count} sessions";
@@ -1150,11 +1182,11 @@ namespace SessionAdmin
 
     public class ActiveSessionVM : System.ComponentModel.INotifyPropertyChanged
     {
-        public int SessionId { get; set; }
-        public string ClientId { get; set; }
-        public string Username { get; set; }
+        public int    SessionId { get; set; }
+        public string ClientId  { get; set; }
+        public string Username  { get; set; }
         public string StartTime { get; set; }
-        public string Duration { get; set; }
+        public string Duration  { get; set; }
 
         private string _remaining;
         public string RemainingTime
@@ -1175,6 +1207,35 @@ namespace SessionAdmin
         {
             get => _status;
             set { _status = value; PC(nameof(Status)); }
+        }
+
+        private string _imagePath;
+        public string ImagePath
+        {
+            get => _imagePath;
+            set { _imagePath = value; PC(nameof(ImagePath)); PC(nameof(PhotoSource)); }
+        }
+
+        // Returns a BitmapImage when a file exists at ImagePath, otherwise null (cell stays empty).
+        public System.Windows.Media.ImageSource PhotoSource
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(_imagePath) || !System.IO.File.Exists(_imagePath))
+                    return null;
+                try
+                {
+                    var bmp = new System.Windows.Media.Imaging.BitmapImage();
+                    bmp.BeginInit();
+                    bmp.UriSource        = new Uri(_imagePath, UriKind.Absolute);
+                    bmp.CacheOption      = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                    bmp.DecodePixelWidth = 48;
+                    bmp.EndInit();
+                    bmp.Freeze();
+                    return bmp;
+                }
+                catch { return null; }
+            }
         }
 
         public event System.ComponentModel.PropertyChangedEventHandler PropertyChanged;

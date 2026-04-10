@@ -329,7 +329,7 @@
                         <TextBlock Text="USERNAME" FontSize="10" FontWeight="SemiBold"
                                    Foreground="#475569" Margin="0,0,0,6"/>
                         <TextBox x:Name="txtAdminUsername" Style="{StaticResource ModernInput}"
-                                 Height="42" Margin="0,0,0,16"/>
+                                 Tag="Username" Height="42" Margin="0,0,0,16"/>
 
                         <!-- Password -->
                         <TextBlock Text="PASSWORD" FontSize="10" FontWeight="SemiBold"
@@ -340,10 +340,11 @@
                                 <ColumnDefinition Width="42"/>
                             </Grid.ColumnDefinitions>
                             <PasswordBox x:Name="txtAdminPassword" Grid.Column="0"
-                                         Style="{StaticResource ModernPassword}" Height="42"/>
+                                         Style="{StaticResource ModernPassword}" Tag="Password"
+                                         Height="42"/>
                             <TextBox x:Name="txtAdminPasswordPlain" Grid.Column="0"
-                                     Style="{StaticResource ModernInput}" Height="42"
-                                     Visibility="Collapsed"/>
+                                     Style="{StaticResource ModernInput}" Tag="Password"
+                                     Height="42" Visibility="Collapsed"/>
                             <Button x:Name="btnShowAdminPassword" Grid.Column="1"
                                     Content="👁" Style="{StaticResource ShowPasswordBtn}"
                                     Height="42" Margin="4,0,0,0"
@@ -674,6 +675,17 @@
                                         <DataGridTextColumn Header="REMAINING" Binding="{Binding RemainingTime}" Width="100"/>
                                         <DataGridTextColumn Header="BILLING" Binding="{Binding CurrentBilling}" Width="90"/>
                                         <DataGridTextColumn Header="STATUS" Binding="{Binding Status}" Width="90"/>
+                                        <DataGridTemplateColumn Header="PHOTO" Width="60">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Image Source="{Binding PhotoSource}"
+                                                           Width="40" Height="40"
+                                                           Stretch="UniformToFill"
+                                                           RenderOptions.BitmapScalingMode="HighQuality"
+                                                           HorizontalAlignment="Center"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
                                         <DataGridTemplateColumn Header="ACTIONS" Width="130">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>

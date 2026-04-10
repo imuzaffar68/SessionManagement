@@ -291,9 +291,10 @@ namespace SessionManagement.WCF
         {
             try
             {
-                DataTable dt  = _db.GetActiveSessions();
-                var list = new List<SessionInfo>();
-                foreach (DataRow r in dt.Rows) list.Add(Map(r));
+                DataTable dt = _db.GetActiveSessions();
+                var list     = new List<SessionInfo>();
+                foreach (DataRow r in dt.Rows)
+                    list.Add(Map(r));
                 return list.ToArray();
             }
             catch (Exception ex)
@@ -1015,7 +1016,9 @@ namespace SessionManagement.WCF
                 ExpectedEndTime  = expectedEnd,
                 SessionStatus    = r["Status"].ToString(),
                 RemainingMinutes = remaining,
-                CurrentBilling   = elapsed * rate
+                CurrentBilling   = elapsed * rate,
+                ImagePath        = r.Table.Columns.Contains("ImagePath") && r["ImagePath"] != DBNull.Value
+                                   ? r["ImagePath"].ToString() : null
             };
         }
 

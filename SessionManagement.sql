@@ -536,11 +536,14 @@ BEGIN
         br.BillingRateId,
         br.RatePerMinute,
         DATEDIFF(MINUTE, s.StartedAt, GETDATE()) AS ElapsedMinutes,
-        CAST(DATEDIFF(MINUTE, s.StartedAt, GETDATE()) * br.RatePerMinute AS DECIMAL(10,2)) AS CurrentBilling
+        CAST(DATEDIFF(MINUTE, s.StartedAt, GETDATE()) * br.RatePerMinute AS DECIMAL(10,2)) AS CurrentBilling,
+        img.ImagePath
     FROM dbo.tblSession s
     INNER JOIN dbo.tblUser u ON s.UserId = u.UserId
     INNER JOIN dbo.tblClientMachine c ON s.ClientMachineId = c.ClientMachineId
     LEFT JOIN dbo.tblBillingRate br ON br.IsActive = 1 AND br.IsDefault = 1
+    LEFT JOIN dbo.tblSessionImage img ON img.SessionId = s.SessionId
+                                     AND img.CaptureStatus = 'Captured'
     WHERE s.Status = 'Active'
     ORDER BY s.StartedAt DESC;
 END;

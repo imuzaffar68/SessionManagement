@@ -1,4 +1,6 @@
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 
 namespace SessionAdmin
 {
@@ -20,6 +22,7 @@ namespace SessionAdmin
             lblFormTitle.Text = "Add Client User";
             lblFormSubtitle.Text = "Register a new client account";
             btnSubmit.Content = "+ Add User";
+            Loaded += (_, __) => HookPasswordPlaceholder(txtPassword);
         }
 
         // Edit mode
@@ -43,6 +46,32 @@ namespace SessionAdmin
             txtFullName.Text = user.FullName ?? "";
             txtPhone.Text = user.Phone ?? "";
             txtAddress.Text = user.Address ?? "";
+        }
+
+        private static void HookPasswordPlaceholder(PasswordBox pb)
+        {
+            pb.PasswordChanged += (s, _) =>
+            {
+                var box = (PasswordBox)s;
+                var ph = FindVisualChild<TextBlock>(box, "Placeholder");
+                if (ph == null) return;
+                if (box.Password.Length > 0)
+                    ph.Visibility = Visibility.Collapsed;
+                else
+                    ph.ClearValue(UIElement.VisibilityProperty);
+            };
+        }
+
+        private static T FindVisualChild<T>(DependencyObject parent, string name) where T : FrameworkElement
+        {
+            for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = VisualTreeHelper.GetChild(parent, i);
+                if (child is T t && t.Name == name) return t;
+                var found = FindVisualChild<T>(child, name);
+                if (found != null) return found;
+            }
+            return null;
         }
 
         private void btnShowPassword_Click(object sender, RoutedEventArgs e)
