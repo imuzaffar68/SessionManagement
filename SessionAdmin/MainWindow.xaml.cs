@@ -8,6 +8,7 @@ using System.Windows.Controls;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using SessionManagement.Client;
+using SessionManagement.UI;
 using SessionManagement.WCF;
 
 namespace SessionAdmin
@@ -416,6 +417,7 @@ namespace SessionAdmin
                 {
                     _sessions.Remove(session);
                     lblActiveCount.Text = $"{_sessions.Count} sessions";
+                    AppDialog.ShowInfo($"Session {session.SessionId} for '{session.Username}' terminated.", "Session Terminated");
                 }
                 else
                     AppDialog.ShowError("Failed to terminate session.");
@@ -513,7 +515,10 @@ namespace SessionAdmin
             try
             {
                 if (_svc.UpdateClientMachineIsActive(client.ClientId, true))
+                {
                     LoadClients();
+                    AppDialog.ShowInfo($"Client '{client.ClientId}' enabled.", "Client Enabled");
+                }
                 else
                     AppDialog.ShowError("Failed to enable client.");
             }
@@ -528,7 +533,10 @@ namespace SessionAdmin
             try
             {
                 if (_svc.UpdateClientMachineIsActive(client.ClientId, false))
+                {
                     LoadClients();
+                    AppDialog.ShowInfo($"Client '{client.ClientId}' disabled.", "Client Disabled");
+                }
                 else
                     AppDialog.ShowError("Failed to disable client.");
             }

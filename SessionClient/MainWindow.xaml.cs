@@ -10,9 +10,10 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using SessionManagement.Client;
-using SessionManagement.Security;
-using SessionManagement.WCF;
 using SessionManagement.Media;
+using SessionManagement.Security;
+using SessionManagement.UI;
+using SessionManagement.WCF;
 
 namespace SessionClient
 {
@@ -501,8 +502,7 @@ namespace SessionClient
                 var resp = _svc.StartSession(_userId, _clientCode, minutes);
                 if (!resp.Success)
                 {
-                    MessageBox.Show(resp.ErrorMessage ?? "Failed to start session.",
-                        "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    AppDialog.ShowError(resp.ErrorMessage ?? "Failed to start session.");
                     return;
                 }
                 _sessionId = resp.SessionId;
@@ -533,8 +533,7 @@ namespace SessionClient
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Error starting session: " + ex.Message, "Error",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                AppDialog.ShowError("Error starting session: " + ex.Message);
                 _sessionActive = false;
                 LockScreen();
                 ShowPanel(DurationPanel);
@@ -697,10 +696,10 @@ namespace SessionClient
                 Activate();
             }
 
-            MessageBox.Show("Your session has expired." +
+            AppDialog.ShowInfo(
+                "Your session has expired." +
                 (string.IsNullOrEmpty(summary) ? "" : "\n\n" + summary) +
-                "\n\nPlease sign in again to continue.", "Session Ended",
-                MessageBoxButton.OK, MessageBoxImage.Information);
+                "\n\nPlease sign in again to continue.", "Session Ended");
 
             CloseFloatingTimer();
             ResetToLogin();
@@ -708,18 +707,14 @@ namespace SessionClient
 
         private void btnEndSession_Click(object sender, RoutedEventArgs e)
         {
-            var r = MessageBox.Show(
-                "End this session?\nRemaining time will be forfeited.",
-                "Confirm", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (r != MessageBoxResult.Yes) return;
+            if (!AppDialog.Confirm("End this session?\nRemaining time will be forfeited.", "Confirm")) return;
 
             _manualLogout = true;
             _timer.Stop();
             StopDetection();
             string summary = FinalizeSession("Manual");
             if (!string.IsNullOrEmpty(summary))
-                MessageBox.Show(summary, "Session Summary",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
+                AppDialog.ShowInfo(summary, "Session Summary");
             CloseFloatingTimer();
             ResetToLogin();
         }
@@ -804,9 +799,9 @@ namespace SessionClient
                 _timer.Stop();
                 StopDetection();
                 if (!_manualLogout)
-                    MessageBox.Show(
+                    AppDialog.ShowWarning(
                         "Your session was terminated by the administrator.\nReason: " + e.Reason,
-                        "Session Terminated", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        "Session Terminated");
                 _manualLogout = false;
                 CloseFloatingTimer();
                 ResetToLogin();
@@ -820,8 +815,7 @@ namespace SessionClient
             {
                 _remaining = TimeSpan.FromMinutes(e.RemainingMinutes);
                 if (WindowState == WindowState.Minimized) { WindowState = WindowState.Normal; Activate(); }
-                MessageBox.Show($"⚠ Only {e.RemainingMinutes} minute(s) remaining!",
-                    "Time Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+                AppDialog.ShowWarning($"Only {e.RemainingMinutes} minute(s) remaining!", "Time Warning");
             }));
         }
 
@@ -910,8 +904,7 @@ namespace SessionClient
             {
                 if (!int.TryParse(txtCustomDuration.Text, out minutes) || minutes <= 0)
                 {
-                    MessageBox.Show("Enter a valid number of minutes.", "Invalid",
-                        MessageBoxButton.OK, MessageBoxImage.Warning);
+                    AppDialog.ShowWarning("Enter a valid number of minutes.", "Invalid Duration");
                     return false;
                 }
                 int mn = 15, mx = 480;
@@ -921,8 +914,7 @@ namespace SessionClient
                 if (!string.IsNullOrEmpty(mxS)) int.TryParse(mxS, out mx);
                 if (minutes < mn || minutes > mx)
                 {
-                    MessageBox.Show($"Duration must be between {mn} and {mx} minutes.",
-                        "Invalid", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    AppDialog.ShowWarning($"Duration must be between {mn} and {mx} minutes.", "Invalid Duration");
                     return false;
                 }
             }
@@ -964,21 +956,18 @@ namespace SessionClient
         {
             if (_sessionActive)
             {
-                var r = MessageBox.Show("End session and exit?", "Confirm Exit",
-                    MessageBoxButton.YesNo, MessageBoxImage.Warning);
-                if (r == MessageBoxResult.No) { e.Cancel = true; return; }
+                if (!AppDialog.Confirm("End session and exit?", "Confirm Exit")) { e.Cancel = true; return; }
                 _timer.Stop();
                 StopDetection();
                 string summary = FinalizeSession("Manual");
                 if (!string.IsNullOrEmpty(summary))
-                    MessageBox.Show(summary, "Summary", MessageBoxButton.OK, MessageBoxImage.Information);
+                    AppDialog.ShowInfo(summary, "Session Summary");
             }
             else
             {
                 // Kiosk: block close on login screen
                 e.Cancel = true;
-                MessageBox.Show("Please log in to use this computer.", "Access Restricted",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
+                AppDialog.ShowInfo("Please log in to use this computer.", "Access Restricted");
                 return;
             }
 

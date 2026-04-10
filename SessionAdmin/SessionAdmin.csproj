@@ -89,9 +89,8 @@
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </ApplicationDefinition>
-    <Compile Include="AppDialogWindow.xaml.cs">
-      <DependentUpon>AppDialogWindow.xaml</DependentUpon>
-    </Compile>
+    <!-- AppDialogWindow moved to SessionManagement.Shared/UI/AppDialogWindow.cs -->
+    <None Include="AppDialogWindow.xaml.cs" />
     <Compile Include="BillingRateFormWindow.xaml.cs">
       <DependentUpon>BillingRateFormWindow.xaml</DependentUpon>
     </Compile>
@@ -102,9 +101,7 @@
       <DependentUpon>ResetPasswordWindow.xaml</DependentUpon>
     </Compile>
     <Compile Include="SessionServiceClient.cs" />
-    <Page Include="AppDialogWindow.xaml">
-      <Generator>MSBuild:Compile</Generator>
-    </Page>
+    <None Include="AppDialogWindow.xaml" />
     <Page Include="BillingRateFormWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
     </Page>
