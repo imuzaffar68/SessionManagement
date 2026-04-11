@@ -326,15 +326,14 @@
                  FORM INPUTS  (Redesign quality: rounded, dark, blue focus ring)
             ═══════════════════════════════════════════════════════════════════ -->
             <Style x:Key="ModernInput" TargetType="TextBox">
-                <Setter Property="Background"             Value="#1E2433"/>
-                <Setter Property="Foreground"             Value="#F1F5F9"/>
-                <Setter Property="BorderBrush"            Value="#2D3748"/>
-                <Setter Property="BorderThickness"        Value="1"/>
-                <Setter Property="FontFamily"             Value="Segoe UI"/>
-                <Setter Property="FontSize"               Value="13"/>
-                <Setter Property="Padding"                Value="12,4"/>
-                <Setter Property="CaretBrush"             Value="#4F8EF7"/>
-                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                <Setter Property="Background"    Value="#1E2433"/>
+                <Setter Property="Foreground"    Value="#F1F5F9"/>
+                <Setter Property="BorderBrush"   Value="#2D3748"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="FontFamily"    Value="Segoe UI"/>
+                <Setter Property="FontSize"      Value="13"/>
+                <Setter Property="Padding"       Value="12,4"/>
+                <Setter Property="CaretBrush"    Value="#4F8EF7"/>
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="TextBox">
@@ -345,9 +344,7 @@
                                 <Grid>
                                     <ScrollViewer x:Name="PART_ContentHost"
                                                   Margin="{TemplateBinding Padding}"
-                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                                  VerticalScrollBarVisibility="Hidden"
-                                                  HorizontalScrollBarVisibility="Hidden"/>
+                                                  VerticalAlignment="Center"/>
                                     <TextBlock x:Name="Placeholder"
                                                Text="{TemplateBinding Tag}"
                                                Margin="{TemplateBinding Padding}"
