@@ -112,11 +112,14 @@ namespace SessionAdmin
         private void UpdateConnectionStatus()
         {
             bool connected = _svc != null && _svc.IsConnected;
-            ellipseConnectionStatus.Fill = connected
-                ? System.Windows.Media.Brushes.LimeGreen
-                : System.Windows.Media.Brushes.OrangeRed;
-            lblConnectionStatus.Text = connected ? "Connected" : "Disconnected";
-            btnConnect.Visibility = connected ? Visibility.Collapsed : Visibility.Visible;
+            var dot   = connected ? System.Windows.Media.Brushes.LimeGreen : System.Windows.Media.Brushes.OrangeRed;
+            var label = connected ? "Connected" : "Disconnected";
+            var retry = connected ? Visibility.Collapsed : Visibility.Visible;
+
+            // Login panel
+            ellipseConnectionStatus.Fill   = dot;  lblConnectionStatus.Text   = label;  btnConnect.Visibility        = retry;
+            // Sidebar
+            ellipseSidebarConnection.Fill  = dot;  lblSidebarConnection.Text  = label;  btnSidebarConnect.Visibility = retry;
         }
 
         private void btnConnect_Click(object sender, RoutedEventArgs e)
@@ -125,7 +128,6 @@ namespace SessionAdmin
                 AppDialog.ShowError("Failed to connect to server.", "Connection Error");
             UpdateConnectionStatus();
         }
-
         #endregion
 
         // ═══════════════════════════════════════════════════════════
@@ -1085,6 +1087,7 @@ namespace SessionAdmin
 
         private void ShowDashboard()
         {
+            MainLayoutGrid.ColumnDefinitions[0].Width = new GridLength(220);
             LoginPanel.Visibility = Visibility.Collapsed;
             DashboardPanel.Visibility = Visibility.Visible;
             AdminHeaderPanel.Visibility = Visibility.Visible;
@@ -1105,6 +1108,7 @@ namespace SessionAdmin
             txtAdminPasswordPlain.Clear();
             loginErrorBorder.Visibility = Visibility.Collapsed;
 
+            MainLayoutGrid.ColumnDefinitions[0].Width = new GridLength(0);
             DashboardPanel.Visibility = Visibility.Collapsed;
             AdminHeaderPanel.Visibility = Visibility.Collapsed;
             SidebarNav.Visibility = Visibility.Collapsed;

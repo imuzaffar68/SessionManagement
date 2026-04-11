@@ -133,7 +133,7 @@
                     <TextBlock Text="NOTES" FontSize="10" FontWeight="SemiBold"
                                Foreground="#475569" Margin="0,0,0,6"/>
                     <TextBox x:Name="txtNotes" Style="{StaticResource ModernInput}"
-                             Height="58" TextWrapping="Wrap" VerticalContentAlignment="Top"
+                             Height="58" TextWrapping="Wrap" VerticalContentAlignment="Stretch"
                              Padding="12,8" Margin="0,0,0,14" Tag="Optional notes or terms..."/>
 
                     <!-- Checkboxes -->

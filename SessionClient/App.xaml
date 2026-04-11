@@ -46,14 +46,15 @@
                  FORM INPUTS  (larger than Admin — kiosk touch-friendly sizing)
             ═══════════════════════════════════════════════════════════════════ -->
             <Style x:Key="ClientInput" TargetType="TextBox">
-                <Setter Property="Background"    Value="#1A2035"/>
-                <Setter Property="Foreground"    Value="#F1F5F9"/>
-                <Setter Property="BorderBrush"   Value="#2D3748"/>
-                <Setter Property="BorderThickness" Value="1"/>
-                <Setter Property="FontFamily"    Value="Segoe UI"/>
-                <Setter Property="FontSize"      Value="14"/>
-                <Setter Property="Padding"       Value="14,10"/>
-                <Setter Property="CaretBrush"    Value="#4F8EF7"/>
+                <Setter Property="Background"             Value="#1A2035"/>
+                <Setter Property="Foreground"             Value="#F1F5F9"/>
+                <Setter Property="BorderBrush"            Value="#2D3748"/>
+                <Setter Property="BorderThickness"        Value="1"/>
+                <Setter Property="FontFamily"             Value="Segoe UI"/>
+                <Setter Property="FontSize"               Value="14"/>
+                <Setter Property="Padding"                Value="14,10"/>
+                <Setter Property="CaretBrush"             Value="#4F8EF7"/>
+                <Setter Property="VerticalContentAlignment" Value="Center"/>
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="TextBox">
@@ -63,7 +64,9 @@
                                     CornerRadius="10">
                                 <ScrollViewer x:Name="PART_ContentHost"
                                               Margin="{TemplateBinding Padding}"
-                                              VerticalAlignment="Center"/>
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              VerticalScrollBarVisibility="Hidden"
+                                              HorizontalScrollBarVisibility="Hidden"/>
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsFocused" Value="True">
@@ -92,7 +95,9 @@
                                     CornerRadius="10">
                                 <ScrollViewer x:Name="PART_ContentHost"
                                               Margin="{TemplateBinding Padding}"
-                                              VerticalAlignment="Center"/>
+                                              VerticalAlignment="Center"
+                                              VerticalScrollBarVisibility="Hidden"
+                                              HorizontalScrollBarVisibility="Hidden"/>
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsFocused" Value="True">
