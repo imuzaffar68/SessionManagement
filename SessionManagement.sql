@@ -435,6 +435,26 @@ BEGIN
     DECLARE @SessionId INT;
 
     BEGIN TRY
+        -- Guard: user already has an active session
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblSession
+            WHERE  UserId = @UserId AND Status = 'Active'
+        )
+        BEGIN
+            SELECT -1 AS SessionId;  -- user conflict
+            RETURN;
+        END
+
+        -- Guard: machine already has an active session
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblSession
+            WHERE  ClientMachineId = @ClientMachineId AND Status = 'Active'
+        )
+        BEGIN
+            SELECT -2 AS SessionId;  -- machine conflict
+            RETURN;
+        END
+
         INSERT INTO dbo.tblSession
             (UserId, ClientMachineId, LoginAt, StartedAt, SelectedDurationMinutes, Status)
         VALUES
@@ -833,10 +853,11 @@ GO
 
 -- sp_UpdateClientUser
 CREATE OR ALTER PROCEDURE dbo.sp_UpdateClientUser
-    @UserId   INT,
-    @FullName NVARCHAR(100),
-    @Phone    NVARCHAR(30)  = NULL,
-    @Address  NVARCHAR(200) = NULL
+    @UserId             INT,
+    @FullName           NVARCHAR(100),
+    @Phone              NVARCHAR(30)   = NULL,
+    @Address            NVARCHAR(200)  = NULL,
+    @ProfilePicturePath NVARCHAR(500)  = NULL   -- NULL = keep existing path
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -847,9 +868,14 @@ BEGIN
             RAISERROR('Full name is required.', 16, 1);
 
         UPDATE dbo.tblUser
-        SET    FullName = @FullName,
-               Phone    = @Phone,
-               Address  = @Address
+        SET    FullName           = @FullName,
+               Phone              = @Phone,
+               Address            = @Address,
+               ProfilePicturePath = CASE
+                                        WHEN @ProfilePicturePath IS NOT NULL
+                                        THEN @ProfilePicturePath
+                                        ELSE ProfilePicturePath
+                                    END
         WHERE  UserId = @UserId AND Role = 'ClientUser';
     END TRY
     BEGIN CATCH
@@ -1280,7 +1306,10 @@ BEGIN
             SELECT 1 FROM dbo.tblBillingRate
             WHERE  LTRIM(RTRIM(Name)) = LTRIM(RTRIM(@Name))
         )
-            RAISERROR('A billing rate with this name already exists.', 16, 1);
+        BEGIN
+            SET @NewBillingRateId = -2;  -- duplicate name
+            RETURN;
+        END
 
         -- 4. No overlapping date ranges for the same active currency
         --    Two ranges overlap when: newFrom <= existTo  AND  newTo >= existFrom
@@ -1291,7 +1320,10 @@ BEGIN
               AND  @EffectiveFrom <= COALESCE(EffectiveTo,   '9999-12-31')
               AND  COALESCE(@EffectiveTo, '9999-12-31') >= EffectiveFrom
         )
-            RAISERROR('Date range overlaps with an existing active rate for this currency.', 16, 1);
+        BEGIN
+            SET @NewBillingRateId = -3;  -- date range overlap
+            RETURN;
+        END
 
         -- 5. If setting as default, unset all others
         IF @IsDefault = 1
@@ -1356,7 +1388,10 @@ BEGIN
             WHERE  BillingRateId <> @BillingRateId
               AND  LTRIM(RTRIM(Name)) = LTRIM(RTRIM(@Name))
         )
-            RAISERROR('A billing rate with this name already exists.', 16, 1);
+        BEGIN
+            SELECT 0 AS Result;  -- duplicate name
+            RETURN;
+        END
 
         -- 5. No overlapping date ranges for the same active currency, excluding self
         IF EXISTS (
@@ -1367,7 +1402,10 @@ BEGIN
               AND  @EffectiveFrom <= COALESCE(EffectiveTo,   '9999-12-31')
               AND  COALESCE(@EffectiveTo, '9999-12-31') >= EffectiveFrom
         )
-            RAISERROR('Date range overlaps with an existing active rate for this currency.', 16, 1);
+        BEGIN
+            SELECT 0 AS Result;  -- date range overlap
+            RETURN;
+        END
 
         -- 6. Default flag management
         SELECT @OldIsDefault = IsDefault FROM dbo.tblBillingRate WHERE BillingRateId = @BillingRateId;
@@ -1632,10 +1670,11 @@ GO
 
 -- Step 4: create sp_UpdateClientUser
 CREATE OR ALTER PROCEDURE dbo.sp_UpdateClientUser
-    @UserId   INT,
-    @FullName NVARCHAR(100),
-    @Phone    NVARCHAR(30)  = NULL,
-    @Address  NVARCHAR(200) = NULL
+    @UserId             INT,
+    @FullName           NVARCHAR(100),
+    @Phone              NVARCHAR(30)  = NULL,
+    @Address            NVARCHAR(200) = NULL,
+    @ProfilePicturePath NVARCHAR(500) = NULL   -- NULL = keep existing path
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -1644,9 +1683,13 @@ BEGIN
             RAISERROR('Full name is required.', 16, 1);
 
         UPDATE dbo.tblUser
-        SET    FullName = @FullName,
-               Phone    = @Phone,
-               Address  = @Address
+        SET    FullName           = @FullName,
+               Phone              = @Phone,
+               Address            = @Address,
+               ProfilePicturePath = CASE
+                                        WHEN @ProfilePicturePath IS NOT NULL THEN @ProfilePicturePath
+                                        ELSE ProfilePicturePath
+                                    END
         WHERE  UserId = @UserId AND Role = 'ClientUser';
     END TRY
     BEGIN CATCH
@@ -1708,4 +1751,282 @@ END
 GO
 
 SELECT 'ProfilePicturePath + sp_DeleteClientUser PATCH COMPLETE' AS Status;
+GO
+
+
+-- ============================================================
+-- PATCH: sp_StartSession — duplicate session guard
+-- Run against ClientServerSessionDB after the main SQL script.
+-- ============================================================
+
+USE ClientServerSessionDB;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sp_StartSession
+    @UserId INT,
+    @ClientMachineId INT,
+    @SelectedDurationMinutes INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @SessionId INT;
+
+    BEGIN TRY
+        -- Guard: user already has an active session
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblSession
+            WHERE  UserId = @UserId AND Status = 'Active'
+        )
+        BEGIN
+            SELECT -1 AS SessionId;
+            RETURN;
+        END
+
+        -- Guard: machine already has an active session
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblSession
+            WHERE  ClientMachineId = @ClientMachineId AND Status = 'Active'
+        )
+        BEGIN
+            SELECT -2 AS SessionId;
+            RETURN;
+        END
+
+        INSERT INTO dbo.tblSession
+            (UserId, ClientMachineId, LoginAt, StartedAt, SelectedDurationMinutes, Status)
+        VALUES
+            (@UserId, @ClientMachineId, GETDATE(), GETDATE(), @SelectedDurationMinutes, 'Active');
+
+        SET @SessionId = SCOPE_IDENTITY();
+
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source, SessionId, UserId, ClientMachineId)
+        VALUES
+            ('Session', 'StartSession',
+             'Session started for ' + CAST(@SelectedDurationMinutes AS NVARCHAR(10)) + ' minutes',
+             'Server', @SessionId, @UserId, @ClientMachineId);
+
+        SELECT @SessionId AS SessionId;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source)
+        VALUES
+            ('System', 'Error', 'Error in sp_StartSession: ' + ERROR_MESSAGE(), 'Server');
+
+        SELECT 0 AS SessionId;
+    END CATCH
+END;
+GO
+
+SELECT 'sp_StartSession duplicate-session guard PATCH COMPLETE' AS Status;
+GO
+
+
+-- ============================================================
+-- PATCH: sp_InsertBillingRate / sp_UpdateBillingRate
+-- Remove duplicate C#-layer checks; SPs now own the validation.
+-- Run against ClientServerSessionDB after the main SQL script.
+-- ============================================================
+
+USE ClientServerSessionDB;
+GO
+
+-- sp_InsertBillingRate: dup-name returns -2 via OUTPUT param, overlap returns -3 via OUTPUT param
+CREATE OR ALTER PROCEDURE dbo.sp_InsertBillingRate
+    @Name             NVARCHAR(100),
+    @RatePerMinute    DECIMAL(10,2),
+    @Currency         NVARCHAR(10),
+    @EffectiveFrom    DATE,
+    @EffectiveTo      DATE = NULL,
+    @IsDefault        BIT = 0,
+    @SetByAdminUserId INT,
+    @Notes            NVARCHAR(500) = NULL,
+    @NewBillingRateId INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET @NewBillingRateId = -1;
+
+    BEGIN TRY
+        IF @RatePerMinute < 0
+            RAISERROR('Rate per minute cannot be negative.', 16, 1);
+
+        IF @EffectiveTo IS NOT NULL AND @EffectiveTo < @EffectiveFrom
+            RAISERROR('Effective To must be on or after Effective From.', 16, 1);
+
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblBillingRate
+            WHERE  LTRIM(RTRIM(Name)) = LTRIM(RTRIM(@Name))
+        )
+        BEGIN
+            SET @NewBillingRateId = -2;
+            RETURN;
+        END
+
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblBillingRate
+            WHERE  IsActive = 1
+              AND  Currency  = @Currency
+              AND  @EffectiveFrom <= COALESCE(EffectiveTo,   '9999-12-31')
+              AND  COALESCE(@EffectiveTo, '9999-12-31') >= EffectiveFrom
+        )
+        BEGIN
+            SET @NewBillingRateId = -3;
+            RETURN;
+        END
+
+        IF @IsDefault = 1
+            UPDATE dbo.tblBillingRate SET IsDefault = 0;
+
+        INSERT INTO dbo.tblBillingRate
+            (Name, RatePerMinute, Currency, EffectiveFrom, EffectiveTo,
+             IsActive, IsDefault, SetByAdminUserId, Notes, CreatedAt)
+        VALUES
+            (@Name, @RatePerMinute, @Currency, @EffectiveFrom, @EffectiveTo,
+             1, @IsDefault, @SetByAdminUserId, @Notes, GETDATE());
+
+        SET @NewBillingRateId = SCOPE_IDENTITY();
+        SELECT @NewBillingRateId AS BillingRateId;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('Billing', 'Error',
+                'Error in sp_InsertBillingRate: ' + ERROR_MESSAGE(), 'Admin');
+        SELECT -1 AS BillingRateId;
+    END CATCH
+END;
+GO
+
+-- sp_UpdateBillingRate: dup-name and overlap return SELECT 0; RETURN (no RAISERROR, no spurious Error log)
+CREATE OR ALTER PROCEDURE dbo.sp_UpdateBillingRate
+    @BillingRateId INT,
+    @Name          NVARCHAR(100),
+    @RatePerMinute DECIMAL(10,2),
+    @Currency      NVARCHAR(10),
+    @EffectiveFrom DATE,
+    @EffectiveTo   DATE = NULL,
+    @IsActive      BIT,
+    @IsDefault     BIT = 0,
+    @Notes         NVARCHAR(500) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DECLARE @OldIsDefault BIT;
+
+    BEGIN TRY
+        IF NOT EXISTS (SELECT 1 FROM dbo.tblBillingRate WHERE BillingRateId = @BillingRateId)
+            RAISERROR('Billing rate not found.', 16, 1);
+
+        IF @RatePerMinute < 0
+            RAISERROR('Rate per minute cannot be negative.', 16, 1);
+
+        IF @EffectiveTo IS NOT NULL AND @EffectiveTo < @EffectiveFrom
+            RAISERROR('Effective To must be on or after Effective From.', 16, 1);
+
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblBillingRate
+            WHERE  BillingRateId <> @BillingRateId
+              AND  LTRIM(RTRIM(Name)) = LTRIM(RTRIM(@Name))
+        )
+        BEGIN
+            SELECT 0 AS Result;
+            RETURN;
+        END
+
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblBillingRate
+            WHERE  IsActive = 1
+              AND  Currency  = @Currency
+              AND  BillingRateId <> @BillingRateId
+              AND  @EffectiveFrom <= COALESCE(EffectiveTo,   '9999-12-31')
+              AND  COALESCE(@EffectiveTo, '9999-12-31') >= EffectiveFrom
+        )
+        BEGIN
+            SELECT 0 AS Result;
+            RETURN;
+        END
+
+        SELECT @OldIsDefault = IsDefault FROM dbo.tblBillingRate WHERE BillingRateId = @BillingRateId;
+
+        IF @IsDefault = 1 AND @OldIsDefault = 0
+            UPDATE dbo.tblBillingRate SET IsDefault = 0 WHERE BillingRateId <> @BillingRateId;
+
+        IF @IsDefault = 0 AND @OldIsDefault = 1
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM dbo.tblBillingRate
+                WHERE IsDefault = 1 AND BillingRateId <> @BillingRateId
+            )
+                RAISERROR('At least one default rate must remain. Cannot unset this rate as default.', 16, 1);
+        END;
+
+        UPDATE dbo.tblBillingRate
+        SET    Name          = @Name,
+               RatePerMinute = @RatePerMinute,
+               Currency      = @Currency,
+               EffectiveFrom = @EffectiveFrom,
+               EffectiveTo   = @EffectiveTo,
+               IsActive      = @IsActive,
+               IsDefault     = @IsDefault,
+               Notes         = @Notes
+        WHERE  BillingRateId = @BillingRateId;
+
+        SELECT 1 AS Result;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('Billing', 'Error',
+                'Error in sp_UpdateBillingRate: ' + ERROR_MESSAGE(), 'Admin');
+        SELECT 0 AS Result;
+    END CATCH
+END;
+GO
+
+SELECT 'Billing rate SP deduplication PATCH COMPLETE' AS Status;
+GO
+
+
+-- ============================================================
+-- PATCH: Consolidate sp_UpdateClientUser — add ProfilePicturePath
+-- Run against ClientServerSessionDB after all previous patches.
+-- This supersedes the sp_UpdateClientUser defined in the FullName PATCH.
+-- ============================================================
+USE ClientServerSessionDB;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sp_UpdateClientUser
+    @UserId             INT,
+    @FullName           NVARCHAR(100),
+    @Phone              NVARCHAR(30)  = NULL,
+    @Address            NVARCHAR(200) = NULL,
+    @ProfilePicturePath NVARCHAR(500) = NULL   -- NULL = keep existing path
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        IF LTRIM(RTRIM(ISNULL(@FullName, ''))) = ''
+            RAISERROR('Full name is required.', 16, 1);
+
+        UPDATE dbo.tblUser
+        SET    FullName           = @FullName,
+               Phone              = @Phone,
+               Address            = @Address,
+               ProfilePicturePath = CASE
+                                        WHEN @ProfilePicturePath IS NOT NULL THEN @ProfilePicturePath
+                                        ELSE ProfilePicturePath
+                                    END
+        WHERE  UserId = @UserId AND Role = 'ClientUser';
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'Error',
+            'sp_UpdateClientUser: ' + ERROR_MESSAGE(), 'Server');
+        THROW;
+    END CATCH
+END
+GO
+
+SELECT 'UpdateClientUser consolidation PATCH COMPLETE' AS Status;
 GO

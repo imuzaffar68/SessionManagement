@@ -874,9 +874,10 @@ namespace SessionManagement.Data
         }
 
         /// <summary>
-        /// Update ClientUser details (FullName, Phone, Address).
+        /// Update ClientUser details. Pass profilePicturePath = null to keep the existing path.
         /// </summary>
-        public bool UpdateClientUser(int userId, string fullName, string phone, string address)
+        public bool UpdateClientUser(int userId, string fullName, string phone, string address,
+            string profilePicturePath = null)
         {
             try
             {
@@ -888,32 +889,13 @@ namespace SessionManagement.Data
                     cmd.Parameters.AddWithValue("@FullName", fullName);
                     cmd.Parameters.AddWithValue("@Phone", (object)phone ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@Address", (object)address ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@ProfilePicturePath", (object)profilePicturePath ?? DBNull.Value);
                     c.Open();
                     cmd.ExecuteNonQuery();
                     return true;
                 }
             }
             catch (Exception ex) { LogError("UpdateClientUser", ex); return false; }
-        }
-
-        /// <summary>
-        /// Store the server-side profile picture file path for a user.
-        /// </summary>
-        public void SetProfilePicturePath(int userId, string path)
-        {
-            const string sql = @"
-                UPDATE dbo.tblUser SET ProfilePicturePath = @Path WHERE UserId = @UserId";
-            try
-            {
-                using (var c = Conn()) using (var cmd = new SqlCommand(sql, c))
-                {
-                    cmd.Parameters.AddWithValue("@UserId", userId);
-                    cmd.Parameters.AddWithValue("@Path", (object)path ?? DBNull.Value);
-                    c.Open();
-                    cmd.ExecuteNonQuery();
-                }
-            }
-            catch (Exception ex) { LogError("SetProfilePicturePath", ex); }
         }
 
         /// <summary>

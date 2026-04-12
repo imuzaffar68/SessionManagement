@@ -147,8 +147,7 @@ namespace SessionManagement.WCF
                     "Auth", "LoginSuccess",
                     $"User '{username}' authenticated on {clientCode}", "Server");
 
-                string picPath = user.Table.Columns.Contains("ProfilePicturePath")
-                                 ? user["ProfilePicturePath"]?.ToString() : null;
+                string picPath = user["ProfilePicturePath"]?.ToString();
 
                 return new AuthenticationResponse
                 {
@@ -186,14 +185,22 @@ namespace SessionManagement.WCF
                 if (machineId == 0)
                     return new SessionStartResponse
                     { Success = false, ErrorMessage = "Client machine not registered." };
+
                 // Check if machine is active (blocked machines cannot start sessions)
                 if (!_db.IsClientMachineActive(machineId))
                     return new SessionStartResponse
                     { Success = false, ErrorMessage = "This machine is not available for use. Please contact your administrator." };
 
-                // SEQ-02 step 2: INSERT tblSession (sp_StartSession also writes SystemLog)
+                // SEQ-02 step 2: INSERT tblSession via sp_StartSession.
+                // SP returns: positive = new SessionId, -1 = user conflict, -2 = machine conflict, 0 = error.
                 int sessionId = _db.StartSession(userId, machineId, durationMinutes);
-                if (sessionId == 0)
+                if (sessionId == -1)
+                    return new SessionStartResponse
+                    { Success = false, ErrorMessage = "You already have an active session on another machine." };
+                if (sessionId == -2)
+                    return new SessionStartResponse
+                    { Success = false, ErrorMessage = "This machine already has an active session." };
+                if (sessionId <= 0)
                     return new SessionStartResponse
                     { Success = false, ErrorMessage = "Failed to create session record." };
 
@@ -799,11 +806,11 @@ namespace SessionManagement.WCF
                     };
                 }
 
-                // Save profile picture if provided
+                // Save profile picture if provided, then store path via the same SP used for updates
                 if (!string.IsNullOrEmpty(profilePictureBase64))
                 {
                     string picPath = SaveProfilePicture(userId, profilePictureBase64);
-                    if (picPath != null) _db.SetProfilePicturePath(userId, picPath);
+                    if (picPath != null) _db.UpdateClientUser(userId, fullName, phone, address, picPath);
                 }
 
                 // SEQ-03 step 5: log the registration
@@ -837,8 +844,7 @@ namespace SessionManagement.WCF
                 var list = new List<UserInfo>();
                 foreach (DataRow r in dt.Rows)
                 {
-                    string picPath = r.Table.Columns.Contains("ProfilePicturePath")
-                                     ? r["ProfilePicturePath"]?.ToString() : null;
+                    string picPath = r["ProfilePicturePath"]?.ToString();
                     list.Add(new UserInfo
                     {
                         UserId               = Convert.ToInt32(r["UserId"]),
@@ -868,17 +874,13 @@ namespace SessionManagement.WCF
         {
             try
             {
-                if (string.IsNullOrWhiteSpace(fullName))
-                {
-                    return new UserUpdateResponse
-                    {
-                        Success = false,
-                        UserId = userId,
-                        ErrorMessage = "Full name is required."
-                    };
-                }
+                // Save picture first to get the path, then pass it in the single DB call.
+                // SP uses CASE WHEN so null path = keep existing.
+                string picPath = null;
+                if (!string.IsNullOrEmpty(profilePictureBase64))
+                    picPath = SaveProfilePicture(userId, profilePictureBase64);
 
-                bool ok = _db.UpdateClientUser(userId, fullName, phone, address);
+                bool ok = _db.UpdateClientUser(userId, fullName, phone, address, picPath);
                 if (!ok)
                 {
                     return new UserUpdateResponse
@@ -887,13 +889,6 @@ namespace SessionManagement.WCF
                         UserId = userId,
                         ErrorMessage = "Failed to update user. User may not exist."
                     };
-                }
-
-                // Save profile picture if provided
-                if (!string.IsNullOrEmpty(profilePictureBase64))
-                {
-                    string picPath = SaveProfilePicture(userId, profilePictureBase64);
-                    if (picPath != null) _db.SetProfilePicturePath(userId, picPath);
                 }
 
                 _db.WriteSystemLog(null, userId, null, adminUserId,
@@ -1187,19 +1182,8 @@ namespace SessionManagement.WCF
         {
             try
             {
-                var all = _db.GetAllBillingRates();
-
-                // Duplicate name check
-                if (all.Any(r => string.Equals(r.Name.Trim(), name.Trim(),
-                                               StringComparison.OrdinalIgnoreCase)))
-                    return -2; // caller shows "name already exists"
-
-                // Overlapping date-range check (active rates for same currency)
-                if (effectiveFrom.HasValue &&
-                    BillingRangeOverlaps(all, excludeId: 0, currency,
-                                         effectiveFrom.Value, effectiveTo))
-                    return -3; // caller shows "date range overlaps"
-
+                // Duplicate name (-2) and date-range overlap (-3) are checked inside sp_InsertBillingRate.
+                // SP sets @NewBillingRateId to -2 or -3 and returns early; CATCH returns -1 for unexpected errors.
                 return _db.InsertBillingRate(name, ratePerMinute, currency,
                     effectiveFrom, effectiveTo, isDefault, adminUserId, notes);
             }
@@ -1216,28 +1200,7 @@ namespace SessionManagement.WCF
         {
             try
             {
-                var all = _db.GetAllBillingRates();
-
-                // Duplicate name check (exclude the rate being edited)
-                if (all.Any(r => r.BillingRateId != billingRateId &&
-                                 string.Equals(r.Name.Trim(), name.Trim(),
-                                               StringComparison.OrdinalIgnoreCase)))
-                {
-                    _db.WriteSystemLog(null, null, null, null, "Billing", "Warning",
-                        $"UpdateBillingRate rejected: duplicate name '{name}'", "Server");
-                    return false;
-                }
-
-                // Overlapping date-range check (exclude self)
-                if (effectiveFrom.HasValue &&
-                    BillingRangeOverlaps(all, billingRateId, currency,
-                                         effectiveFrom.Value, effectiveTo))
-                {
-                    _db.WriteSystemLog(null, null, null, null, "Billing", "Warning",
-                        $"UpdateBillingRate rejected: overlapping date range for '{name}'", "Server");
-                    return false;
-                }
-
+                // Duplicate name and date-range overlap are checked inside sp_UpdateBillingRate (SELECT 0; RETURN).
                 return _db.UpdateBillingRate(billingRateId, name, ratePerMinute,
                     currency, effectiveFrom, effectiveTo, isActive, isDefault, notes);
             }
@@ -1247,32 +1210,6 @@ namespace SessionManagement.WCF
                     "Billing", "Error", $"UpdateBillingRate: {ex.Message}", "Server");
                 return false;
             }
-        }
-
-        /// <summary>
-        /// Returns true if [effectiveFrom, effectiveTo] overlaps any active rate
-        /// for the given currency, skipping the rate identified by excludeId.
-        /// NULL effectiveTo means "open-ended" (treated as 9999-12-31).
-        /// </summary>
-        private static bool BillingRangeOverlaps(BillingRateInfo[] rates, int excludeId,
-            string currency, DateTime effectiveFrom, DateTime? effectiveTo)
-        {
-            var newTo = effectiveTo ?? DateTime.MaxValue;
-            foreach (var r in rates)
-            {
-                if (r.BillingRateId == excludeId) continue;
-                if (!r.IsActive) continue;
-                if (!string.Equals(r.Currency, currency, StringComparison.OrdinalIgnoreCase)) continue;
-                if (!r.EffectiveFrom.HasValue) continue; // legacy row with no date — skip
-
-                var existFrom = r.EffectiveFrom.Value;
-                var existTo   = r.EffectiveTo ?? DateTime.MaxValue;
-
-                // Two ranges overlap when: newFrom <= existTo  AND  newTo >= existFrom
-                if (effectiveFrom <= existTo && newTo >= existFrom)
-                    return true;
-            }
-            return false;
         }
 
         public bool DeleteBillingRate(int billingRateId)
