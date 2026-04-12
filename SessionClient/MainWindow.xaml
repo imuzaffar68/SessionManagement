@@ -303,13 +303,44 @@
                         <ComboBoxItem Content="Custom…"/>
                     </ComboBox>
 
+                    <!-- Custom duration toggle button -->
+                    <Button x:Name="btnDurCustom" Content="Custom duration…" Height="40"
+                            Margin="0,0,0,12"
+                            Background="#1E2433" Foreground="#94A3B8"
+                            BorderBrush="#2D3748" BorderThickness="1"
+                            FontFamily="Segoe UI" FontSize="13"
+                            Cursor="Hand" Click="btnDurCustom_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="r" Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="10">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="r" Property="Background" Value="#1D3461"/>
+                                        <Setter TargetName="r" Property="BorderBrush" Value="#4F8EF7"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+
+                    <!-- Cost estimate label (updates dynamically) -->
+                    <TextBlock x:Name="lblCostEstimate"
+                               FontSize="12" Foreground="#4F8EF7"
+                               HorizontalAlignment="Center" FontFamily="Segoe UI"
+                               Margin="0,0,0,8" Visibility="Collapsed"/>
+
                     <!-- Custom duration -->
                     <StackPanel x:Name="CustomDurationPanel" Visibility="Collapsed"
                                 Margin="0,0,0,12">
                         <TextBlock Text="CUSTOM MINUTES (15 – 480)" FontSize="10" FontWeight="SemiBold"
                                    Foreground="#475569" FontFamily="Segoe UI" Margin="0,0,0,8"/>
                         <TextBox x:Name="txtCustomDuration" Style="{StaticResource ClientInput}"
-                                 Height="48"/>
+                                 Height="48" TextChanged="txtCustomDuration_TextChanged"/>
                     </StackPanel>
 
                     <Button x:Name="btnStartSession" Content="▶  Start Session"
@@ -329,13 +360,19 @@
              This panel is shown inside a small normal window
              after UnlockScreen() resizes it.
         ══════════════════════════════════════════════════════════ -->
-        <Grid x:Name="SessionPanel" Visibility="Collapsed" Background="#171B26">
+        <Border x:Name="SessionPanel" Visibility="Collapsed"
+                Background="#171B26"
+                BorderBrush="#2D3748" BorderThickness="1">
+        <Grid>
 
-            <!-- Draggable title bar area -->
+            <!-- Custom title bar — matches admin app header style exactly -->
             <Border x:Name="sessionDragHandle" Height="38" VerticalAlignment="Top"
-                    Background="#13161F" Cursor="SizeAll"
+                    Background="#0D0F17"
+                    BorderBrush="#2D3748" BorderThickness="0,0,0,1"
+                    Cursor="SizeAll"
                     MouseLeftButtonDown="sessionDragHandle_MouseLeftButtonDown">
                 <Grid Margin="12,0">
+                    <!-- Left: status indicator + label -->
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                         <Ellipse Width="7" Height="7" Fill="#34D399"
                                  VerticalAlignment="Center" Margin="0,0,6,0"/>
@@ -343,10 +380,39 @@
                                    Foreground="#64748B" FontFamily="Segoe UI"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
-                    <TextBlock x:Name="lblSessionUser" Text="—" FontSize="11"
-                               Foreground="#94A3B8" FontFamily="Segoe UI"
-                               HorizontalAlignment="Right" VerticalAlignment="Center"
-                               TextTrimming="CharacterEllipsis" MaxWidth="120"/>
+
+                    <!-- Right: username + minimize button -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                VerticalAlignment="Center">
+                        <TextBlock x:Name="lblSessionUser" Text="—" FontSize="11"
+                                   Foreground="#94A3B8" FontFamily="Segoe UI"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis" MaxWidth="100"
+                                   Margin="0,0,6,0"/>
+                        <!-- Minimize to floating timer — inside title bar, admin-style -->
+                        <Button x:Name="btnMinimizeToFloat"
+                                Content="—" Width="32" Height="28"
+                                Background="Transparent" BorderThickness="0"
+                                Foreground="#475569" FontSize="14" Cursor="Hand"
+                                ToolTip="Minimise to floating timer"
+                                Click="btnMinimizeTimer_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="r" Background="{TemplateBinding Background}"
+                                            CornerRadius="4">
+                                        <ContentPresenter HorizontalAlignment="Center"
+                                                          VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="r" Property="Background" Value="#1E2433"/>
+                                            <Setter Property="Foreground" Value="#94A3B8"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </StackPanel>
                 </Grid>
             </Border>
 
@@ -410,42 +476,139 @@
                            Visibility="Collapsed"/>
             </StackPanel>
 
-            <!-- Action buttons at bottom -->
-            <Grid VerticalAlignment="Bottom" Margin="12,0,12,12">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="*"/>
-                    <ColumnDefinition Width="40"/>
-                </Grid.ColumnDefinitions>
-                <Button Grid.Column="0" x:Name="btnEndSession"
-                        Content="⬛  End Session"
-                        Style="{StaticResource ClientBtnRed}"
-                        Height="38" FontSize="13" Padding="0,0"
-                        Click="btnEndSession_Click"/>
-                <Button Grid.Column="1" x:Name="btnMinimizeTimer"
-                        Content="—" Height="38" Width="38" Margin="6,0,0,0"
-                        Background="#1E2433" Foreground="#94A3B8"
-                        BorderBrush="#2D3748" BorderThickness="1"
-                        FontFamily="Segoe UI" FontSize="18" Cursor="Hand"
-                        ToolTip="Minimize to floating timer"
-                        Click="btnMinimizeTimer_Click">
-                    <Button.Template>
-                        <ControlTemplate TargetType="Button">
-                            <Border x:Name="r" Background="{TemplateBinding Background}"
-                                    BorderBrush="{TemplateBinding BorderBrush}"
-                                    BorderThickness="{TemplateBinding BorderThickness}"
-                                    CornerRadius="10">
-                                <ContentPresenter HorizontalAlignment="Center"
-                                                  VerticalAlignment="Center"/>
-                            </Border>
-                            <ControlTemplate.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="r" Property="Background" Value="#252D42"/>
-                                </Trigger>
-                            </ControlTemplate.Triggers>
-                        </ControlTemplate>
-                    </Button.Template>
-                </Button>
-            </Grid>
+            <!-- Action button at bottom — full width now that minimize lives in the title bar -->
+            <Button x:Name="btnEndSession"
+                    VerticalAlignment="Bottom" Margin="12,0,12,12"
+                    Content="⬛  End Session"
+                    Style="{StaticResource ClientBtnRed}"
+                    Height="38" FontSize="13" Padding="0,0"
+                    Click="btnEndSession_Click"/>
+
+            <!-- Keep the old name so code-behind still compiles -->
+            <Button x:Name="btnMinimizeTimer" Visibility="Collapsed"
+                    Click="btnMinimizeTimer_Click"/>
+        </Grid>
+        </Border>
+
+        <!-- ══════════════════════════════════════════════════════════
+             SUMMARY PANEL — shown after every session end
+        ══════════════════════════════════════════════════════════ -->
+        <Grid x:Name="SummaryPanel" Background="#0A0E1A" Visibility="Collapsed">
+
+            <!-- Ambient glow -->
+            <Ellipse Width="600" Height="600" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Color="#0D2A1F" Offset="0"/>
+                        <GradientStop Color="Transparent" Offset="1"/>
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
+
+            <Border Width="480" VerticalAlignment="Center" HorizontalAlignment="Center"
+                    Background="#171B26" BorderBrush="#2D3748" BorderThickness="1"
+                    CornerRadius="20" Padding="40">
+                <StackPanel>
+
+                    <!-- Icon -->
+                    <Border Width="68" Height="68" CornerRadius="20"
+                            HorizontalAlignment="Center" Margin="0,0,0,20">
+                        <Border.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Color="#064E3B" Offset="0"/>
+                                <GradientStop Color="#059669" Offset="1"/>
+                            </LinearGradientBrush>
+                        </Border.Background>
+                        <TextBlock Text="✓" FontSize="34" FontWeight="Bold"
+                                   Foreground="White"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+
+                    <!-- Title + subtitle -->
+                    <TextBlock Text="Session Complete" FontSize="26" FontWeight="Bold"
+                               Foreground="#F1F5F9" HorizontalAlignment="Center"
+                               FontFamily="Segoe UI"/>
+                    <TextBlock x:Name="lblSummarySubtitle"
+                               FontSize="13" Foreground="#475569"
+                               HorizontalAlignment="Center" Margin="0,6,0,28"
+                               FontFamily="Segoe UI" TextWrapping="Wrap"
+                               MaxWidth="380" TextAlignment="Center"/>
+
+                    <!-- Details card -->
+                    <Border Background="#0F1117" CornerRadius="12"
+                            Padding="20,16" Margin="0,0,0,12">
+                        <StackPanel>
+
+                            <!-- User row -->
+                            <Grid Margin="0,0,0,12">
+                                <TextBlock Text="USER" FontSize="10" FontWeight="SemiBold"
+                                           Foreground="#475569" FontFamily="Segoe UI"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock x:Name="lblSummaryUser"
+                                           FontSize="13" FontWeight="SemiBold" Foreground="#F1F5F9"
+                                           FontFamily="Segoe UI" HorizontalAlignment="Right"
+                                           VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <!-- Machine row -->
+                            <Grid Margin="0,0,0,12">
+                                <TextBlock Text="MACHINE" FontSize="10" FontWeight="SemiBold"
+                                           Foreground="#475569" FontFamily="Segoe UI"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock x:Name="lblSummaryMachine"
+                                           FontSize="13" FontWeight="SemiBold" Foreground="#F1F5F9"
+                                           FontFamily="Segoe UI" HorizontalAlignment="Right"
+                                           VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <!-- Duration row -->
+                            <Grid Margin="0,0,0,12">
+                                <TextBlock Text="DURATION USED" FontSize="10" FontWeight="SemiBold"
+                                           Foreground="#475569" FontFamily="Segoe UI"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock x:Name="lblSummaryDuration"
+                                           FontSize="13" FontWeight="SemiBold" Foreground="#F1F5F9"
+                                           FontFamily="Segoe UI" HorizontalAlignment="Right"
+                                           VerticalAlignment="Center"/>
+                            </Grid>
+
+                            <!-- Separator -->
+                            <Border BorderBrush="#1E2433" BorderThickness="0,1,0,0" Margin="0,0,0,12"/>
+
+                            <!-- Amount row -->
+                            <Grid>
+                                <TextBlock Text="AMOUNT CHARGED" FontSize="10" FontWeight="SemiBold"
+                                           Foreground="#475569" FontFamily="Segoe UI"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock x:Name="lblSummaryAmount"
+                                           FontSize="20" FontWeight="Bold" Foreground="#FBBF24"
+                                           FontFamily="Segoe UI" HorizontalAlignment="Right"
+                                           VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- End reason pill -->
+                    <Border Background="#0F1117" CornerRadius="10"
+                            Padding="14,10" Margin="0,0,0,24">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="END REASON  " FontSize="10" FontWeight="SemiBold"
+                                       Foreground="#475569" FontFamily="Segoe UI"
+                                       VerticalAlignment="Center"/>
+                            <TextBlock x:Name="lblSummaryReason"
+                                       FontSize="12" Foreground="#94A3B8"
+                                       FontFamily="Segoe UI" VerticalAlignment="Center"
+                                       TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Back to login -->
+                    <Button x:Name="btnSummaryClose" Content="Back to Login →"
+                            Style="{StaticResource ClientBtnPrimary}"
+                            Height="52" FontSize="16" Padding="0,0"
+                            Click="btnSummaryClose_Click"/>
+                </StackPanel>
+            </Border>
         </Grid>
     </Grid>
 </Window>

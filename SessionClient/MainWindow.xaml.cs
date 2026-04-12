@@ -267,7 +267,7 @@ namespace SessionClient
             UninstallKeyboardHook();
 
             Topmost = false;
-            WindowStyle = WindowStyle.SingleBorderWindow;
+            WindowStyle = WindowStyle.None;       // custom dark title bar — no OS chrome
             WindowState = WindowState.Normal;
             ResizeMode = ResizeMode.NoResize;
 
@@ -342,6 +342,12 @@ namespace SessionClient
                     _username = resp.Username;
                     _userId = resp.UserId;
                     CaptureImageAsync();
+
+                    // Fetch billing rate now so cost previews are ready before the user picks a duration
+                    try { _billingRate = _svc.GetCurrentBillingRate(); }
+                    catch { _billingRate = 0.50m; }
+                    UpdateDurationButtonCosts();
+
                     lblWelcome.Text = $"Welcome, {(_fullname ?? _username)}!";
                     ShowPanel(DurationPanel);
                 }
@@ -447,7 +453,7 @@ namespace SessionClient
             if (!int.TryParse(btn.Tag.ToString(), out int minutes)) return;
             _selectedDurationMinutes = minutes;
 
-            // Visual feedback: highlight selected button
+            // Visual feedback: highlight selected button, reset all others
             foreach (Button b in new[] { btnDur15, btnDur30, btnDur60, btnDur120 })
             {
                 if (b == null) continue;
@@ -461,9 +467,40 @@ namespace SessionClient
                         : System.Windows.Media.Color.FromRgb(0x94, 0xA3, 0xB8));
             }
 
+            // Preset selected — hide custom panel and clear its field
+            CustomDurationPanel.Visibility = Visibility.Collapsed;
+            txtCustomDuration.Clear();
+
             // Also sync legacy ComboBox
             int idx = minutes == 15 ? 0 : minutes == 30 ? 1 : minutes == 60 ? 2 : 3;
             cboDuration.SelectedIndex = idx;
+
+            // Show cost estimate for this preset
+            ShowCostEstimate(minutes);
+        }
+
+        private void btnDurCustom_Click(object sender, RoutedEventArgs e)
+        {
+            // Clear all preset highlights
+            foreach (Button b in new[] { btnDur15, btnDur30, btnDur60, btnDur120 })
+            {
+                if (b == null) continue;
+                b.BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x2D, 0x37, 0x48));
+                b.Foreground  = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x94, 0xA3, 0xB8));
+            }
+            cboDuration.SelectedIndex = 4;
+            CustomDurationPanel.Visibility = Visibility.Visible;
+            lblCostEstimate.Visibility = Visibility.Collapsed;
+            txtCustomDuration.Focus();
+        }
+
+        private void txtCustomDuration_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (lblCostEstimate == null) return;
+            if (int.TryParse(txtCustomDuration.Text, out int mins) && mins > 0 && _billingRate > 0)
+                ShowCostEstimate(mins);
+            else
+                lblCostEstimate.Visibility = Visibility.Collapsed;
         }
 
         private void cboDuration_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -506,9 +543,6 @@ namespace SessionClient
                     return;
                 }
                 _sessionId = resp.SessionId;
-
-                try { _billingRate = _svc.GetCurrentBillingRate(); }
-                catch { _billingRate = 0.50m; }
 
                 // Upload image in background
                 if (!string.IsNullOrEmpty(_pendingImage))
@@ -685,8 +719,8 @@ namespace SessionClient
         {
             _timer.Stop();
             StopDetection();
-            string summary = FinalizeSession("Auto");
 
+            // Restore window to foreground if minimised / floating
             if (WindowState == WindowState.Minimized ||
                 (_floatingTimerWindow?.IsVisible == true))
             {
@@ -696,13 +730,10 @@ namespace SessionClient
                 Activate();
             }
 
-            AppDialog.ShowInfo(
-                "Your session has expired." +
-                (string.IsNullOrEmpty(summary) ? "" : "\n\n" + summary) +
-                "\n\nPlease sign in again to continue.", "Session Ended");
-
+            var (elapsed, amount) = ComputeBillingSummary();
+            EndSessionOnServer("Auto");
             CloseFloatingTimer();
-            ResetToLogin();
+            ShowSummaryPanel("Your session time has expired.", elapsed, amount, "Auto — time expired");
         }
 
         private void btnEndSession_Click(object sender, RoutedEventArgs e)
@@ -712,29 +743,52 @@ namespace SessionClient
             _manualLogout = true;
             _timer.Stop();
             StopDetection();
-            string summary = FinalizeSession("Manual");
-            if (!string.IsNullOrEmpty(summary))
-                AppDialog.ShowInfo(summary, "Session Summary");
+            var (elapsed, amount) = ComputeBillingSummary();
+            EndSessionOnServer("Manual");
             CloseFloatingTimer();
-            ResetToLogin();
+            ShowSummaryPanel("You ended your session early.", elapsed, amount, "Manual — user ended session");
         }
 
-        private string FinalizeSession(string type)
+        /// <summary>Tells the server to finalize the session (fire-and-forget result).</summary>
+        private void EndSessionOnServer(string type)
         {
-            try
-            {
-                bool ok = _svc.EndSession(_sessionId, type);
-                double elapsed = (_total - _remaining).TotalMinutes;
-                decimal amount = (decimal)elapsed * _billingRate;
-                return ok
-                    ? $"Duration used: {(int)elapsed} min\nTotal charged: ${amount:F2}"
-                    : "Session ended locally.";
-            }
+            try { _svc.EndSession(_sessionId, type); }
             catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine("[FinalizeSession] " + ex.Message);
-                return "Session ended.";
-            }
+            { System.Diagnostics.Debug.WriteLine("[EndSession] " + ex.Message); }
+        }
+
+        /// <summary>Returns how many full minutes were used and the PKR charge.</summary>
+        private (int elapsedMinutes, decimal amount) ComputeBillingSummary()
+        {
+            double elapsedExact = (_total - _remaining).TotalMinutes;
+            int elapsed = (int)Math.Ceiling(elapsedExact);
+            decimal amount = (decimal)elapsedExact * _billingRate;
+            return (elapsed, amount);
+        }
+
+        /// <summary>
+        /// Restores kiosk window to full-screen, populates summary labels,
+        /// and switches to the SummaryPanel.  Called from every session-end path.
+        /// </summary>
+        private void ShowSummaryPanel(string subtitle, int elapsedMinutes, decimal amount, string reason)
+        {
+            _sessionActive = false;
+            LockScreen();   // restore full-screen / kiosk state
+
+            lblSummaryUser.Text     = _fullname ?? _username ?? "—";
+            lblSummaryMachine.Text  = _clientCode;
+            lblSummaryDuration.Text = elapsedMinutes + " min";
+            lblSummaryAmount.Text   = $"PKR {amount:F2}";
+            lblSummaryReason.Text   = reason;
+            lblSummarySubtitle.Text = subtitle;
+
+            ShowPanel(SummaryPanel);
+            Activate();
+        }
+
+        private void btnSummaryClose_Click(object sender, RoutedEventArgs e)
+        {
+            ResetToLogin();
         }
 
         private void CloseFloatingTimer()
@@ -796,15 +850,27 @@ namespace SessionClient
             if (e.SessionId != _sessionId) return;
             Dispatcher.BeginInvoke(new Action(() =>
             {
+                if (!_sessionActive) return;  // already handled
+
                 _timer.Stop();
                 StopDetection();
-                if (!_manualLogout)
-                    AppDialog.ShowWarning(
-                        "Your session was terminated by the administrator.\nReason: " + e.Reason,
-                        "Session Terminated");
-                _manualLogout = false;
+
+                // Restore window if minimised / floating
+                if (WindowState == WindowState.Minimized ||
+                    (_floatingTimerWindow?.IsVisible == true))
+                {
+                    _floatingTimerWindow?.Hide();
+                    this.Show();
+                    WindowState = WindowState.Normal;
+                }
+
+                var (elapsed, amount) = ComputeBillingSummary();
                 CloseFloatingTimer();
-                ResetToLogin();
+                ShowSummaryPanel(
+                    "Your session was terminated by the administrator.",
+                    elapsed, amount,
+                    "Admin — " + (e.Reason ?? "no reason given"));
+                _manualLogout = false;
             }));
         }
 
@@ -848,6 +914,8 @@ namespace SessionClient
 
             ResetLoginFields();
             txtCustomDuration?.Clear();
+            if (lblCostEstimate != null) lblCostEstimate.Visibility = Visibility.Collapsed;
+            CustomDurationPanel.Visibility = Visibility.Collapsed;
             lblTimeRemaining.Text = "00:00:00";
             lblTimeRemaining.Foreground = new SolidColorBrush(
                 System.Windows.Media.Color.FromRgb(0x4F, 0x8E, 0xF7));
@@ -871,9 +939,10 @@ namespace SessionClient
 
         private void ShowPanel(UIElement p)
         {
-            LoginPanel.Visibility = (p == LoginPanel) ? Visibility.Visible : Visibility.Collapsed;
+            LoginPanel.Visibility    = (p == LoginPanel)    ? Visibility.Visible : Visibility.Collapsed;
             DurationPanel.Visibility = (p == DurationPanel) ? Visibility.Visible : Visibility.Collapsed;
-            SessionPanel.Visibility = (p == SessionPanel) ? Visibility.Visible : Visibility.Collapsed;
+            SessionPanel.Visibility  = (p == SessionPanel)  ? Visibility.Visible : Visibility.Collapsed;
+            SummaryPanel.Visibility  = (p == SummaryPanel)  ? Visibility.Visible : Visibility.Collapsed;
         }
 
         #endregion
@@ -882,6 +951,54 @@ namespace SessionClient
         //  #region HELPERS
         // ═══════════════════════════════════════════════════════════
         #region Helpers
+
+        /// <summary>
+        /// Refreshes the label on every preset duration button to show
+        /// "X min  ~PKR Y" once the billing rate is known.
+        /// </summary>
+        private void UpdateDurationButtonCosts()
+        {
+            if (_billingRate <= 0) return;
+            var presets = new[] { (btnDur15, 15), (btnDur30, 30), (btnDur60, 60), (btnDur120, 120) };
+            foreach (var (btn, mins) in presets)
+            {
+                decimal cost = mins * _billingRate;
+                var sp = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
+                sp.Children.Add(new System.Windows.Controls.TextBlock
+                {
+                    Text                = $"{mins} min",
+                    FontSize            = 14,
+                    FontFamily          = new System.Windows.Media.FontFamily("Segoe UI"),
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Foreground          = new System.Windows.Media.SolidColorBrush(
+                                              System.Windows.Media.Colors.White)
+                });
+                sp.Children.Add(new System.Windows.Controls.TextBlock
+                {
+                    Text                = $"~PKR {cost:F0}",
+                    FontSize            = 10,
+                    FontFamily          = new System.Windows.Media.FontFamily("Segoe UI"),
+                    Foreground          = new System.Windows.Media.SolidColorBrush(
+                                              System.Windows.Media.Color.FromRgb(0x4F, 0x8E, 0xF7)),
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    Margin              = new Thickness(0, 2, 0, 0)
+                });
+                btn.Content = sp;
+            }
+
+            // Default-select 60 min so estimate is shown immediately
+            ShowCostEstimate(_selectedDurationMinutes);
+        }
+
+        /// <summary>Shows the cost estimate label for the given number of minutes.</summary>
+        private void ShowCostEstimate(int minutes)
+        {
+            if (lblCostEstimate == null) return;
+            if (_billingRate <= 0) { lblCostEstimate.Visibility = Visibility.Collapsed; return; }
+            decimal cost = minutes * _billingRate;
+            lblCostEstimate.Text       = $"Estimated cost for {minutes} min:  PKR {cost:F2}";
+            lblCostEstimate.Visibility = Visibility.Visible;
+        }
 
         private void ResetLoginFields()
         {
@@ -959,9 +1076,12 @@ namespace SessionClient
                 if (!AppDialog.Confirm("End session and exit?", "Confirm Exit")) { e.Cancel = true; return; }
                 _timer.Stop();
                 StopDetection();
-                string summary = FinalizeSession("Manual");
-                if (!string.IsNullOrEmpty(summary))
-                    AppDialog.ShowInfo(summary, "Session Summary");
+                var (elapsed, amount) = ComputeBillingSummary();
+                EndSessionOnServer("Manual");
+                if (elapsed > 0)
+                    AppDialog.ShowInfo(
+                        $"Session ended.\nDuration: {elapsed} min\nCharged: PKR {amount:F2}",
+                        "Session Summary");
             }
             else
             {
