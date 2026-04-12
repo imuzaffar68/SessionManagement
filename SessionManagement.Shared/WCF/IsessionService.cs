@@ -75,16 +75,23 @@ namespace SessionManagement.WCF
         /// <summary>SEQ-03: Admin registers a new ClientUser with password.</summary>
         [OperationContract]
         UserRegistrationResponse RegisterClientUser(string username, string fullName,
-                                                     string password, string phone, 
-                                                     string address, int adminUserId);
+                                                     string password, string phone,
+                                                     string address, int adminUserId,
+                                                     string profilePictureBase64);
 
         /// <summary>Get all registered client users.</summary>
         [OperationContract]
         UserInfo[] GetAllClientUsers();
 
-        /// <summary>Update ClientUser profile information (FullName, Phone, Address).</summary>
+        /// <summary>Update ClientUser profile information (FullName, Phone, Address, Photo).</summary>
         [OperationContract]
-        UserUpdateResponse UpdateClientUser(int userId, string fullName, string phone, string address, int adminUserId);
+        UserUpdateResponse UpdateClientUser(int userId, string fullName, string phone,
+                                            string address, int adminUserId,
+                                            string profilePictureBase64);
+
+        /// <summary>Hard-delete a ClientUser if they have no session history; returns -1 if blocked by FK.</summary>
+        [OperationContract]
+        UserDeleteResponse DeleteClientUser(int userId, int adminUserId);
 
         /// <summary>Reset ClientUser password to a new value.</summary>
         [OperationContract]
@@ -183,14 +190,15 @@ namespace SessionManagement.WCF
     [DataContract]
     public class AuthenticationResponse
     {
-        [DataMember] public bool   IsAuthenticated { get; set; }
-        [DataMember] public int    UserId          { get; set; }
-        [DataMember] public string Username        { get; set; }
-        [DataMember] public string FullName        { get; set; }
+        [DataMember] public bool   IsAuthenticated      { get; set; }
+        [DataMember] public int    UserId               { get; set; }
+        [DataMember] public string Username             { get; set; }
+        [DataMember] public string FullName             { get; set; }
         /// <summary>"Admin" or "ClientUser" — mapped from tblUser.Role.</summary>
-        [DataMember] public string UserType        { get; set; }
-        [DataMember] public string SessionToken    { get; set; }
-        [DataMember] public string ErrorMessage    { get; set; }
+        [DataMember] public string UserType             { get; set; }
+        [DataMember] public string SessionToken         { get; set; }
+        [DataMember] public string ErrorMessage         { get; set; }
+        [DataMember] public string ProfilePictureBase64 { get; set; }
     }
 
     [DataContract]
@@ -288,15 +296,24 @@ namespace SessionManagement.WCF
     [DataContract]
     public class UserInfo
     {
-        [DataMember] public int      UserId        { get; set; }
-        [DataMember] public string   Username      { get; set; }
-        [DataMember] public string   FullName      { get; set; }
-        [DataMember] public string   Phone         { get; set; }
-        [DataMember] public string   Address       { get; set; }
-        [DataMember] public string   Status        { get; set; }
-        [DataMember] public string   Role          { get; set; }
-        [DataMember] public DateTime CreatedAt     { get; set; }
-        [DataMember] public DateTime? LastLoginAt  { get; set; }
+        [DataMember] public int      UserId               { get; set; }
+        [DataMember] public string   Username             { get; set; }
+        [DataMember] public string   FullName             { get; set; }
+        [DataMember] public string   Phone                { get; set; }
+        [DataMember] public string   Address              { get; set; }
+        [DataMember] public string   Status               { get; set; }
+        [DataMember] public string   Role                 { get; set; }
+        [DataMember] public DateTime CreatedAt            { get; set; }
+        [DataMember] public DateTime? LastLoginAt         { get; set; }
+        [DataMember] public string   ProfilePictureBase64 { get; set; }
+    }
+
+    [DataContract]
+    public class UserDeleteResponse
+    {
+        [DataMember] public bool   Success      { get; set; }
+        [DataMember] public int    UserId       { get; set; }
+        [DataMember] public string ErrorMessage { get; set; }
     }
 
     [DataContract]

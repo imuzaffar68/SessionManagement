@@ -78,6 +78,31 @@
                         </StackPanel>
                     </StackPanel>
 
+                    <!-- PROFILE PHOTO -->
+                    <Border Width="80" Height="80" CornerRadius="40"
+                            HorizontalAlignment="Center" Margin="0,0,0,8"
+                            Background="#1E2433" BorderBrush="#2D3748" BorderThickness="2"
+                            ClipToBounds="True">
+                        <Grid>
+                            <Border>
+                                <Border.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                        <GradientStop Color="#065F46" Offset="0"/>
+                                        <GradientStop Color="#1D3461" Offset="1"/>
+                                    </LinearGradientBrush>
+                                </Border.Background>
+                            </Border>
+                            <TextBlock x:Name="imgPhotoPlaceholder" Text="👤" FontSize="32"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       Foreground="#475569"/>
+                            <Image x:Name="imgPhotoPreview" Stretch="UniformToFill"/>
+                        </Grid>
+                    </Border>
+                    <Button x:Name="btnUploadPhoto" Content="📷  Upload Photo"
+                            Height="30" FontSize="11" HorizontalAlignment="Center"
+                            Style="{StaticResource BtnGhost}" Margin="0,0,0,20"
+                            Click="btnUploadPhoto_Click"/>
+
                     <!-- USERNAME -->
                     <TextBlock Text="USERNAME *" FontSize="10" FontWeight="SemiBold"
                                Foreground="#475569" Margin="0,0,0,6"/>
@@ -94,7 +119,7 @@
                     </Border>
 
                     <!-- FULL NAME -->
-                    <TextBlock Text="FULL NAME" FontSize="10" FontWeight="SemiBold"
+                    <TextBlock Text="FULL NAME *" FontSize="10" FontWeight="SemiBold"
                                Foreground="#475569" Margin="0,0,0,6"/>
                     <TextBox x:Name="txtFullName" Style="{StaticResource ModernInput}"
                              Height="40" Margin="0,0,0,14" Tag="e.g. John Doe"/>

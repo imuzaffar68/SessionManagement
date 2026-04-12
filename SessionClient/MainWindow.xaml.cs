@@ -30,6 +30,7 @@ namespace SessionClient
 
         private string _fullname;
         private string _username;
+        private string _profilePictureBase64;
         private int _userId;
         private int _sessionId;
         private string _clientCode;
@@ -338,9 +339,10 @@ namespace SessionClient
                 if (resp.IsAuthenticated)
                 {
                     _failCount = 0;
-                    _fullname = resp.FullName;
-                    _username = resp.Username;
-                    _userId = resp.UserId;
+                    _fullname              = resp.FullName;
+                    _username              = resp.Username;
+                    _userId                = resp.UserId;
+                    _profilePictureBase64  = resp.ProfilePictureBase64;
                     CaptureImageAsync();
 
                     // Fetch billing rate now so cost previews are ready before the user picks a duration
@@ -349,6 +351,9 @@ namespace SessionClient
                     UpdateDurationButtonCosts();
 
                     lblWelcome.Text = $"Welcome, {(_fullname ?? _username)}!";
+                    SetUserAvatar(_profilePictureBase64,
+                                  imgDurationAvatar, lblDurationInitial,
+                                  _fullname ?? _username);
                     ShowPanel(DurationPanel);
                 }
                 else
@@ -655,6 +660,9 @@ namespace SessionClient
             _total = TimeSpan.FromMinutes(minutes);
             _remaining = _total;
             lblSessionUser.Text = _fullname ?? _username;
+            SetUserAvatar(_profilePictureBase64,
+                          imgSessionAvatar, lblSessionInitial,
+                          _fullname ?? _username);
             lblSessionDuration.Text = minutes + " min";
             UpdateTimerUI();
             _timer.Start();
@@ -904,10 +912,11 @@ namespace SessionClient
 
             try { _svc?.UpdateClientStatus(_clientCode, "Idle"); } catch { }
 
-            _username = null;
-            _fullname = null;
-            _sessionId = 0;
-            _pendingImage = null;
+            _username             = null;
+            _fullname             = null;
+            _profilePictureBase64 = null;
+            _sessionId            = 0;
+            _pendingImage         = null;
             _failCount = 0;
             _billingRate = 0m;
             _selectedDurationMinutes = 60;
@@ -998,6 +1007,40 @@ namespace SessionClient
             decimal cost = minutes * _billingRate;
             lblCostEstimate.Text       = $"Estimated cost for {minutes} min:  PKR {cost:F2}";
             lblCostEstimate.Visibility = Visibility.Visible;
+        }
+
+        private void SetUserAvatar(string base64,
+            System.Windows.Controls.Image imgElement,
+            System.Windows.Controls.TextBlock lblInitial,
+            string displayName)
+        {
+            if (imgElement == null) return;
+            // Update initial letter
+            if (lblInitial != null)
+                lblInitial.Text = string.IsNullOrEmpty(displayName) ? "?" :
+                                  displayName.Substring(0, 1).ToUpper();
+
+            if (!string.IsNullOrEmpty(base64))
+            {
+                try
+                {
+                    var bytes = Convert.FromBase64String(base64);
+                    var bmp = new System.Windows.Media.Imaging.BitmapImage();
+                    using (var ms = new System.IO.MemoryStream(bytes))
+                    {
+                        bmp.BeginInit();
+                        bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                        bmp.StreamSource = ms;
+                        bmp.EndInit();
+                    }
+                    imgElement.Source = bmp;
+                    if (lblInitial != null) lblInitial.Visibility = Visibility.Collapsed;
+                    return;
+                }
+                catch { /* fall through to initial */ }
+            }
+            imgElement.Source = null;
+            if (lblInitial != null) lblInitial.Visibility = Visibility.Visible;
         }
 
         private void ResetLoginFields()

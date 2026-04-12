@@ -27,7 +27,8 @@ namespace SessionAdmin
 
         private string _adminFullname;
         private string _adminUsername;
-        private int _adminUserId;
+        private int    _adminUserId;
+        private string _adminProfileBase64;
 
         private ObservableCollection<ActiveSessionVM> _sessions = new ObservableCollection<ActiveSessionVM>();
         private ObservableCollection<ClientVM> _clients = new ObservableCollection<ClientVM>();
@@ -375,10 +376,31 @@ namespace SessionAdmin
                 if (resp.UserType != "Admin")
                 { ShowLoginError("Access denied. Admin privileges required."); return; }
 
-                _adminFullname = resp.FullName;
-                _adminUsername = resp.Username;
-                _adminUserId = resp.UserId;
-                lblAdminUser.Text = _adminFullname ?? _adminUsername;
+                _adminFullname        = resp.FullName;
+                _adminUsername        = resp.Username;
+                _adminUserId          = resp.UserId;
+                _adminProfileBase64   = resp.ProfilePictureBase64;
+                lblAdminUser.Text     = _adminFullname ?? _adminUsername;
+                lblAdminInitial.Text  = (_adminFullname ?? _adminUsername ?? "A").Substring(0, 1).ToUpper();
+                if (!string.IsNullOrEmpty(_adminProfileBase64))
+                {
+                    try
+                    {
+                        var bytes = Convert.FromBase64String(_adminProfileBase64);
+                        var bmp = new System.Windows.Media.Imaging.BitmapImage();
+                        using (var ms = new System.IO.MemoryStream(bytes))
+                        {
+                            bmp.BeginInit();
+                            bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                            bmp.StreamSource = ms;
+                            bmp.EndInit();
+                        }
+                        imgAdminAvatar.Source     = bmp;
+                        imgAdminAvatar.Visibility = Visibility.Visible;
+                        lblAdminInitial.Visibility = Visibility.Collapsed;
+                    }
+                    catch { /* fall through to initial */ }
+                }
 
                 _svc.SubscribeForNotifications("ADMIN");
                 ShowDashboard();
@@ -862,14 +884,15 @@ namespace SessionAdmin
                 {
                     _users.Add(new UserVM
                     {
-                        UserId = u.UserId,
-                        Username = u.Username,
-                        FullName = u.FullName,
-                        Phone = u.Phone,
-                        Address = u.Address,
-                        Status = u.Status,
-                        CreatedAt = u.CreatedAt.ToString("MM/dd/yyyy hh:mm tt"),
-                        LastLogin = u.LastLoginAt?.ToString("MM/dd/yyyy hh:mm tt") ?? "Never"
+                        UserId               = u.UserId,
+                        Username             = u.Username,
+                        FullName             = u.FullName,
+                        Phone                = u.Phone,
+                        Address              = u.Address,
+                        Status               = u.Status,
+                        CreatedAt            = u.CreatedAt.ToString("MM/dd/yyyy hh:mm tt"),
+                        LastLogin            = u.LastLoginAt?.ToString("MM/dd/yyyy hh:mm tt") ?? "Never",
+                        ProfilePictureBase64 = u.ProfilePictureBase64
                     });
                 }
                 lblUserCount.Text = _users.Count.ToString();
@@ -884,13 +907,15 @@ namespace SessionAdmin
 
         private void btnAddNewUser_Click(object sender, RoutedEventArgs e)
         {
+            lblUserActionError.Visibility = Visibility.Collapsed;
+            lblUserActionSuccess.Visibility = Visibility.Collapsed;
             var win = new UserFormWindow { Owner = this };
             if (win.ShowDialog() == true)
             {
                 try
                 {
                     var resp = _svc.RegisterClientUser(win.Username, win.FullName, win.Password,
-                        win.Phone, win.Address, _adminUserId);
+                        win.Phone, win.Address, _adminUserId, win.ProfilePictureBase64);
                     if (!resp.Success) { ShowUserActionError(resp.ErrorMessage ?? "Registration failed."); return; }
                     ShowUserActionSuccess($"✓ User '{win.Username}' registered successfully (ID: {resp.UserId})");
                     LoadClientUsers();
@@ -905,13 +930,16 @@ namespace SessionAdmin
             var selected = (sender as Button)?.DataContext as UserVM;
             if (selected == null) { ShowUserActionError("Unable to get user data."); return; }
 
+            lblUserActionError.Visibility = Visibility.Collapsed;
+            lblUserActionSuccess.Visibility = Visibility.Collapsed;
             var editWindow = new UserFormWindow(selected) { Owner = this };
             if (editWindow.ShowDialog() == true)
             {
                 try
                 {
                     var resp = _svc.UpdateClientUser(selected.UserId, editWindow.FullName,
-                        editWindow.Phone, editWindow.Address, _adminUserId);
+                        editWindow.Phone, editWindow.Address, _adminUserId,
+                        editWindow.ProfilePictureBase64);
                     if (!resp.Success) { ShowUserActionError(resp.ErrorMessage ?? "Update failed."); return; }
                     ShowUserActionSuccess($"✓ User '{selected.Username}' updated successfully.");
                     LoadClientUsers();
@@ -936,6 +964,25 @@ namespace SessionAdmin
                 }
                 catch (Exception ex) { ShowUserActionError($"Error: {ex.Message}"); }
             }
+        }
+
+        private void btnDeleteUserInline_Click(object sender, RoutedEventArgs e)
+        {
+            var selected = (sender as Button)?.DataContext as UserVM;
+            if (selected == null) { ShowUserActionError("Unable to get user data."); return; }
+
+            if (!AppDialog.Confirm($"Permanently delete '{selected.Username}'? This cannot be undone.")) return;
+
+            lblUserActionError.Visibility = Visibility.Collapsed;
+            lblUserActionSuccess.Visibility = Visibility.Collapsed;
+            try
+            {
+                var resp = _svc.DeleteClientUser(selected.UserId, _adminUserId);
+                if (!resp.Success) { ShowUserActionError(resp.ErrorMessage ?? "Delete failed."); return; }
+                ShowUserActionSuccess($"✓ User '{selected.Username}' deleted.");
+                LoadClientUsers();
+            }
+            catch (Exception ex) { ShowUserActionError($"Error: {ex.Message}"); }
         }
 
         private void btnToggleStatusInline_Click(object sender, RoutedEventArgs e)
@@ -1353,14 +1400,37 @@ namespace SessionAdmin
 
     public class UserVM
     {
-        public int UserId { get; set; }
-        public string Username { get; set; }
-        public string FullName { get; set; }
-        public string Phone { get; set; }
-        public string Address { get; set; }
-        public string Status { get; set; }
-        public string CreatedAt { get; set; }
-        public string LastLogin { get; set; }
+        public int    UserId               { get; set; }
+        public string Username             { get; set; }
+        public string FullName             { get; set; }
+        public string Phone                { get; set; }
+        public string Address              { get; set; }
+        public string Status               { get; set; }
+        public string CreatedAt            { get; set; }
+        public string LastLogin            { get; set; }
+        public string ProfilePictureBase64 { get; set; }
+
+        public System.Windows.Media.ImageSource AvatarSource
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(ProfilePictureBase64)) return null;
+                try
+                {
+                    var bytes = Convert.FromBase64String(ProfilePictureBase64);
+                    var bmp = new System.Windows.Media.Imaging.BitmapImage();
+                    using (var ms = new System.IO.MemoryStream(bytes))
+                    {
+                        bmp.BeginInit();
+                        bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                        bmp.StreamSource = ms;
+                        bmp.EndInit();
+                    }
+                    return bmp;
+                }
+                catch { return null; }
+            }
+        }
     }
 
     public class BillingRateVM

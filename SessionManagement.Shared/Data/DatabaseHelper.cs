@@ -40,7 +40,7 @@ namespace SessionManagement.Data
         public DataRow GetUserByUsername(string username)
         {
             const string sql = @"
-                SELECT UserId, Username, PasswordHash, FullName, Role, Status
+                SELECT UserId, Username, PasswordHash, FullName, Role, Status, ProfilePicturePath
                 FROM   dbo.tblUser
                 WHERE  Username = @Username";
             try
@@ -830,7 +830,7 @@ namespace SessionManagement.Data
 
                     cmd.Parameters.AddWithValue("@Username", username);
                     cmd.Parameters.AddWithValue("@PasswordHash", passwordHash);
-                    cmd.Parameters.AddWithValue("@FullName", (object)fullName ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@FullName", fullName);
                     cmd.Parameters.AddWithValue("@Phone", (object)phone ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@Address", (object)address ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@AdminUserId", adminUserId);
@@ -855,8 +855,8 @@ namespace SessionManagement.Data
         public DataTable GetAllClientUsers()
         {
             const string sql = @"
-                SELECT UserId, Username, FullName, Phone, Address, Status, 
-                       Role, CreatedAt, LastLoginAt
+                SELECT UserId, Username, FullName, Phone, Address, Status,
+                       Role, CreatedAt, LastLoginAt, ProfilePicturePath
                 FROM   dbo.tblUser
                 WHERE  Role = 'ClientUser'
                 ORDER  BY CreatedAt DESC";
@@ -878,27 +878,63 @@ namespace SessionManagement.Data
         /// </summary>
         public bool UpdateClientUser(int userId, string fullName, string phone, string address)
         {
-            const string sql = @"
-                UPDATE dbo.tblUser
-                SET    FullName = @FullName,
-                       Phone = @Phone,
-                       Address = @Address
-                WHERE  UserId = @UserId AND Role = 'ClientUser'";
             try
             {
                 using (var c = Conn())
-                using (var cmd = new SqlCommand(sql, c))
+                using (var cmd = new SqlCommand("dbo.sp_UpdateClientUser", c))
                 {
+                    cmd.CommandType = CommandType.StoredProcedure;
                     cmd.Parameters.AddWithValue("@UserId", userId);
-                    cmd.Parameters.AddWithValue("@FullName", (object)fullName ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@FullName", fullName);
                     cmd.Parameters.AddWithValue("@Phone", (object)phone ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@Address", (object)address ?? DBNull.Value);
                     c.Open();
-                    int rowsAffected = cmd.ExecuteNonQuery();
-                    return rowsAffected > 0;
+                    cmd.ExecuteNonQuery();
+                    return true;
                 }
             }
             catch (Exception ex) { LogError("UpdateClientUser", ex); return false; }
+        }
+
+        /// <summary>
+        /// Store the server-side profile picture file path for a user.
+        /// </summary>
+        public void SetProfilePicturePath(int userId, string path)
+        {
+            const string sql = @"
+                UPDATE dbo.tblUser SET ProfilePicturePath = @Path WHERE UserId = @UserId";
+            try
+            {
+                using (var c = Conn()) using (var cmd = new SqlCommand(sql, c))
+                {
+                    cmd.Parameters.AddWithValue("@UserId", userId);
+                    cmd.Parameters.AddWithValue("@Path", (object)path ?? DBNull.Value);
+                    c.Open();
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            catch (Exception ex) { LogError("SetProfilePicturePath", ex); }
+        }
+
+        /// <summary>
+        /// Hard-delete a ClientUser via stored procedure.
+        /// Returns: 1 = deleted, -1 = has sessions (blocked), 0 = not found / error.
+        /// </summary>
+        public int DeleteClientUser(int userId)
+        {
+            try
+            {
+                using (var c = Conn())
+                using (var cmd = new SqlCommand("dbo.sp_DeleteClientUser", c))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+                    cmd.Parameters.AddWithValue("@UserId", userId);
+                    c.Open();
+                    var result = cmd.ExecuteScalar();
+                    return result != null ? Convert.ToInt32(result) : 0;
+                }
+            }
+            catch (Exception ex) { LogError("DeleteClientUser", ex); return 0; }
         }
 
         /// <summary>

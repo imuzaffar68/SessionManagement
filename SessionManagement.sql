@@ -81,14 +81,15 @@ CREATE TABLE dbo.tblUser (
     UserId            INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
     Username          NVARCHAR(50) NOT NULL,
     PasswordHash      NVARCHAR(255) NOT NULL,
-    FullName          NVARCHAR(100) NULL,
+    FullName          NVARCHAR(100) NOT NULL,
     Role              NVARCHAR(20) NOT NULL,
     Status            NVARCHAR(20) NOT NULL,
     Phone             NVARCHAR(30) NULL,
     Address           NVARCHAR(200) NULL,
     CreatedByUserId   INT NULL,
     CreatedAt         DATETIME NOT NULL CONSTRAINT DF_tblUser_CreatedAt DEFAULT (GETDATE()),
-    LastLoginAt       DATETIME NULL,
+    LastLoginAt          DATETIME NULL,
+    ProfilePicturePath   NVARCHAR(500) NULL,
     CONSTRAINT UQ_tblUser_Username UNIQUE (Username),
     CONSTRAINT CK_tblUser_Role CHECK (Role IN ('Admin', 'ClientUser')),
     CONSTRAINT CK_tblUser_Status CHECK (Status IN ('Active', 'Blocked', 'Disabled'))
@@ -775,12 +776,12 @@ END;
 GO
 --sp_RegisterClientUser
 CREATE OR ALTER PROCEDURE dbo.sp_RegisterClientUser
-    @Username NVARCHAR(50),
+    @Username     NVARCHAR(50),
     @PasswordHash NVARCHAR(255),
-    @FullName NVARCHAR(100) = NULL,
-    @Phone NVARCHAR(30) = NULL,
-    @Address NVARCHAR(200) = NULL,
-    @AdminUserId INT
+    @FullName     NVARCHAR(100),
+    @Phone        NVARCHAR(30)  = NULL,
+    @Address      NVARCHAR(200) = NULL,
+    @AdminUserId  INT
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -788,6 +789,10 @@ BEGIN
     DECLARE @UserId INT;
 
     BEGIN TRY
+        -- Validate required fields
+        IF LTRIM(RTRIM(ISNULL(@FullName, ''))) = ''
+            RAISERROR('Full name is required.', 16, 1);
+
         -- Insert user
         INSERT INTO dbo.tblUser
         (
@@ -811,35 +816,76 @@ BEGIN
         IF ERROR_NUMBER() IN (2627, 2601)
         BEGIN
             SELECT -1 AS UserId;
-
-            INSERT INTO dbo.tblSystemLog
-            (
-                Category, Type, Message, Source
-            )
-            VALUES
-            (
-                'User',
-                'Duplicate',
-                'Duplicate username attempt: "' + @Username + '"',
-                'Server'
-            );
+            INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+            VALUES ('Auth', 'DuplicateUser',
+                'Duplicate username attempt: "' + @Username + '"', 'Server');
         END
         ELSE
         BEGIN
             SELECT 0 AS UserId;
-
-            INSERT INTO dbo.tblSystemLog
-            (
-                Category, Type, Message, Source
-            )
-            VALUES
-            (
-                'System',
-                'Error',
-                'sp_RegisterClientUser: ' + ERROR_MESSAGE(),
-                'Server'
-            );
+            INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+            VALUES ('System', 'Error',
+                'sp_RegisterClientUser: ' + ERROR_MESSAGE(), 'Server');
         END
+    END CATCH
+END
+GO
+
+-- sp_UpdateClientUser
+CREATE OR ALTER PROCEDURE dbo.sp_UpdateClientUser
+    @UserId   INT,
+    @FullName NVARCHAR(100),
+    @Phone    NVARCHAR(30)  = NULL,
+    @Address  NVARCHAR(200) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        -- Validate required fields
+        IF LTRIM(RTRIM(ISNULL(@FullName, ''))) = ''
+            RAISERROR('Full name is required.', 16, 1);
+
+        UPDATE dbo.tblUser
+        SET    FullName = @FullName,
+               Phone    = @Phone,
+               Address  = @Address
+        WHERE  UserId = @UserId AND Role = 'ClientUser';
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'Error',
+            'sp_UpdateClientUser: ' + ERROR_MESSAGE(), 'Server');
+        THROW;
+    END CATCH
+END
+GO
+
+
+-- sp_DeleteClientUser
+CREATE OR ALTER PROCEDURE dbo.sp_DeleteClientUser
+    @UserId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        -- Block delete if user has any session history (FK integrity)
+        IF EXISTS (SELECT 1 FROM dbo.tblSession WHERE UserId = @UserId)
+        BEGIN
+            SELECT -1 AS Result;  -- has sessions
+            RETURN;
+        END
+
+        DELETE FROM dbo.tblUser
+        WHERE  UserId = @UserId AND Role = 'ClientUser';
+
+        SELECT @@ROWCOUNT AS Result;  -- 1 = deleted, 0 = not found
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'Error',
+            'sp_DeleteClientUser: ' + ERROR_MESSAGE(), 'Server');
+        SELECT 0 AS Result;
     END CATCH
 END
 GO
@@ -1022,7 +1068,7 @@ GO
 ALTER PROCEDURE dbo.sp_RegisterClientUser
     @Username     NVARCHAR(50),
     @PasswordHash NVARCHAR(255),
-    @FullName     NVARCHAR(100) = NULL,
+    @FullName     NVARCHAR(100),
     @Phone        NVARCHAR(30)  = NULL,
     @Address      NVARCHAR(200) = NULL,
     @AdminUserId  INT
@@ -1031,6 +1077,9 @@ BEGIN
     SET NOCOUNT ON;
     DECLARE @UserId INT;
     BEGIN TRY
+        IF LTRIM(RTRIM(ISNULL(@FullName, ''))) = ''
+            RAISERROR('Full name is required.', 16, 1);
+
         INSERT INTO dbo.tblUser
             (Username, PasswordHash, FullName, Role, Status,
              Phone, Address, CreatedByUserId)
@@ -1046,7 +1095,7 @@ BEGIN
         BEGIN
             SELECT -1 AS UserId;
             INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
-            VALUES ('Auth', 'DuplicateUser',           -- fixed: was 'User'
+            VALUES ('Auth', 'DuplicateUser',
                 'Duplicate username attempt: "' + @Username + '"', 'Server');
         END
         ELSE
@@ -1515,4 +1564,148 @@ BEGIN
         SELECT 0 AS Result;
     END CATCH
 END;
+GO
+
+-- ============================================================
+-- PATCH: FullName required — NOT NULL column + updated SPs
+-- Run against ClientServerSessionDB after the main SQL script.
+-- ============================================================
+
+USE ClientServerSessionDB;
+GO
+
+-- Step 1: back-fill any NULLs before enforcing NOT NULL
+UPDATE dbo.tblUser
+SET    FullName = LTRIM(RTRIM(ISNULL(Username, 'Unknown')))
+WHERE  FullName IS NULL OR LTRIM(RTRIM(FullName)) = '';
+GO
+
+-- Step 2: enforce NOT NULL on the column
+ALTER TABLE dbo.tblUser
+    ALTER COLUMN FullName NVARCHAR(100) NOT NULL;
+GO
+
+-- Step 3: update sp_RegisterClientUser (make @FullName required, add guard)
+CREATE OR ALTER PROCEDURE dbo.sp_RegisterClientUser
+    @Username     NVARCHAR(50),
+    @PasswordHash NVARCHAR(255),
+    @FullName     NVARCHAR(100),
+    @Phone        NVARCHAR(30)  = NULL,
+    @Address      NVARCHAR(200) = NULL,
+    @AdminUserId  INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DECLARE @UserId INT;
+    BEGIN TRY
+        IF LTRIM(RTRIM(ISNULL(@FullName, ''))) = ''
+            RAISERROR('Full name is required.', 16, 1);
+
+        INSERT INTO dbo.tblUser
+            (Username, PasswordHash, FullName, Role, Status,
+             Phone, Address, CreatedByUserId)
+        VALUES
+            (@Username, @PasswordHash, @FullName, 'ClientUser', 'Active',
+             @Phone, @Address, @AdminUserId);
+
+        SET @UserId = SCOPE_IDENTITY();
+        SELECT @UserId AS UserId;
+    END TRY
+    BEGIN CATCH
+        IF ERROR_NUMBER() IN (2627, 2601)
+        BEGIN
+            SELECT -1 AS UserId;
+            INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+            VALUES ('Auth', 'DuplicateUser',
+                'Duplicate username attempt: "' + @Username + '"', 'Server');
+        END
+        ELSE
+        BEGIN
+            SELECT 0 AS UserId;
+            INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+            VALUES ('System', 'Error',
+                'sp_RegisterClientUser: ' + ERROR_MESSAGE(), 'Server');
+        END
+    END CATCH
+END
+GO
+
+-- Step 4: create sp_UpdateClientUser
+CREATE OR ALTER PROCEDURE dbo.sp_UpdateClientUser
+    @UserId   INT,
+    @FullName NVARCHAR(100),
+    @Phone    NVARCHAR(30)  = NULL,
+    @Address  NVARCHAR(200) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        IF LTRIM(RTRIM(ISNULL(@FullName, ''))) = ''
+            RAISERROR('Full name is required.', 16, 1);
+
+        UPDATE dbo.tblUser
+        SET    FullName = @FullName,
+               Phone    = @Phone,
+               Address  = @Address
+        WHERE  UserId = @UserId AND Role = 'ClientUser';
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'Error',
+            'sp_UpdateClientUser: ' + ERROR_MESSAGE(), 'Server');
+        THROW;
+    END CATCH
+END
+GO
+
+SELECT 'FullName PATCH COMPLETE' AS Status;
+GO
+
+
+-- ============================================================
+-- PATCH: ProfilePicturePath column + sp_DeleteClientUser
+-- Run against ClientServerSessionDB after the main SQL script.
+-- ============================================================
+
+USE ClientServerSessionDB;
+GO
+
+-- Step 1: add ProfilePicturePath column if it does not exist
+IF NOT EXISTS (
+    SELECT 1 FROM sys.columns
+    WHERE object_id = OBJECT_ID('dbo.tblUser') AND name = 'ProfilePicturePath'
+)
+BEGIN
+    ALTER TABLE dbo.tblUser ADD ProfilePicturePath NVARCHAR(500) NULL;
+END
+GO
+
+-- Step 2: create / update sp_DeleteClientUser
+CREATE OR ALTER PROCEDURE dbo.sp_DeleteClientUser
+    @UserId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        IF EXISTS (SELECT 1 FROM dbo.tblSession WHERE UserId = @UserId)
+        BEGIN
+            SELECT -1 AS Result;
+            RETURN;
+        END
+
+        DELETE FROM dbo.tblUser
+        WHERE  UserId = @UserId AND Role = 'ClientUser';
+
+        SELECT @@ROWCOUNT AS Result;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'Error',
+            'sp_DeleteClientUser: ' + ERROR_MESSAGE(), 'Server');
+        SELECT 0 AS Result;
+    END CATCH
+END
+GO
+
+SELECT 'ProfilePicturePath + sp_DeleteClientUser PATCH COMPLETE' AS Status;
 GO

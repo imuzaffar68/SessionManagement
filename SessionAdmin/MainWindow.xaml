@@ -262,16 +262,24 @@
                         BorderBrush="#1E2433" BorderThickness="0,1,0,0">
                     <StackPanel x:Name="AdminHeaderPanel" Visibility="Collapsed">
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-                            <Border Width="32" Height="32" CornerRadius="16" Margin="0,0,10,0">
-                                <Border.Background>
-                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
-                                        <GradientStop Color="#4F8EF7" Offset="0"/>
-                                        <GradientStop Color="#A78BFA" Offset="1"/>
-                                    </LinearGradientBrush>
-                                </Border.Background>
-                                <TextBlock Text="A" FontSize="13" FontWeight="Bold"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center"
-                                           Foreground="White"/>
+                            <Border Width="32" Height="32" CornerRadius="16" Margin="0,0,10,0"
+                                    ClipToBounds="True">
+                                <Grid>
+                                    <Border>
+                                        <Border.Background>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                <GradientStop Color="#4F8EF7" Offset="0"/>
+                                                <GradientStop Color="#A78BFA" Offset="1"/>
+                                            </LinearGradientBrush>
+                                        </Border.Background>
+                                    </Border>
+                                    <Image x:Name="imgAdminAvatar" Stretch="UniformToFill"
+                                           Visibility="Collapsed"/>
+                                    <TextBlock x:Name="lblAdminInitial" Text="A"
+                                               FontSize="13" FontWeight="Bold"
+                                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                                               Foreground="White"/>
+                                </Grid>
                             </Border>
                             <StackPanel VerticalAlignment="Center">
                                 <TextBlock x:Name="lblAdminUser" Text="Admin" FontSize="12"
@@ -871,6 +879,32 @@
                                           ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                           ScrollViewer.VerticalScrollBarVisibility="Auto">
                                     <DataGrid.Columns>
+                                        <DataGridTemplateColumn Header="PHOTO" Width="50" MinWidth="50">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Border Width="30" Height="30" CornerRadius="15"
+                                                            Background="#1E2433" ClipToBounds="True"
+                                                            HorizontalAlignment="Center" Margin="4,2">
+                                                        <Grid>
+                                                            <Border>
+                                                                <Border.Background>
+                                                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                                        <GradientStop Color="#1D3461" Offset="0"/>
+                                                                        <GradientStop Color="#2D3748" Offset="1"/>
+                                                                    </LinearGradientBrush>
+                                                                </Border.Background>
+                                                            </Border>
+                                                            <!-- Fallback icon; Image renders on top and covers it when AvatarSource is set -->
+                                                            <TextBlock Text="👤" FontSize="13"
+                                                                       HorizontalAlignment="Center"
+                                                                       VerticalAlignment="Center"
+                                                                       Foreground="#475569"/>
+                                                            <Image Source="{Binding AvatarSource}" Stretch="UniformToFill"/>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
                                         <DataGridTextColumn Header="ID" Binding="{Binding UserId}" Width="55" MinWidth="55"/>
                                         <DataGridTextColumn Header="USERNAME" Binding="{Binding Username}" Width="130" MinWidth="130"/>
                                         <DataGridTextColumn Header="FULL NAME" Binding="{Binding FullName}" Width="160" MinWidth="160"/>
@@ -887,7 +921,7 @@
                                         <DataGridTextColumn Header="STATUS" Binding="{Binding Status}" Width="80" MinWidth="80"/>
                                         <DataGridTextColumn Header="CREATED" Binding="{Binding CreatedAt}" Width="155" MinWidth="155"/>
                                         <DataGridTextColumn Header="LAST LOGIN" Binding="{Binding LastLogin}" Width="155" MinWidth="155"/>
-                                        <DataGridTemplateColumn Header="ACTIONS" Width="180" MinWidth="180">
+                                        <DataGridTemplateColumn Header="ACTIONS" Width="220" MinWidth="220">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <StackPanel Orientation="Horizontal" Margin="8,4">
@@ -943,6 +977,25 @@
                                                                     <ControlTemplate.Triggers>
                                                                         <Trigger Property="IsMouseOver" Value="True">
                                                                             <Setter TargetName="r" Property="Background" Value="#065F46"/>
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Button.Template>
+                                                        </Button>
+                                                        <Button Content="🗑" Height="28" Width="32"
+                                                                Background="#4C0519" Foreground="#FCA5A5"
+                                                                BorderThickness="0" Cursor="Hand"
+                                                                FontFamily="Segoe UI" FontSize="13"
+                                                                ToolTip="Delete User" Margin="4,0,0,0"
+                                                                Click="btnDeleteUserInline_Click">
+                                                            <Button.Template>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border x:Name="r" Background="{TemplateBinding Background}" CornerRadius="6">
+                                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="r" Property="Background" Value="#7F1D1D"/>
                                                                         </Trigger>
                                                                     </ControlTemplate.Triggers>
                                                                 </ControlTemplate>

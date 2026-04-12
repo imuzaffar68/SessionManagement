@@ -205,13 +205,14 @@ namespace SessionManagement.Client
 
         public UserRegistrationResponse RegisterClientUser(
             string username, string fullName, string password,
-            string phone, string address, int adminUserId)
+            string phone, string address, int adminUserId,
+            string profilePictureBase64 = null)
         {
             if (!EnsureConnection())
                 return new UserRegistrationResponse
                 { Success = false, ErrorMessage = "Not connected to server." };
             try
-            { return _proxy.RegisterClientUser(username, fullName, password, phone, address, adminUserId); }
+            { return _proxy.RegisterClientUser(username, fullName, password, phone, address, adminUserId, profilePictureBase64); }
             catch (Exception ex)
             { Log($"RegisterClientUser: {ex.Message}");
               return new UserRegistrationResponse
@@ -226,17 +227,31 @@ namespace SessionManagement.Client
             { Log($"GetAllClientUsers: {ex.Message}"); return Array.Empty<UserInfo>(); }
         }
 
-        public UserUpdateResponse UpdateClientUser(int userId, string fullName, 
-            string phone, string address, int adminUserId)
+        public UserUpdateResponse UpdateClientUser(int userId, string fullName,
+            string phone, string address, int adminUserId,
+            string profilePictureBase64 = null)
         {
             if (!EnsureConnection())
                 return new UserUpdateResponse
                 { Success = false, ErrorMessage = "Not connected to server." };
             try
-            { return _proxy.UpdateClientUser(userId, fullName, phone, address, adminUserId); }
+            { return _proxy.UpdateClientUser(userId, fullName, phone, address, adminUserId, profilePictureBase64); }
             catch (Exception ex)
             { Log($"UpdateClientUser: {ex.Message}");
               return new UserUpdateResponse
+              { Success = false, ErrorMessage = $"Connection error: {ex.Message}" }; }
+        }
+
+        public UserDeleteResponse DeleteClientUser(int userId, int adminUserId)
+        {
+            if (!EnsureConnection())
+                return new UserDeleteResponse
+                { Success = false, ErrorMessage = "Not connected to server." };
+            try
+            { return _proxy.DeleteClientUser(userId, adminUserId); }
+            catch (Exception ex)
+            { Log($"DeleteClientUser: {ex.Message}");
+              return new UserDeleteResponse
               { Success = false, ErrorMessage = $"Connection error: {ex.Message}" }; }
         }
 

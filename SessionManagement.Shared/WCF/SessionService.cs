@@ -147,14 +147,18 @@ namespace SessionManagement.WCF
                     "Auth", "LoginSuccess",
                     $"User '{username}' authenticated on {clientCode}", "Server");
 
+                string picPath = user.Table.Columns.Contains("ProfilePicturePath")
+                                 ? user["ProfilePicturePath"]?.ToString() : null;
+
                 return new AuthenticationResponse
                 {
-                    IsAuthenticated = true,
-                    UserId          = userId,
-                    Username        = user["Username"].ToString(),
-                    FullName        = user["FullName"]?.ToString() ?? "",
-                    UserType        = user["Role"].ToString(),
-                    SessionToken    = AuthenticationHelper.GenerateSessionToken()
+                    IsAuthenticated      = true,
+                    UserId               = userId,
+                    Username             = user["Username"].ToString(),
+                    FullName             = user["FullName"]?.ToString() ?? "",
+                    UserType             = user["Role"].ToString(),
+                    SessionToken         = AuthenticationHelper.GenerateSessionToken(),
+                    ProfilePictureBase64 = LoadProfilePicture(picPath)
                 };
             }
             catch (Exception ex)
@@ -725,8 +729,9 @@ namespace SessionManagement.WCF
         // ═══════════════════════════════════════════════════════════
 
         public UserRegistrationResponse RegisterClientUser(
-            string username, string fullName, string password, 
-            string phone, string address, int adminUserId)
+            string username, string fullName, string password,
+            string phone, string address, int adminUserId,
+            string profilePictureBase64)
         {
             try
             {
@@ -737,6 +742,15 @@ namespace SessionManagement.WCF
                     {
                         Success = false,
                         ErrorMessage = "Username and password are required."
+                    };
+                }
+
+                if (string.IsNullOrWhiteSpace(fullName))
+                {
+                    return new UserRegistrationResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Full name is required."
                     };
                 }
 
@@ -773,7 +787,7 @@ namespace SessionManagement.WCF
                 string passwordHash = AuthenticationHelper.HashPassword(password);
 
                 // SEQ-03 step 4: insert user into database
-                int userId = _db.RegisterClientUser(username, fullName, passwordHash, 
+                int userId = _db.RegisterClientUser(username, fullName, passwordHash,
                     phone, address, adminUserId);
 
                 if (userId <= 0)
@@ -783,6 +797,13 @@ namespace SessionManagement.WCF
                         Success = false,
                         ErrorMessage = "Failed to register user. Please try again."
                     };
+                }
+
+                // Save profile picture if provided
+                if (!string.IsNullOrEmpty(profilePictureBase64))
+                {
+                    string picPath = SaveProfilePicture(userId, profilePictureBase64);
+                    if (picPath != null) _db.SetProfilePicturePath(userId, picPath);
                 }
 
                 // SEQ-03 step 5: log the registration
@@ -816,18 +837,21 @@ namespace SessionManagement.WCF
                 var list = new List<UserInfo>();
                 foreach (DataRow r in dt.Rows)
                 {
+                    string picPath = r.Table.Columns.Contains("ProfilePicturePath")
+                                     ? r["ProfilePicturePath"]?.ToString() : null;
                     list.Add(new UserInfo
                     {
-                        UserId = Convert.ToInt32(r["UserId"]),
-                        Username = r["Username"].ToString(),
-                        FullName = r["FullName"]?.ToString() ?? "",
-                        Phone = r["Phone"]?.ToString() ?? "",
-                        Address = r["Address"]?.ToString() ?? "",
-                        Status = r["Status"].ToString(),
-                        Role = r["Role"].ToString(),
-                        CreatedAt = Convert.ToDateTime(r["CreatedAt"]),
-                        LastLoginAt = r["LastLoginAt"] != DBNull.Value
-                                      ? (DateTime?)Convert.ToDateTime(r["LastLoginAt"]) : null
+                        UserId               = Convert.ToInt32(r["UserId"]),
+                        Username             = r["Username"].ToString(),
+                        FullName             = r["FullName"]?.ToString() ?? "",
+                        Phone                = r["Phone"]?.ToString() ?? "",
+                        Address              = r["Address"]?.ToString() ?? "",
+                        Status               = r["Status"].ToString(),
+                        Role                 = r["Role"].ToString(),
+                        CreatedAt            = Convert.ToDateTime(r["CreatedAt"]),
+                        LastLoginAt          = r["LastLoginAt"] != DBNull.Value
+                                              ? (DateTime?)Convert.ToDateTime(r["LastLoginAt"]) : null,
+                        ProfilePictureBase64 = LoadProfilePicture(picPath)
                     });
                 }
                 return list.ToArray();
@@ -839,11 +863,21 @@ namespace SessionManagement.WCF
             }
         }
 
-        public UserUpdateResponse UpdateClientUser(int userId, string fullName, 
-            string phone, string address, int adminUserId)
+        public UserUpdateResponse UpdateClientUser(int userId, string fullName,
+            string phone, string address, int adminUserId, string profilePictureBase64)
         {
             try
             {
+                if (string.IsNullOrWhiteSpace(fullName))
+                {
+                    return new UserUpdateResponse
+                    {
+                        Success = false,
+                        UserId = userId,
+                        ErrorMessage = "Full name is required."
+                    };
+                }
+
                 bool ok = _db.UpdateClientUser(userId, fullName, phone, address);
                 if (!ok)
                 {
@@ -855,15 +889,18 @@ namespace SessionManagement.WCF
                     };
                 }
 
+                // Save profile picture if provided
+                if (!string.IsNullOrEmpty(profilePictureBase64))
+                {
+                    string picPath = SaveProfilePicture(userId, profilePictureBase64);
+                    if (picPath != null) _db.SetProfilePicturePath(userId, picPath);
+                }
+
                 _db.WriteSystemLog(null, userId, null, adminUserId,
                     "Auth", "UserUpdated",
                     $"ClientUser {userId} updated by admin {adminUserId}", "Server");
 
-                return new UserUpdateResponse
-                {
-                    Success = true,
-                    UserId = userId
-                };
+                return new UserUpdateResponse { Success = true, UserId = userId };
             }
             catch (Exception ex)
             {
@@ -875,6 +912,66 @@ namespace SessionManagement.WCF
                     ErrorMessage = "User update failed. Please try again."
                 };
             }
+        }
+
+        public UserDeleteResponse DeleteClientUser(int userId, int adminUserId)
+        {
+            try
+            {
+                int result = _db.DeleteClientUser(userId);
+                if (result == -1)
+                    return new UserDeleteResponse
+                    {
+                        Success = false,
+                        UserId = userId,
+                        ErrorMessage = "Cannot delete — this user has session history. Disable the account instead."
+                    };
+                if (result <= 0)
+                    return new UserDeleteResponse
+                    {
+                        Success = false,
+                        UserId = userId,
+                        ErrorMessage = "User not found or could not be deleted."
+                    };
+
+                _db.WriteSystemLog(null, userId, null, adminUserId,
+                    "Auth", "UserDeleted",
+                    $"ClientUser {userId} deleted by admin {adminUserId}", "Server");
+
+                return new UserDeleteResponse { Success = true, UserId = userId };
+            }
+            catch (Exception ex)
+            {
+                _db.LogSystemEvent(null, null, null, "UserDeleteErr", ex.Message, "Error");
+                return new UserDeleteResponse
+                {
+                    Success = false,
+                    UserId = userId,
+                    ErrorMessage = "Delete failed. Please try again."
+                };
+            }
+        }
+
+        private string SaveProfilePicture(int userId, string base64)
+        {
+            if (string.IsNullOrEmpty(base64)) return null;
+            try
+            {
+                string dir = System.IO.Path.Combine(
+                    AppDomain.CurrentDomain.BaseDirectory, "ProfilePics");
+                System.IO.Directory.CreateDirectory(dir);
+                string path = System.IO.Path.Combine(dir, $"{userId}.jpg");
+                System.IO.File.WriteAllBytes(path, Convert.FromBase64String(base64));
+                return path;
+            }
+            catch { return null; }
+        }
+
+        private string LoadProfilePicture(string path)
+        {
+            if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return null;
+            try { return Convert.ToBase64String(System.IO.File.ReadAllBytes(path)); }
+            catch { return null; }
         }
 
         public PasswordResetResponse ResetClientUserPassword(int userId, 

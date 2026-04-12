@@ -212,13 +212,14 @@ namespace SessionManagement.Client
 
         public UserRegistrationResponse RegisterClientUser(
             string username, string fullName, string password,
-            string phone, string address, int adminUserId)
+            string phone, string address, int adminUserId,
+            string profilePictureBase64 = null)
         {
             if (!EnsureConnection())
                 return new UserRegistrationResponse
                 { Success = false, ErrorMessage = "Not connected to server." };
             try
-            { return _proxy.RegisterClientUser(username, fullName, password, phone, address, adminUserId); }
+            { return _proxy.RegisterClientUser(username, fullName, password, phone, address, adminUserId, profilePictureBase64); }
             catch (Exception ex)
             { Log($"RegisterClientUser: {ex.Message}");
               return new UserRegistrationResponse

@@ -1,16 +1,20 @@
+using System;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace SessionAdmin
 {
     public partial class UserFormWindow : Window
     {
-        public string Username { get; private set; }
-        public string FullName { get; private set; }
-        public string Password { get; private set; }
-        public string Phone { get; private set; }
-        public string Address { get; private set; }
+        public string Username             { get; private set; }
+        public string FullName             { get; private set; }
+        public string Password             { get; private set; }
+        public string Phone                { get; private set; }
+        public string Address              { get; private set; }
+        public string ProfilePictureBase64 { get; private set; }
 
         private bool _passwordVisible;
         private bool _isEditMode;
@@ -44,8 +48,15 @@ namespace SessionAdmin
 
             // Pre-fill editable fields
             txtFullName.Text = user.FullName ?? "";
-            txtPhone.Text = user.Phone ?? "";
-            txtAddress.Text = user.Address ?? "";
+            txtPhone.Text    = user.Phone    ?? "";
+            txtAddress.Text  = user.Address  ?? "";
+
+            // Pre-fill profile picture if present
+            if (!string.IsNullOrEmpty(user.ProfilePictureBase64))
+            {
+                ProfilePictureBase64 = user.ProfilePictureBase64;
+                SetPhotoPreview(user.ProfilePictureBase64);
+            }
         }
 
         private static void HookPasswordPlaceholder(PasswordBox pb)
@@ -116,6 +127,9 @@ namespace SessionAdmin
                 Password = pass;
             }
 
+            if (string.IsNullOrWhiteSpace(txtFullName.Text))
+            { ShowError("Full name is required."); return; }
+
             FullName = txtFullName.Text.Trim();
             Phone = txtPhone.Text.Trim();
             Address = txtAddress.Text.Trim();
@@ -139,6 +153,51 @@ namespace SessionAdmin
         {
             DialogResult = false;
             Close();
+        }
+
+        private void btnUploadPhoto_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog
+            {
+                Filter = "Image Files|*.jpg;*.jpeg;*.png;*.bmp",
+                Title  = "Select Profile Photo"
+            };
+            if (dlg.ShowDialog() != true) return;
+            try
+            {
+                // Resize to 128×128 and encode as JPEG base64
+                var src = new BitmapImage(new Uri(dlg.FileName));
+                var scaled = new TransformedBitmap(src,
+                    new ScaleTransform(128.0 / src.PixelWidth, 128.0 / src.PixelHeight));
+                var encoder = new JpegBitmapEncoder { QualityLevel = 85 };
+                encoder.Frames.Add(BitmapFrame.Create(scaled));
+                using (var ms = new MemoryStream())
+                {
+                    encoder.Save(ms);
+                    ProfilePictureBase64 = Convert.ToBase64String(ms.ToArray());
+                }
+                SetPhotoPreview(ProfilePictureBase64);
+            }
+            catch (Exception ex) { ShowError($"Failed to load photo: {ex.Message}"); }
+        }
+
+        private void SetPhotoPreview(string base64)
+        {
+            try
+            {
+                var bytes = Convert.FromBase64String(base64);
+                var bmp = new BitmapImage();
+                using (var ms = new MemoryStream(bytes))
+                {
+                    bmp.BeginInit();
+                    bmp.CacheOption = BitmapCacheOption.OnLoad;
+                    bmp.StreamSource = ms;
+                    bmp.EndInit();
+                }
+                imgPhotoPreview.Source         = bmp;
+                imgPhotoPlaceholder.Visibility = Visibility.Collapsed;
+            }
+            catch { /* keep placeholder */ }
         }
 
         private void ShowError(string msg)
