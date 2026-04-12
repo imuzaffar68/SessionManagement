@@ -50,17 +50,25 @@ namespace SessionAdmin
         {
             if (string.IsNullOrWhiteSpace(txtRateName.Text))
             { ShowError("Rate name is required."); return; }
+
             if (!decimal.TryParse(txtRatePerMinute.Text, out decimal rate) || rate < 0)
             { ShowError("Rate must be a valid positive number."); return; }
 
-            RateName = txtRateName.Text.Trim();
+            if (!dpEffectiveFrom.SelectedDate.HasValue)
+            { ShowError("Effective From date is required."); return; }
+
+            if (dpEffectiveTo.SelectedDate.HasValue &&
+                dpEffectiveTo.SelectedDate.Value < dpEffectiveFrom.SelectedDate.Value)
+            { ShowError("Effective To must be on or after Effective From."); return; }
+
+            RateName      = txtRateName.Text.Trim();
             RatePerMinute = rate;
-            Currency = (cboCurrency.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "USD";
+            Currency      = (cboCurrency.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "PKR";
             EffectiveFrom = dpEffectiveFrom.SelectedDate;
-            EffectiveTo = dpEffectiveTo.SelectedDate;
-            IsActive = chkIsActive.IsChecked ?? true;
-            IsDefault = chkIsDefault.IsChecked ?? false;
-            Notes = txtNotes.Text.Trim();
+            EffectiveTo   = dpEffectiveTo.SelectedDate;
+            IsActive      = chkIsActive.IsChecked ?? true;
+            IsDefault     = chkIsDefault.IsChecked ?? false;
+            Notes         = txtNotes.Text.Trim();
 
             DialogResult = true;
             Close();

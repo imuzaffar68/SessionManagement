@@ -543,7 +543,7 @@ namespace SessionManagement.WCF
         public decimal GetCurrentBillingRate()
         {
             try { return _db.GetCurrentBillingRate(); }
-            catch { return 0.50m; }
+            catch { return 0m; }
         }
 
         public decimal CalculateSessionBilling(int sessionId)
@@ -1090,7 +1090,20 @@ namespace SessionManagement.WCF
         {
             try
             {
-                return _db.InsertBillingRate(name, ratePerMinute, currency, 
+                var all = _db.GetAllBillingRates();
+
+                // Duplicate name check
+                if (all.Any(r => string.Equals(r.Name.Trim(), name.Trim(),
+                                               StringComparison.OrdinalIgnoreCase)))
+                    return -2; // caller shows "name already exists"
+
+                // Overlapping date-range check (active rates for same currency)
+                if (effectiveFrom.HasValue &&
+                    BillingRangeOverlaps(all, excludeId: 0, currency,
+                                         effectiveFrom.Value, effectiveTo))
+                    return -3; // caller shows "date range overlaps"
+
+                return _db.InsertBillingRate(name, ratePerMinute, currency,
                     effectiveFrom, effectiveTo, isDefault, adminUserId, notes);
             }
             catch (Exception ex)
@@ -1106,6 +1119,28 @@ namespace SessionManagement.WCF
         {
             try
             {
+                var all = _db.GetAllBillingRates();
+
+                // Duplicate name check (exclude the rate being edited)
+                if (all.Any(r => r.BillingRateId != billingRateId &&
+                                 string.Equals(r.Name.Trim(), name.Trim(),
+                                               StringComparison.OrdinalIgnoreCase)))
+                {
+                    _db.WriteSystemLog(null, null, null, null, "Billing", "Warning",
+                        $"UpdateBillingRate rejected: duplicate name '{name}'", "Server");
+                    return false;
+                }
+
+                // Overlapping date-range check (exclude self)
+                if (effectiveFrom.HasValue &&
+                    BillingRangeOverlaps(all, billingRateId, currency,
+                                         effectiveFrom.Value, effectiveTo))
+                {
+                    _db.WriteSystemLog(null, null, null, null, "Billing", "Warning",
+                        $"UpdateBillingRate rejected: overlapping date range for '{name}'", "Server");
+                    return false;
+                }
+
                 return _db.UpdateBillingRate(billingRateId, name, ratePerMinute,
                     currency, effectiveFrom, effectiveTo, isActive, isDefault, notes);
             }
@@ -1115,6 +1150,32 @@ namespace SessionManagement.WCF
                     "Billing", "Error", $"UpdateBillingRate: {ex.Message}", "Server");
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Returns true if [effectiveFrom, effectiveTo] overlaps any active rate
+        /// for the given currency, skipping the rate identified by excludeId.
+        /// NULL effectiveTo means "open-ended" (treated as 9999-12-31).
+        /// </summary>
+        private static bool BillingRangeOverlaps(BillingRateInfo[] rates, int excludeId,
+            string currency, DateTime effectiveFrom, DateTime? effectiveTo)
+        {
+            var newTo = effectiveTo ?? DateTime.MaxValue;
+            foreach (var r in rates)
+            {
+                if (r.BillingRateId == excludeId) continue;
+                if (!r.IsActive) continue;
+                if (!string.Equals(r.Currency, currency, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!r.EffectiveFrom.HasValue) continue; // legacy row with no date — skip
+
+                var existFrom = r.EffectiveFrom.Value;
+                var existTo   = r.EffectiveTo ?? DateTime.MaxValue;
+
+                // Two ranges overlap when: newFrom <= existTo  AND  newTo >= existFrom
+                if (effectiveFrom <= existTo && newTo >= existFrom)
+                    return true;
+            }
+            return false;
         }
 
         public bool DeleteBillingRate(int billingRateId)

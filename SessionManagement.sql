@@ -199,17 +199,22 @@ GO
 -- 5) tblBillingRate
 CREATE TABLE dbo.tblBillingRate (
     BillingRateId      INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    Name               NVARCHAR(100) NOT NULL,
+    Name               NVARCHAR(100) NOT NULL CONSTRAINT UQ_tblBillingRate_Name UNIQUE,
     RatePerMinute      DECIMAL(10,2) NOT NULL,
     Currency           NVARCHAR(10) NOT NULL,
-    EffectiveFrom      DATE NULL,
-    EffectiveTo        DATE NULL,
+    EffectiveFrom      DATE NOT NULL,             -- mandatory: required for date-based rate resolution
+    EffectiveTo        DATE NULL,                 -- NULL = open-ended (no expiry)
     IsActive           BIT NOT NULL CONSTRAINT DF_tblBillingRate_IsActive DEFAULT (1),
     IsDefault          BIT NOT NULL CONSTRAINT DF_tblBillingRate_IsDefault DEFAULT (0),
     SetByAdminUserId   INT NULL,
     Notes              NVARCHAR(500) NULL,
     CreatedAt          DATETIME NOT NULL CONSTRAINT DF_tblBillingRate_CreatedAt DEFAULT (GETDATE())
 );
+GO
+
+-- Index to speed up date-range resolution queries in GetCurrentBillingRate
+CREATE INDEX IX_tblBillingRate_DateRange
+    ON dbo.tblBillingRate (EffectiveFrom, EffectiveTo, IsActive, Currency);
 GO
 
 ALTER TABLE dbo.tblBillingRate
@@ -929,13 +934,16 @@ VALUES
     ('CL003', 'CLIENT-PC-03', '192.168.1.102', '00:1A:2B:3C:4D:60', 'Floor 2', 'Idle', 1);
 GO
 
--- Billing Rates
+-- Billing Rates (EffectiveFrom required; non-overlapping per currency)
+-- "Standard Rate" is the current open-ended default.
+-- "Discount Rate" covered a historical window (closed period — no overlap).
+-- "Premium Rate" is inactive (opt-in upgrade, not date-driven) — kept for reference.
 INSERT INTO dbo.tblBillingRate
-    (Name, RatePerMinute, Currency, IsActive, IsDefault)
+    (Name, RatePerMinute, Currency, EffectiveFrom, EffectiveTo, IsActive, IsDefault)
 VALUES
-    ('Standard Rate', 0.50, 'USD', 1, 1),
-    ('Premium Rate', 1.00, 'USD', 1, 0),
-    ('Discount Rate', 0.25, 'USD', 1, 0);
+    ('Standard Rate', 3.00, 'PKR', '2024-01-01', NULL,         1, 1),
+    ('Discount Rate', 2.00, 'PKR', '2023-01-01', '2023-12-31', 1, 0),
+    ('Premium Rate',  5.00, 'PKR', '2024-01-01', NULL,         0, 0);  -- inactive; not in overlap checks
 GO
 
 -- Activity Types
@@ -1194,58 +1202,67 @@ GO
 --  Inserts a new billing rate. If IsDefault=1, sets all others
 --  to IsDefault=0 before insertion.
 -- ═══════════════════════════════════════════════════════════
-CREATE or alter PROCEDURE dbo.sp_InsertBillingRate
-    @Name NVARCHAR(100),
-    @RatePerMinute DECIMAL(10,2),
-    @Currency NVARCHAR(10),
-    @EffectiveFrom DATE = NULL,
-    @EffectiveTo DATE = NULL,
-    @IsDefault BIT = 0,
+CREATE OR ALTER PROCEDURE dbo.sp_InsertBillingRate
+    @Name             NVARCHAR(100),
+    @RatePerMinute    DECIMAL(10,2),
+    @Currency         NVARCHAR(10),
+    @EffectiveFrom    DATE,                        -- required; NOT NULL in table
+    @EffectiveTo      DATE = NULL,                 -- NULL = open-ended
+    @IsDefault        BIT = 0,
     @SetByAdminUserId INT,
-    @Notes NVARCHAR(500) = NULL,
+    @Notes            NVARCHAR(500) = NULL,
     @NewBillingRateId INT OUTPUT
 AS
 BEGIN
     SET NOCOUNT ON;
+    SET @NewBillingRateId = -1;
 
     BEGIN TRY
-        -- Validate rate
+        -- 1. Rate must be non-negative
         IF @RatePerMinute < 0
-        BEGIN
-            RAISERROR('Rate cannot be negative.', 16, 1);
-            RETURN;
-        END;
+            RAISERROR('Rate per minute cannot be negative.', 16, 1);
 
-        -- If this is being set as default, unset all others
+        -- 2. Date range integrity
+        IF @EffectiveTo IS NOT NULL AND @EffectiveTo < @EffectiveFrom
+            RAISERROR('Effective To must be on or after Effective From.', 16, 1);
+
+        -- 3. Unique name (case-insensitive)
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblBillingRate
+            WHERE  LTRIM(RTRIM(Name)) = LTRIM(RTRIM(@Name))
+        )
+            RAISERROR('A billing rate with this name already exists.', 16, 1);
+
+        -- 4. No overlapping date ranges for the same active currency
+        --    Two ranges overlap when: newFrom <= existTo  AND  newTo >= existFrom
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblBillingRate
+            WHERE  IsActive = 1
+              AND  Currency  = @Currency
+              AND  @EffectiveFrom <= COALESCE(EffectiveTo,   '9999-12-31')
+              AND  COALESCE(@EffectiveTo, '9999-12-31') >= EffectiveFrom
+        )
+            RAISERROR('Date range overlaps with an existing active rate for this currency.', 16, 1);
+
+        -- 5. If setting as default, unset all others
         IF @IsDefault = 1
-        BEGIN
             UPDATE dbo.tblBillingRate SET IsDefault = 0;
-        END;
 
-        -- Insert new rate
+        -- 6. Insert
         INSERT INTO dbo.tblBillingRate
-            (Name, RatePerMinute, Currency, EffectiveFrom, EffectiveTo, IsActive, IsDefault, SetByAdminUserId, Notes, CreatedAt)
+            (Name, RatePerMinute, Currency, EffectiveFrom, EffectiveTo,
+             IsActive, IsDefault, SetByAdminUserId, Notes, CreatedAt)
         VALUES
-            (@Name, @RatePerMinute, @Currency, @EffectiveFrom, @EffectiveTo, 1, @IsDefault, @SetByAdminUserId, @Notes, GETDATE());
+            (@Name, @RatePerMinute, @Currency, @EffectiveFrom, @EffectiveTo,
+             1, @IsDefault, @SetByAdminUserId, @Notes, GETDATE());
 
         SET @NewBillingRateId = SCOPE_IDENTITY();
-
-        -- Log the action
-        --INSERT INTO dbo.tblSystemLog
-        --    (Category, Type, Message, Source)
-        --VALUES
-        --    ('Billing', 'RateCreated', 
-        --     'Billing rate created: ' + @Name + ' (' + CAST(@RatePerMinute AS NVARCHAR(20)) + ' ' + @Currency + '/min)',
-        --     'Admin');
-
         SELECT @NewBillingRateId AS BillingRateId;
     END TRY
     BEGIN CATCH
-        INSERT INTO dbo.tblSystemLog
-            (Category, Type, Message, Source)
-        VALUES
-            ('Billing', 'Error', 'Error in sp_InsertBillingRate: ' + ERROR_MESSAGE(), 'Admin');
-
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('Billing', 'Error',
+                'Error in sp_InsertBillingRate: ' + ERROR_MESSAGE(), 'Admin');
         SELECT -1 AS BillingRateId;
     END CATCH
 END;
@@ -1258,82 +1275,84 @@ GO
 -- ═══════════════════════════════════════════════════════════
 CREATE OR ALTER PROCEDURE dbo.sp_UpdateBillingRate
     @BillingRateId INT,
-    @Name NVARCHAR(100),
+    @Name          NVARCHAR(100),
     @RatePerMinute DECIMAL(10,2),
-    @Currency NVARCHAR(10),
-    @EffectiveFrom DATE = NULL,
-    @EffectiveTo DATE = NULL,
-    @IsActive BIT,
-    @IsDefault BIT = 0,
-    @Notes NVARCHAR(500) = NULL
+    @Currency      NVARCHAR(10),
+    @EffectiveFrom DATE,                          -- required
+    @EffectiveTo   DATE = NULL,                   -- NULL = open-ended
+    @IsActive      BIT,
+    @IsDefault     BIT = 0,
+    @Notes         NVARCHAR(500) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
-
     DECLARE @OldIsDefault BIT;
 
     BEGIN TRY
-        -- Validate inputs
-        IF @RatePerMinute < 0
-        BEGIN
-            RAISERROR('Rate cannot be negative.', 16, 1);
-            RETURN;
-        END;
-
+        -- 1. Existence check
         IF NOT EXISTS (SELECT 1 FROM dbo.tblBillingRate WHERE BillingRateId = @BillingRateId)
-        BEGIN
             RAISERROR('Billing rate not found.', 16, 1);
-            RETURN;
-        END;
 
-        -- Get the old IsDefault value
+        -- 2. Rate must be non-negative
+        IF @RatePerMinute < 0
+            RAISERROR('Rate per minute cannot be negative.', 16, 1);
+
+        -- 3. Date range integrity
+        IF @EffectiveTo IS NOT NULL AND @EffectiveTo < @EffectiveFrom
+            RAISERROR('Effective To must be on or after Effective From.', 16, 1);
+
+        -- 4. Unique name, excluding self (case-insensitive)
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblBillingRate
+            WHERE  BillingRateId <> @BillingRateId
+              AND  LTRIM(RTRIM(Name)) = LTRIM(RTRIM(@Name))
+        )
+            RAISERROR('A billing rate with this name already exists.', 16, 1);
+
+        -- 5. No overlapping date ranges for the same active currency, excluding self
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblBillingRate
+            WHERE  IsActive = 1
+              AND  Currency  = @Currency
+              AND  BillingRateId <> @BillingRateId
+              AND  @EffectiveFrom <= COALESCE(EffectiveTo,   '9999-12-31')
+              AND  COALESCE(@EffectiveTo, '9999-12-31') >= EffectiveFrom
+        )
+            RAISERROR('Date range overlaps with an existing active rate for this currency.', 16, 1);
+
+        -- 6. Default flag management
         SELECT @OldIsDefault = IsDefault FROM dbo.tblBillingRate WHERE BillingRateId = @BillingRateId;
 
-        -- If setting this as default and it wasn't before, unset others
         IF @IsDefault = 1 AND @OldIsDefault = 0
-        BEGIN
             UPDATE dbo.tblBillingRate SET IsDefault = 0 WHERE BillingRateId <> @BillingRateId;
-        END;
 
-        -- If unsetting as default, ensure at least one other is default
         IF @IsDefault = 0 AND @OldIsDefault = 1
         BEGIN
-            -- Check if there are other active rates
-            IF NOT EXISTS (SELECT 1 FROM dbo.tblBillingRate WHERE IsDefault = 1 AND BillingRateId <> @BillingRateId)
-            BEGIN
-                RAISERROR('At least one default rate must exist. Cannot unset as default.', 16, 1);
-                RETURN;
-            END;
+            IF NOT EXISTS (
+                SELECT 1 FROM dbo.tblBillingRate
+                WHERE IsDefault = 1 AND BillingRateId <> @BillingRateId
+            )
+                RAISERROR('At least one default rate must remain. Cannot unset this rate as default.', 16, 1);
         END;
 
-        -- Update the rate
+        -- 7. Apply update
         UPDATE dbo.tblBillingRate
-        SET Name = @Name,
-            RatePerMinute = @RatePerMinute,
-            Currency = @Currency,
-            EffectiveFrom = @EffectiveFrom,
-            EffectiveTo = @EffectiveTo,
-            IsActive = @IsActive,
-            IsDefault = @IsDefault,
-            Notes = @Notes
-        WHERE BillingRateId = @BillingRateId;
-
-        -- Log the action
-        --INSERT INTO dbo.tblSystemLog
-        --    (Category, Type, Message, Source)
-        --VALUES
-        --    ('Billing', 'RateUpdated',
-        --     'Billing rate updated: ' + @Name + ' (' + CAST(@RatePerMinute AS NVARCHAR(20)) + ' ' + @Currency + '/min)',
-        --     'Admin');
+        SET    Name          = @Name,
+               RatePerMinute = @RatePerMinute,
+               Currency      = @Currency,
+               EffectiveFrom = @EffectiveFrom,
+               EffectiveTo   = @EffectiveTo,
+               IsActive      = @IsActive,
+               IsDefault     = @IsDefault,
+               Notes         = @Notes
+        WHERE  BillingRateId = @BillingRateId;
 
         SELECT 1 AS Result;
     END TRY
     BEGIN CATCH
-        INSERT INTO dbo.tblSystemLog
-            (Category, Type, Message, Source)
-        VALUES
-            ('Billing', 'Error', 'Error in sp_UpdateBillingRate: ' + ERROR_MESSAGE(), 'Admin');
-
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('Billing', 'Error',
+                'Error in sp_UpdateBillingRate: ' + ERROR_MESSAGE(), 'Admin');
         SELECT 0 AS Result;
     END CATCH
 END;

@@ -1018,7 +1018,9 @@ namespace SessionAdmin
                 {
                     int newId = _svc.InsertBillingRate(win.RateName, win.RatePerMinute, win.Currency,
                         win.EffectiveFrom, win.EffectiveTo, win.IsDefault, _adminUserId, win.Notes);
-                    if (newId <= 0) { ShowBillingActionError("Failed to insert billing rate."); return; }
+                    if (newId == -2) { ShowBillingActionError("A billing rate with that name already exists."); return; }
+                    if (newId == -3) { ShowBillingActionError("Date range overlaps an existing active rate for the same currency."); return; }
+                    if (newId <= 0)  { ShowBillingActionError("Failed to insert billing rate."); return; }
                     ShowBillingActionSuccess($"✓ Rate '{win.RateName}' added (ID: {newId})");
                     LoadBillingRates();
                 }
@@ -1038,7 +1040,7 @@ namespace SessionAdmin
                 {
                     bool success = _svc.UpdateBillingRate(rate.BillingRateId, win.RateName, win.RatePerMinute,
                         win.Currency, win.EffectiveFrom, win.EffectiveTo, win.IsActive, win.IsDefault, win.Notes);
-                    if (!success) { ShowBillingActionError("Update failed."); return; }
+                    if (!success) { ShowBillingActionError("Update failed — check for duplicate name or overlapping date range."); return; }
                     ShowBillingActionSuccess($"✓ Rate '{win.RateName}' updated.");
                     LoadBillingRates();
                 }

@@ -420,28 +420,57 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("CalculateRunningBilling", ex); return 0m; }
         }
 
-        /// <summary>UC-13: current default rate per minute from tblBillingRate.</summary>
+        /// <summary>
+        /// UC-13: resolves the billing rate for the current moment.
+        /// Resolution order:
+        ///   a) Active rate whose EffectiveFrom ≤ today ≤ EffectiveTo (latest EffectiveFrom wins).
+        ///   b) Active IsDefault = 1 rate (fall-back when no date-matched rate exists).
+        ///   c) 0 — no rate configured; caller should surface a warning.
+        /// </summary>
         public decimal GetCurrentBillingRate()
         {
+            // a. Date-matched active rate — most recent EffectiveFrom takes priority
+            const string sqlDateMatched = @"
+                SELECT TOP 1 RatePerMinute
+                FROM   dbo.tblBillingRate
+                WHERE  IsActive = 1
+                  AND  EffectiveFrom IS NOT NULL
+                  AND  EffectiveFrom <= CAST(GETDATE() AS DATE)
+                  AND  (EffectiveTo IS NULL OR EffectiveTo >= CAST(GETDATE() AS DATE))
+                ORDER  BY EffectiveFrom DESC";
+
+            // b. Fall back: rate marked as default
             const string sqlDefault = @"
-                SELECT TOP 1 RatePerMinute FROM dbo.tblBillingRate
-                WHERE  IsActive = 1 AND IsDefault = 1 ORDER BY CreatedAt DESC";
-            const string sqlAny = @"
-                SELECT TOP 1 RatePerMinute FROM dbo.tblBillingRate
-                WHERE  IsActive = 1 ORDER BY CreatedAt DESC";
+                SELECT TOP 1 RatePerMinute
+                FROM   dbo.tblBillingRate
+                WHERE  IsActive = 1 AND IsDefault = 1
+                ORDER  BY CreatedAt DESC";
+
             try
             {
-                using (var c = Conn()) using (var cmd = new SqlCommand(sqlDefault, c))
+                using (var c = Conn())
+                using (var cmd = new SqlCommand(sqlDateMatched, c))
                 {
                     c.Open();
+
+                    // a. Date-matched
                     var r = cmd.ExecuteScalar();
-                    if (r != null) return Convert.ToDecimal(r);
-                    cmd.CommandText = sqlAny;
+                    if (r != null && r != DBNull.Value)
+                        return Convert.ToDecimal(r);
+
+                    // b. Default flag
+                    cmd.CommandText = sqlDefault;
                     r = cmd.ExecuteScalar();
-                    return r != null ? Convert.ToDecimal(r) : 0.50m;
+                    if (r != null && r != DBNull.Value)
+                        return Convert.ToDecimal(r);
+
+                    // d. No rate at all — log and return 0
+                    LogError("GetCurrentBillingRate",
+                        new InvalidOperationException("No active billing rate found."));
+                    return 0m;
                 }
             }
-            catch (Exception ex) { LogError("GetCurrentBillingRate", ex); return 0.50m; }
+            catch (Exception ex) { LogError("GetCurrentBillingRate", ex); return 0m; }
         }
 
         /// <summary>UC-13: finalized billing amount once session is closed.</summary>

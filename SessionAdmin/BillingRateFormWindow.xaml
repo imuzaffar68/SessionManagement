@@ -118,7 +118,7 @@
                             <ColumnDefinition Width="*"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0">
-                            <TextBlock Text="EFFECTIVE FROM" FontSize="10" FontWeight="SemiBold"
+                            <TextBlock Text="EFFECTIVE FROM *" FontSize="10" FontWeight="SemiBold"
                                        Foreground="#475569" Margin="0,0,0,6"/>
                             <DatePicker x:Name="dpEffectiveFrom" Height="40"/>
                         </StackPanel>
