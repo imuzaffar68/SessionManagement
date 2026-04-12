@@ -354,6 +354,26 @@ namespace SessionManagement.Client
         }
 
         // ─────────────────────────────────────────────────────────
+        //  PAYMENT COLLECTION
+        // ─────────────────────────────────────────────────────────
+
+        public BillingRecordInfo[] GetBillingRecords(bool unpaidOnly)
+        {
+            if (!EnsureConnection()) return new BillingRecordInfo[0];
+            try { return _proxy.GetBillingRecords(unpaidOnly); }
+            catch (Exception ex)
+            { Log($"GetBillingRecords: {ex.Message}"); return new BillingRecordInfo[0]; }
+        }
+
+        public bool MarkBillingRecordPaid(int billingRecordId, int adminUserId)
+        {
+            if (!EnsureConnection()) return false;
+            try { return _proxy.MarkBillingRecordPaid(billingRecordId, adminUserId); }
+            catch (Exception ex)
+            { Log($"MarkBillingRecordPaid: {ex.Message}"); return false; }
+        }
+
+        // ─────────────────────────────────────────────────────────
         //  BILLING RATE MANAGEMENT
         // ─────────────────────────────────────────────────────────
 

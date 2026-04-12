@@ -35,7 +35,8 @@ namespace SessionAdmin
         private ObservableCollection<AlertVM> _alerts = new ObservableCollection<AlertVM>();
         private ObservableCollection<LogVM> _logs = new ObservableCollection<LogVM>();
         private ObservableCollection<UserVM> _users = new ObservableCollection<UserVM>();
-        private ObservableCollection<BillingRateVM> _billingRates = new ObservableCollection<BillingRateVM>();
+        private ObservableCollection<BillingRateVM>    _billingRates   = new ObservableCollection<BillingRateVM>();
+        private ObservableCollection<BillingRecordVM>  _billingRecords = new ObservableCollection<BillingRecordVM>();
 
         // Current active nav page
         private string _currentPage = "dashboard";
@@ -64,7 +65,8 @@ namespace SessionAdmin
             dgAlerts.ItemsSource = _alerts;
             dgLogs.ItemsSource = _logs;
             dgUsers.ItemsSource = _users;
-            dgBillingRates.ItemsSource = _billingRates;
+            dgBillingRates.ItemsSource   = _billingRates;
+            dgBillingRecords.ItemsSource = _billingRecords;
 
             // Default date ranges
             dpFromDate.SelectedDate = DateTime.Today.AddMonths(-1);
@@ -256,6 +258,7 @@ namespace SessionAdmin
                     lblPageTitle.Text = "Billing Rates";
                     lblPageSubtitle.Text = " — Rate Configuration";
                     LoadBillingRates();
+                    LoadBillingRecords();
                     break;
 
                 case "alerts":
@@ -1141,6 +1144,57 @@ namespace SessionAdmin
             lblBillingActionError.Visibility = Visibility.Collapsed;
         }
 
+        private void LoadBillingRecords()
+        {
+            if (_svc == null) return;
+            try
+            {
+                bool unpaidOnly = chkUnpaidOnly.IsChecked == true;
+                var records = _svc.GetBillingRecords(unpaidOnly);
+                _billingRecords.Clear();
+                foreach (var r in records)
+                {
+                    _billingRecords.Add(new BillingRecordVM
+                    {
+                        BillingRecordId = r.BillingRecordId,
+                        SessionId       = r.SessionId,
+                        Username        = r.Username,
+                        MachineCode     = r.MachineCode,
+                        BillableMinutes = r.BillableMinutes,
+                        Amount          = r.Amount,
+                        Currency        = r.Currency,
+                        CalculatedAt    = r.CalculatedAt,
+                        IsPaid          = r.IsPaid,
+                        PaidAt          = r.PaidAt
+                    });
+                }
+                int unpaidCount = _billingRecords.Count(x => !x.IsPaid);
+                lblUnpaidCount.Text = unpaidCount.ToString();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LoadBillingRecords] {ex.Message}");
+            }
+        }
+
+        private void btnRefreshPayments_Click(object sender, RoutedEventArgs e) => LoadBillingRecords();
+
+        private void chkUnpaidOnly_Changed(object sender, RoutedEventArgs e) => LoadBillingRecords();
+
+        private void btnMarkPaidInline_Click(object sender, RoutedEventArgs e)
+        {
+            var record = (sender as Button)?.DataContext as BillingRecordVM;
+            if (record == null) return;
+
+            try
+            {
+                bool ok = _svc.MarkBillingRecordPaid(record.BillingRecordId, _adminUserId);
+                if (ok) { ShowBillingActionSuccess($"✓ Session #{record.SessionId} marked as paid."); LoadBillingRecords(); }
+                else ShowBillingActionError("Could not mark as paid. Record may not exist or is already paid.");
+            }
+            catch (Exception ex) { ShowBillingActionError($"Error: {ex.Message}"); }
+        }
+
         #endregion
 
         // ═══════════════════════════════════════════════════════════
@@ -1154,7 +1208,7 @@ namespace SessionAdmin
             LoadClients();
             LoadAlerts();
             if (_currentPage == "users") LoadClientUsers();
-            if (_currentPage == "billing") LoadBillingRates();
+            if (_currentPage == "billing") { LoadBillingRates(); LoadBillingRecords(); }
             UpdateKPIs();
             UpdateKanban();
         }
@@ -1445,6 +1499,27 @@ namespace SessionAdmin
         public int IsDefault { get; set; }
         public DateTime CreatedAt { get; set; }
         public string Notes { get; set; }
+    }
+
+    public class BillingRecordVM
+    {
+        public int       BillingRecordId { get; set; }
+        public int       SessionId       { get; set; }
+        public string    Username        { get; set; }
+        public string    MachineCode     { get; set; }
+        public int       BillableMinutes { get; set; }
+        public decimal   Amount          { get; set; }
+        public string    Currency        { get; set; }
+        public DateTime  CalculatedAt    { get; set; }
+        public bool      IsPaid          { get; set; }
+        public DateTime? PaidAt          { get; set; }
+
+        public string AmountDisplay     => $"{Currency} {Amount:F2}";
+        public string PaidAtDisplay     => PaidAt.HasValue ? PaidAt.Value.ToString("yyyy-MM-dd HH:mm") : "";
+        public string StatusLabel       => IsPaid ? "PAID" : "UNPAID";
+        public string StatusBackground  => IsPaid ? "#14532D" : "#4C0519";
+        public string StatusForeground  => IsPaid ? "#6EE7B7" : "#FCA5A5";
+        public Visibility MarkPaidVisibility => IsPaid ? Visibility.Collapsed : Visibility.Visible;
     }
 
     #endregion

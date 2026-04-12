@@ -611,6 +611,19 @@
                                            FontFamily="Segoe UI" HorizontalAlignment="Right"
                                            VerticalAlignment="Center"/>
                             </Grid>
+
+                            <!-- Pay at counter notice -->
+                            <Border Background="#1C1A0E" CornerRadius="8" Padding="12,10" Margin="0,14,0,0"
+                                    BorderBrush="#854D0E" BorderThickness="1">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                    <TextBlock Text="💰" FontSize="16" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBlock FontSize="12" FontFamily="Segoe UI" TextWrapping="Wrap"
+                                               HorizontalAlignment="Center">
+                                        <Run Text="Please pay at the counter" FontWeight="SemiBold" Foreground="#FDE68A"/>
+                                        <Run Text=" before leaving." Foreground="#A16207"/>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </Border>
 

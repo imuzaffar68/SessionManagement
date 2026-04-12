@@ -490,6 +490,44 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("GetFinalBillingAmount", ex); return 0m; }
         }
 
+        /// <summary>Returns billing records (finalized sessions). unpaidOnly=true limits to IsPaid=0.</summary>
+        public DataTable GetBillingRecords(bool unpaidOnly)
+        {
+            try
+            {
+                using (var c = Conn())
+                using (var cmd = new SqlCommand("dbo.sp_GetBillingRecords", c))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+                    cmd.Parameters.AddWithValue("@UnpaidOnly", unpaidOnly ? 1 : 0);
+                    c.Open();
+                    var dt = new DataTable();
+                    new SqlDataAdapter(cmd).Fill(dt);
+                    return dt;
+                }
+            }
+            catch (Exception ex) { LogError("GetBillingRecords", ex); return new DataTable(); }
+        }
+
+        /// <summary>Mark a billing record paid. Returns 1=ok, 0=not found, -1=already paid.</summary>
+        public int MarkBillingRecordPaid(int billingRecordId, int adminUserId)
+        {
+            try
+            {
+                using (var c = Conn())
+                using (var cmd = new SqlCommand("dbo.sp_MarkBillingRecordPaid", c))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+                    cmd.Parameters.AddWithValue("@BillingRecordId", billingRecordId);
+                    cmd.Parameters.AddWithValue("@AdminUserId", adminUserId);
+                    c.Open();
+                    var result = cmd.ExecuteScalar();
+                    return result != null ? Convert.ToInt32(result) : 0;
+                }
+            }
+            catch (Exception ex) { LogError("MarkBillingRecordPaid", ex); return 0; }
+        }
+
         // ═══════════════════════════════════════════════════════════
         //  UC-11  —  CLIENT MACHINES
         // ═══════════════════════════════════════════════════════════

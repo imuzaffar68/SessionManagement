@@ -124,6 +124,16 @@ namespace SessionManagement.WCF
         [OperationContract]
         decimal CalculateSessionBilling(int sessionId);
 
+        // ── PAYMENT COLLECTION ───────────────────────────────────
+
+        /// <summary>All billing records (finalized sessions). unpaidOnly=true limits to IsPaid=0.</summary>
+        [OperationContract]
+        BillingRecordInfo[] GetBillingRecords(bool unpaidOnly);
+
+        /// <summary>Mark a finalized billing record as paid; records admin and timestamp.</summary>
+        [OperationContract]
+        bool MarkBillingRecordPaid(int billingRecordId, int adminUserId);
+
         // ── BILLING RATE MANAGEMENT ───────────────────────────────
 
         [OperationContract]
@@ -314,6 +324,23 @@ namespace SessionManagement.WCF
         [DataMember] public bool   Success      { get; set; }
         [DataMember] public int    UserId       { get; set; }
         [DataMember] public string ErrorMessage { get; set; }
+    }
+
+    [DataContract]
+    public class BillingRecordInfo
+    {
+        [DataMember] public int       BillingRecordId      { get; set; }
+        [DataMember] public int       SessionId            { get; set; }
+        [DataMember] public string    Username             { get; set; }
+        [DataMember] public string    FullName             { get; set; }
+        [DataMember] public string    MachineCode          { get; set; }
+        [DataMember] public int       BillableMinutes      { get; set; }
+        [DataMember] public decimal   Amount               { get; set; }
+        [DataMember] public string    Currency             { get; set; }
+        [DataMember] public DateTime  CalculatedAt         { get; set; }
+        [DataMember] public bool      IsPaid               { get; set; }
+        [DataMember] public DateTime? PaidAt               { get; set; }
+        [DataMember] public int?      ReceivedByAdminId    { get; set; }
     }
 
     [DataContract]

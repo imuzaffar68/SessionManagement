@@ -969,7 +969,46 @@ namespace SessionManagement.WCF
             catch { return null; }
         }
 
-        public PasswordResetResponse ResetClientUserPassword(int userId, 
+        public BillingRecordInfo[] GetBillingRecords(bool unpaidOnly)
+        {
+            try
+            {
+                DataTable dt = _db.GetBillingRecords(unpaidOnly);
+                var list = new List<BillingRecordInfo>();
+                foreach (DataRow r in dt.Rows)
+                {
+                    list.Add(new BillingRecordInfo
+                    {
+                        BillingRecordId   = Convert.ToInt32(r["BillingRecordId"]),
+                        SessionId         = Convert.ToInt32(r["SessionId"]),
+                        Username          = r["Username"]?.ToString() ?? "",
+                        FullName          = r["FullName"]?.ToString() ?? "",
+                        MachineCode       = r["MachineCode"]?.ToString() ?? "",
+                        BillableMinutes   = Convert.ToInt32(r["BillableMinutes"]),
+                        Amount            = Convert.ToDecimal(r["Amount"]),
+                        Currency          = r["Currency"]?.ToString() ?? "",
+                        CalculatedAt      = Convert.ToDateTime(r["CalculatedAt"]),
+                        IsPaid            = Convert.ToBoolean(r["IsPaid"]),
+                        PaidAt            = r["PaidAt"] != DBNull.Value ? (DateTime?)Convert.ToDateTime(r["PaidAt"]) : null,
+                        ReceivedByAdminId = r["ReceivedByAdminId"] != DBNull.Value ? (int?)Convert.ToInt32(r["ReceivedByAdminId"]) : null
+                    });
+                }
+                return list.ToArray();
+            }
+            catch (Exception ex)
+            {
+                _db.LogSystemEvent(null, null, null, "GetBillingRecordsErr", ex.Message, "Error");
+                return Array.Empty<BillingRecordInfo>();
+            }
+        }
+
+        public bool MarkBillingRecordPaid(int billingRecordId, int adminUserId)
+        {
+            int result = _db.MarkBillingRecordPaid(billingRecordId, adminUserId);
+            return result == 1;
+        }
+
+        public PasswordResetResponse ResetClientUserPassword(int userId,
             string newPassword, int adminUserId)
         {
             try

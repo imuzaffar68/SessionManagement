@@ -21,6 +21,10 @@ IF OBJECT_ID('dbo.sp_StartSession', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_Start
 GO
 IF OBJECT_ID('dbo.sp_EndSession', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_EndSession;
 GO
+IF OBJECT_ID('dbo.sp_GetBillingRecords', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_GetBillingRecords;
+GO
+IF OBJECT_ID('dbo.sp_MarkBillingRecordPaid', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_MarkBillingRecordPaid;
+GO
 IF OBJECT_ID('dbo.sp_GetActiveSessions', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_GetActiveSessions;
 GO
 IF OBJECT_ID('dbo.sp_LogSecurityAlert', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_LogSecurityAlert;
@@ -236,6 +240,9 @@ CREATE TABLE dbo.tblBillingRecord (
     CalculatedAt       DATETIME NOT NULL CONSTRAINT DF_tblBillingRecord_CalculatedAt DEFAULT (GETDATE()),
     Status             NVARCHAR(20) NOT NULL CONSTRAINT DF_tblBillingRecord_Status DEFAULT ('Running'),
     Remarks            NVARCHAR(500) NULL,
+    IsPaid             BIT NOT NULL CONSTRAINT DF_tblBillingRecord_IsPaid DEFAULT (0),
+    PaidAt             DATETIME NULL,
+    ReceivedByAdminId  INT NULL,
     CONSTRAINT CK_tblBillingRecord_Status CHECK (Status IN ('Finalized', 'Running')),
     CONSTRAINT UQ_tblBillingRecord_Session UNIQUE (SessionId)
 );
@@ -534,6 +541,76 @@ BEGIN
         VALUES
             ('System', 'Error', 'sp_EndSession: ' + ERROR_MESSAGE(), 'Server');
 
+        SELECT 0 AS Result;
+    END CATCH
+END;
+GO
+
+
+-- sp_GetBillingRecords
+CREATE PROCEDURE dbo.sp_GetBillingRecords
+    @UnpaidOnly BIT = 0
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT
+        br.BillingRecordId,
+        br.SessionId,
+        u.Username,
+        u.FullName,
+        cm.ClientCode      AS MachineCode,
+        br.BillableMinutes,
+        br.Amount,
+        brate.Currency,
+        br.CalculatedAt,
+        br.IsPaid,
+        br.PaidAt,
+        br.ReceivedByAdminId
+    FROM dbo.tblBillingRecord br
+    INNER JOIN dbo.tblSession       s     ON s.SessionId          = br.SessionId
+    INNER JOIN dbo.tblUser          u     ON u.UserId              = s.UserId
+    INNER JOIN dbo.tblClientMachine cm    ON cm.ClientMachineId    = s.ClientMachineId
+    INNER JOIN dbo.tblBillingRate   brate ON brate.BillingRateId   = br.BillingRateId
+    WHERE br.Status = 'Finalized'
+      AND (@UnpaidOnly = 0 OR br.IsPaid = 0)
+    ORDER BY br.CalculatedAt DESC;
+END;
+GO
+
+-- sp_MarkBillingRecordPaid
+CREATE PROCEDURE dbo.sp_MarkBillingRecordPaid
+    @BillingRecordId INT,
+    @AdminUserId     INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        IF NOT EXISTS (SELECT 1 FROM dbo.tblBillingRecord WHERE BillingRecordId = @BillingRecordId)
+        BEGIN
+            SELECT 0 AS Result; RETURN;
+        END;
+
+        IF EXISTS (SELECT 1 FROM dbo.tblBillingRecord WHERE BillingRecordId = @BillingRecordId AND IsPaid = 1)
+        BEGIN
+            SELECT -1 AS Result; RETURN;
+        END;
+
+        UPDATE dbo.tblBillingRecord
+        SET    IsPaid            = 1,
+               PaidAt            = GETDATE(),
+               ReceivedByAdminId = @AdminUserId
+        WHERE  BillingRecordId = @BillingRecordId;
+
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('Billing', 'Info',
+            'BillingRecord ' + CAST(@BillingRecordId AS VARCHAR) +
+            ' marked paid by admin ' + CAST(@AdminUserId AS VARCHAR), 'Server');
+
+        SELECT 1 AS Result;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'Error', 'sp_MarkBillingRecordPaid: ' + ERROR_MESSAGE(), 'Server');
         SELECT 0 AS Result;
     END CATCH
 END;
@@ -2029,4 +2106,95 @@ END
 GO
 
 SELECT 'UpdateClientUser consolidation PATCH COMPLETE' AS Status;
+GO
+
+
+-- ============================================================
+-- PATCH: Payment tracking — IsPaid / PaidAt / ReceivedByAdminId
+-- Run against ClientServerSessionDB after all previous patches.
+-- ============================================================
+USE ClientServerSessionDB;
+GO
+
+-- Step 1: add columns to tblBillingRecord
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.tblBillingRecord') AND name = 'IsPaid')
+    ALTER TABLE dbo.tblBillingRecord ADD IsPaid BIT NOT NULL CONSTRAINT DF_tblBillingRecord_IsPaid DEFAULT (0);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.tblBillingRecord') AND name = 'PaidAt')
+    ALTER TABLE dbo.tblBillingRecord ADD PaidAt DATETIME NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.tblBillingRecord') AND name = 'ReceivedByAdminId')
+    ALTER TABLE dbo.tblBillingRecord ADD ReceivedByAdminId INT NULL;
+GO
+
+-- Step 2: sp_GetBillingRecords
+CREATE OR ALTER PROCEDURE dbo.sp_GetBillingRecords
+    @UnpaidOnly BIT = 0
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT
+        br.BillingRecordId,
+        br.SessionId,
+        u.Username,
+        u.FullName,
+        cm.ClientCode      AS MachineCode,
+        br.BillableMinutes,
+        br.Amount,
+        brate.Currency,
+        br.CalculatedAt,
+        br.IsPaid,
+        br.PaidAt,
+        br.ReceivedByAdminId
+    FROM dbo.tblBillingRecord br
+    INNER JOIN dbo.tblSession       s     ON s.SessionId          = br.SessionId
+    INNER JOIN dbo.tblUser          u     ON u.UserId              = s.UserId
+    INNER JOIN dbo.tblClientMachine cm    ON cm.ClientMachineId    = s.ClientMachineId
+    INNER JOIN dbo.tblBillingRate   brate ON brate.BillingRateId   = br.BillingRateId
+    WHERE br.Status = 'Finalized'
+      AND (@UnpaidOnly = 0 OR br.IsPaid = 0)
+    ORDER BY br.CalculatedAt DESC;
+END;
+GO
+
+-- Step 3: sp_MarkBillingRecordPaid
+CREATE OR ALTER PROCEDURE dbo.sp_MarkBillingRecordPaid
+    @BillingRecordId INT,
+    @AdminUserId     INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        IF NOT EXISTS (SELECT 1 FROM dbo.tblBillingRecord WHERE BillingRecordId = @BillingRecordId)
+        BEGIN
+            SELECT 0 AS Result; RETURN;
+        END;
+
+        IF EXISTS (SELECT 1 FROM dbo.tblBillingRecord WHERE BillingRecordId = @BillingRecordId AND IsPaid = 1)
+        BEGIN
+            SELECT -1 AS Result; RETURN;
+        END;
+
+        UPDATE dbo.tblBillingRecord
+        SET    IsPaid            = 1,
+               PaidAt            = GETDATE(),
+               ReceivedByAdminId = @AdminUserId
+        WHERE  BillingRecordId = @BillingRecordId;
+
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('Billing', 'Info',
+            'BillingRecord ' + CAST(@BillingRecordId AS VARCHAR) +
+            ' marked paid by admin ' + CAST(@AdminUserId AS VARCHAR), 'Server');
+
+        SELECT 1 AS Result;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'Error', 'sp_MarkBillingRecordPaid: ' + ERROR_MESSAGE(), 'Server');
+        SELECT 0 AS Result;
+    END CATCH
+END;
+GO
+
+SELECT 'Payment tracking PATCH COMPLETE' AS Status;
 GO
