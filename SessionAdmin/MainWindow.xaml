@@ -677,17 +677,19 @@
                             <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
                                 <DataGrid x:Name="dgActiveSessions" AutoGenerateColumns="False"
                                           IsReadOnly="True" CanUserAddRows="False"
-                                          SelectionMode="Single" Margin="0">
+                                          SelectionMode="Single" Margin="0"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                          ScrollViewer.VerticalScrollBarVisibility="Auto">
                                     <DataGrid.Columns>
-                                        <DataGridTextColumn Header="SESSION ID" Binding="{Binding SessionId}" Width="90"/>
-                                        <DataGridTextColumn Header="CLIENT" Binding="{Binding ClientId}" Width="90"/>
-                                        <DataGridTextColumn Header="USERNAME" Binding="{Binding Username}" Width="140"/>
-                                        <DataGridTextColumn Header="STARTED" Binding="{Binding StartTime}" Width="110"/>
-                                        <DataGridTextColumn Header="DURATION" Binding="{Binding Duration}" Width="90"/>
-                                        <DataGridTextColumn Header="REMAINING" Binding="{Binding RemainingTime}" Width="100"/>
-                                        <DataGridTextColumn Header="BILLING" Binding="{Binding CurrentBilling}" Width="90"/>
-                                        <DataGridTextColumn Header="STATUS" Binding="{Binding Status}" Width="90"/>
-                                        <DataGridTemplateColumn Header="PHOTO" Width="60">
+                                        <DataGridTextColumn Header="SESSION ID" Binding="{Binding SessionId}" Width="90" MinWidth="90"/>
+                                        <DataGridTextColumn Header="CLIENT" Binding="{Binding ClientId}" Width="90" MinWidth="90"/>
+                                        <DataGridTextColumn Header="USERNAME" Binding="{Binding Username}" Width="140" MinWidth="140"/>
+                                        <DataGridTextColumn Header="STARTED" Binding="{Binding StartTime}" Width="155" MinWidth="155"/>
+                                        <DataGridTextColumn Header="DURATION" Binding="{Binding Duration}" Width="90" MinWidth="90"/>
+                                        <DataGridTextColumn Header="REMAINING" Binding="{Binding RemainingTime}" Width="100" MinWidth="100"/>
+                                        <DataGridTextColumn Header="BILLING" Binding="{Binding CurrentBilling}" Width="90" MinWidth="90"/>
+                                        <DataGridTextColumn Header="STATUS" Binding="{Binding Status}" Width="90" MinWidth="90"/>
+                                        <DataGridTemplateColumn Header="PHOTO" Width="60" MinWidth="60">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <Image Source="{Binding PhotoSource}"
@@ -698,7 +700,7 @@
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
-                                        <DataGridTemplateColumn Header="ACTIONS" Width="130">
+                                        <DataGridTemplateColumn Header="ACTIONS" Width="130" MinWidth="130">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <Button Content="⬛ Terminate"
@@ -743,18 +745,20 @@
 
                             <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
                                 <DataGrid x:Name="dgClients" AutoGenerateColumns="False"
-                                          IsReadOnly="True" CanUserAddRows="False">
+                                          IsReadOnly="True" CanUserAddRows="False"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                          ScrollViewer.VerticalScrollBarVisibility="Auto">
                                     <DataGrid.Columns>
-                                        <DataGridTextColumn Header="CODE" Binding="{Binding ClientId}" Width="80"/>
-                                        <DataGridTextColumn Header="MACHINE" Binding="{Binding MachineName}" Width="150"/>
-                                        <DataGridTextColumn Header="IP ADDRESS" Binding="{Binding IpAddress}" Width="130"/>
-                                        <DataGridTextColumn Header="MAC" Binding="{Binding MacAddress}" Width="140"/>
-                                        <DataGridTextColumn Header="LOCATION" Binding="{Binding Location}" Width="110"/>
-                                        <DataGridTextColumn Header="SESSION" Binding="{Binding Status}" Width="90"/>
-                                        <DataGridTextColumn Header="MACHINE" Binding="{Binding ClientMachineStatus}" Width="90"/>
-                                        <DataGridTextColumn Header="CURRENT USER" Binding="{Binding CurrentUser}" Width="140"/>
-                                        <DataGridTextColumn Header="LAST SEEN" Binding="{Binding LastActive}" Width="*"/>
-                                        <DataGridTemplateColumn Header="ACTIONS" Width="170">
+                                        <DataGridTextColumn Header="CODE" Binding="{Binding ClientId}" Width="80" MinWidth="80"/>
+                                        <DataGridTextColumn Header="MACHINE" Binding="{Binding MachineName}" Width="160" MinWidth="160"/>
+                                        <DataGridTextColumn Header="IP ADDRESS" Binding="{Binding IpAddress}" Width="130" MinWidth="130"/>
+                                        <DataGridTextColumn Header="MAC" Binding="{Binding MacAddress}" Width="150" MinWidth="150"/>
+                                        <DataGridTextColumn Header="LOCATION" Binding="{Binding Location}" Width="110" MinWidth="110"/>
+                                        <DataGridTextColumn Header="SESSION" Binding="{Binding Status}" Width="90" MinWidth="90"/>
+                                        <DataGridTextColumn Header="MACHINE STATUS" Binding="{Binding ClientMachineStatus}" Width="120" MinWidth="120"/>
+                                        <DataGridTextColumn Header="CURRENT USER" Binding="{Binding CurrentUser}" Width="140" MinWidth="140"/>
+                                        <DataGridTextColumn Header="LAST SEEN" Binding="{Binding LastActive}" Width="160" MinWidth="160"/>
+                                        <DataGridTemplateColumn Header="ACTIONS" Width="170" MinWidth="170">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <StackPanel Orientation="Horizontal" Margin="8,4">
@@ -863,17 +867,27 @@
                             <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
                                 <DataGrid x:Name="dgUsers" AutoGenerateColumns="False"
                                           IsReadOnly="True" CanUserAddRows="False"
-                                          SelectionMode="Single">
+                                          SelectionMode="Single"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                          ScrollViewer.VerticalScrollBarVisibility="Auto">
                                     <DataGrid.Columns>
-                                        <DataGridTextColumn Header="ID" Binding="{Binding UserId}" Width="55"/>
-                                        <DataGridTextColumn Header="USERNAME" Binding="{Binding Username}" Width="130"/>
-                                        <DataGridTextColumn Header="FULL NAME" Binding="{Binding FullName}" Width="160"/>
-                                        <DataGridTextColumn Header="PHONE" Binding="{Binding Phone}" Width="120"/>
-                                        <DataGridTextColumn Header="ADDRESS" Binding="{Binding Address}" Width="180"/>
-                                        <DataGridTextColumn Header="STATUS" Binding="{Binding Status}" Width="80"/>
-                                        <DataGridTextColumn Header="CREATED" Binding="{Binding CreatedAt}" Width="140"/>
-                                        <DataGridTextColumn Header="LAST LOGIN" Binding="{Binding LastLogin}" Width="140"/>
-                                        <DataGridTemplateColumn Header="ACTIONS" Width="180">
+                                        <DataGridTextColumn Header="ID" Binding="{Binding UserId}" Width="55" MinWidth="55"/>
+                                        <DataGridTextColumn Header="USERNAME" Binding="{Binding Username}" Width="130" MinWidth="130"/>
+                                        <DataGridTextColumn Header="FULL NAME" Binding="{Binding FullName}" Width="160" MinWidth="160"/>
+                                        <DataGridTextColumn Header="PHONE" Binding="{Binding Phone}" Width="120" MinWidth="120"/>
+                                        <DataGridTemplateColumn Header="ADDRESS" Width="180" MinWidth="180">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Address}"
+                                                               TextWrapping="Wrap" Padding="6,4"
+                                                               VerticalAlignment="Top"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTextColumn Header="STATUS" Binding="{Binding Status}" Width="80" MinWidth="80"/>
+                                        <DataGridTextColumn Header="CREATED" Binding="{Binding CreatedAt}" Width="155" MinWidth="155"/>
+                                        <DataGridTextColumn Header="LAST LOGIN" Binding="{Binding LastLogin}" Width="155" MinWidth="155"/>
+                                        <DataGridTemplateColumn Header="ACTIONS" Width="180" MinWidth="180">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <StackPanel Orientation="Horizontal" Margin="8,4">
@@ -988,23 +1002,33 @@
                             <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
                                 <DataGrid x:Name="dgBillingRates" AutoGenerateColumns="False"
                                           IsReadOnly="True" CanUserAddRows="False"
-                                          SelectionMode="Single">
+                                          SelectionMode="Single"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                          ScrollViewer.VerticalScrollBarVisibility="Auto">
                                     <DataGrid.Columns>
-                                        <DataGridTextColumn Header="ID" Binding="{Binding BillingRateId}" Width="50"/>
-                                        <DataGridTextColumn Header="NAME" Binding="{Binding Name}" Width="140"/>
-                                        <DataGridTextColumn Header="RATE/MIN" Binding="{Binding RatePerMinute}" Width="90"/>
-                                        <DataGridTextColumn Header="CURRENCY" Binding="{Binding Currency}" Width="80"/>
-                                        <DataGridTextColumn Header="EFF. FROM" Binding="{Binding EffectiveFrom}" Width="110"/>
-                                        <DataGridTextColumn Header="EFF. TO" Binding="{Binding EffectiveTo}" Width="110"/>
-                                        <DataGridTextColumn Header="ACTIVE" Binding="{Binding IsActive}" Width="70"/>
-                                        <DataGridTextColumn Header="DEFAULT" Binding="{Binding IsDefault}" Width="75"/>
-                                        <DataGridTextColumn Header="CREATED" Binding="{Binding CreatedAt}" Width="140"/>
-                                        <DataGridTextColumn Header="NOTES" Binding="{Binding Notes}" Width="*"/>
-                                        <DataGridTemplateColumn Header="ACTIONS" Width="230">
+                                        <DataGridTextColumn Header="ID" Binding="{Binding BillingRateId}" Width="50" MinWidth="50"/>
+                                        <DataGridTextColumn Header="NAME" Binding="{Binding Name}" Width="140" MinWidth="140"/>
+                                        <DataGridTextColumn Header="RATE/MIN" Binding="{Binding RatePerMinute}" Width="90" MinWidth="90"/>
+                                        <DataGridTextColumn Header="CURRENCY" Binding="{Binding Currency}" Width="80" MinWidth="80"/>
+                                        <DataGridTextColumn Header="EFF. FROM" Binding="{Binding EffectiveFrom}" Width="155" MinWidth="155"/>
+                                        <DataGridTextColumn Header="EFF. TO" Binding="{Binding EffectiveTo}" Width="155" MinWidth="155"/>
+                                        <DataGridTextColumn Header="ACTIVE" Binding="{Binding IsActive}" Width="70" MinWidth="70"/>
+                                        <DataGridTextColumn Header="DEFAULT" Binding="{Binding IsDefault}" Width="75" MinWidth="75"/>
+                                        <DataGridTextColumn Header="CREATED" Binding="{Binding CreatedAt}" Width="155" MinWidth="155"/>
+                                        <DataGridTemplateColumn Header="NOTES" Width="200" MinWidth="200">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Notes}"
+                                                               TextWrapping="Wrap" Padding="6,4"
+                                                               VerticalAlignment="Top"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTemplateColumn Header="ACTIONS" Width="230" MinWidth="230">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <StackPanel Orientation="Horizontal" Margin="8,4">
-                                                        <Button Content="✎ Edit"
+                                                        <Button Content="✎"
                                                                 Background="#1D3461" Foreground="#60A5FA"
                                                                 BorderThickness="0" Padding="8,5"
                                                                 FontSize="11" FontFamily="Segoe UI"
@@ -1023,7 +1047,7 @@
                                                                 </ControlTemplate>
                                                             </Button.Template>
                                                         </Button>
-                                                        <Button Content="★ Default"
+                                                        <Button Content="★"
                                                                 Background="#451A03" Foreground="#FBBF24"
                                                                 BorderThickness="0" Padding="8,5"
                                                                 FontSize="11" FontFamily="Segoe UI"
@@ -1054,7 +1078,7 @@
                                                                 </Style>
                                                             </Button.Style>
                                                         </Button>
-                                                        <Button Content="🗑 Delete"
+                                                        <Button Content="🗑"
                                                                 Background="#450A0A" Foreground="#F87171"
                                                                 BorderThickness="0" Padding="8,5"
                                                                 FontSize="11" FontFamily="Segoe UI"
@@ -1111,15 +1135,25 @@
                                         Click="btnRefreshSessions_Click"/>
                             </StackPanel>
                             <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
-                                <DataGrid x:Name="dgAlerts" AutoGenerateColumns="False" IsReadOnly="True">
+                                <DataGrid x:Name="dgAlerts" AutoGenerateColumns="False" IsReadOnly="True"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                          ScrollViewer.VerticalScrollBarVisibility="Auto">
                                     <DataGrid.Columns>
-                                        <DataGridTextColumn Header="TIME" Binding="{Binding Timestamp}" Width="150"/>
-                                        <DataGridTextColumn Header="SEVERITY" Binding="{Binding Severity}" Width="80"/>
-                                        <DataGridTextColumn Header="CLIENT" Binding="{Binding ClientId}" Width="90"/>
-                                        <DataGridTextColumn Header="USER" Binding="{Binding Username}" Width="120"/>
-                                        <DataGridTextColumn Header="TYPE" Binding="{Binding AlertType}" Width="180"/>
-                                        <DataGridTextColumn Header="DESCRIPTION" Binding="{Binding Description}" Width="*"/>
-                                        <DataGridTemplateColumn Header="ACTION" Width="140">
+                                        <DataGridTextColumn Header="TIME" Binding="{Binding Timestamp}" Width="155" MinWidth="155"/>
+                                        <DataGridTextColumn Header="SEVERITY" Binding="{Binding Severity}" Width="80" MinWidth="80"/>
+                                        <DataGridTextColumn Header="CLIENT" Binding="{Binding ClientId}" Width="90" MinWidth="90"/>
+                                        <DataGridTextColumn Header="USER" Binding="{Binding Username}" Width="120" MinWidth="120"/>
+                                        <DataGridTextColumn Header="TYPE" Binding="{Binding AlertType}" Width="200" MinWidth="200"/>
+                                        <DataGridTemplateColumn Header="DESCRIPTION" Width="280" MinWidth="280">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Description}"
+                                                               TextWrapping="Wrap" Padding="6,4"
+                                                               VerticalAlignment="Top"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTemplateColumn Header="ACTION" Width="150" MinWidth="150">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <Button Content="✓ Acknowledge"
@@ -1189,15 +1223,25 @@
                                 </StackPanel>
                             </Border>
                             <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
-                                <DataGrid x:Name="dgLogs" AutoGenerateColumns="False" IsReadOnly="True">
+                                <DataGrid x:Name="dgLogs" AutoGenerateColumns="False" IsReadOnly="True"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                                          ScrollViewer.VerticalScrollBarVisibility="Auto">
                                     <DataGrid.Columns>
-                                        <DataGridTextColumn Header="TIME" Binding="{Binding LogTime}" Width="150"/>
-                                        <DataGridTextColumn Header="CATEGORY" Binding="{Binding Category}" Width="90"/>
-                                        <DataGridTextColumn Header="TYPE" Binding="{Binding LogType}" Width="160"/>
-                                        <DataGridTextColumn Header="SOURCE" Binding="{Binding Source}" Width="70"/>
-                                        <DataGridTextColumn Header="CLIENT" Binding="{Binding ClientCode}" Width="80"/>
-                                        <DataGridTextColumn Header="USER" Binding="{Binding Username}" Width="110"/>
-                                        <DataGridTextColumn Header="MESSAGE" Binding="{Binding Message}" Width="*"/>
+                                        <DataGridTextColumn Header="TIME" Binding="{Binding LogTime}" Width="155" MinWidth="155"/>
+                                        <DataGridTextColumn Header="CATEGORY" Binding="{Binding Category}" Width="100" MinWidth="100"/>
+                                        <DataGridTextColumn Header="TYPE" Binding="{Binding LogType}" Width="180" MinWidth="180"/>
+                                        <DataGridTextColumn Header="SOURCE" Binding="{Binding Source}" Width="80" MinWidth="80"/>
+                                        <DataGridTextColumn Header="CLIENT" Binding="{Binding ClientCode}" Width="80" MinWidth="80"/>
+                                        <DataGridTextColumn Header="USER" Binding="{Binding Username}" Width="110" MinWidth="110"/>
+                                        <DataGridTemplateColumn Header="MESSAGE" Width="300" MinWidth="300">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <TextBlock Text="{Binding Message}"
+                                                               TextWrapping="Wrap" Padding="6,4"
+                                                               VerticalAlignment="Top"/>
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
                                     </DataGrid.Columns>
                                 </DataGrid>
                             </Border>

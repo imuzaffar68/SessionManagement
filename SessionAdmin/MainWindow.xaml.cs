@@ -5,6 +5,8 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using SessionManagement.Client;
@@ -100,6 +102,70 @@ namespace SessionAdmin
             {
                 AppDialog.ShowError($"Init error: {ex.Message}");
             }
+        }
+
+        #endregion
+
+        // ═══════════════════════════════════════════════════════════
+        //  #region TOUCHPAD HORIZONTAL SCROLL
+        // ═══════════════════════════════════════════════════════════
+        #region Touchpad Horizontal Scroll
+
+        private const int WM_MOUSEHWHEEL = 0x020E;
+
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+            var src = System.Windows.Interop.HwndSource.FromHwnd(
+                new System.Windows.Interop.WindowInteropHelper(this).Handle);
+            src?.AddHook(HandleTouchpadHorizontal);
+        }
+
+        private IntPtr HandleTouchpadHorizontal(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            if (msg != WM_MOUSEHWHEEL) return IntPtr.Zero;
+
+            int delta = (short)((wParam.ToInt64() >> 16) & 0xFFFF);
+            if (delta == 0) return IntPtr.Zero;
+
+            int lp = lParam.ToInt32();
+            var screenPt = new Point((short)(lp & 0xFFFF), (short)((lp >> 16) & 0xFFFF));
+            var clientPt = PointFromScreen(screenPt);
+
+            var hit = InputHitTest(clientPt) as DependencyObject;
+            if (hit == null) return IntPtr.Zero;
+
+            var dg = FindAncestorOrSelf<DataGrid>(hit);
+            if (dg == null) return IntPtr.Zero;
+
+            var sv = FindDescendant<ScrollViewer>(dg);
+            if (sv == null) return IntPtr.Zero;
+
+            sv.ScrollToHorizontalOffset(sv.HorizontalOffset + delta / 3.0);
+            handled = true;
+            return IntPtr.Zero;
+        }
+
+        private static T FindAncestorOrSelf<T>(DependencyObject obj) where T : DependencyObject
+        {
+            while (obj != null)
+            {
+                if (obj is T t) return t;
+                obj = System.Windows.Media.VisualTreeHelper.GetParent(obj);
+            }
+            return null;
+        }
+
+        private static T FindDescendant<T>(DependencyObject obj) where T : DependencyObject
+        {
+            if (obj is T t) return t;
+            int count = System.Windows.Media.VisualTreeHelper.GetChildrenCount(obj);
+            for (int i = 0; i < count; i++)
+            {
+                var result = FindDescendant<T>(System.Windows.Media.VisualTreeHelper.GetChild(obj, i));
+                if (result != null) return result;
+            }
+            return null;
         }
 
         #endregion
@@ -414,7 +480,7 @@ namespace SessionAdmin
                         SessionId = s.SessionId,
                         ClientId = s.ClientCode,
                         Username = s.Username,
-                        StartTime = s.StartTime.ToString("HH:mm:ss"),
+                        StartTime = s.StartTime.ToString("hh:mm:ss tt"),
                         Duration = $"{s.SelectedDuration} min",
                         RemainingTime = $"{s.RemainingMinutes} min",
                         CurrentBilling = $"${s.CurrentBilling:F2}",
@@ -423,7 +489,7 @@ namespace SessionAdmin
                     });
                 }
                 lblActiveCount.Text = $"{_sessions.Count} sessions";
-                lblLastUpdate.Text = $"Updated {DateTime.Now:HH:mm:ss}";
+                lblLastUpdate.Text = $"Updated {DateTime.Now:hh:mm:ss tt}";
             }
             catch (Exception ex)
             {
@@ -531,7 +597,7 @@ namespace SessionAdmin
                         ClientMachineStatus = c.IsActive ? "Active" : "Inactive",
                         Status = c.Status,
                         CurrentUser = c.CurrentUser ?? "—",
-                        LastActive = c.LastActiveTime?.ToString("yyyy-MM-dd HH:mm") ?? "Never"
+                        LastActive = c.LastActiveTime?.ToString("MM/dd/yyyy hh:mm tt") ?? "Never"
                     });
                 }
                 kpiClients.Text = _clients.Count.ToString();
@@ -595,7 +661,7 @@ namespace SessionAdmin
                     _alerts.Add(new AlertVM
                     {
                         AlertId = a.AlertId,
-                        Timestamp = a.Timestamp.ToString("yyyy-MM-dd HH:mm:ss"),
+                        Timestamp = a.Timestamp.ToString("MM/dd/yyyy hh:mm tt"),
                         Severity = a.Severity,
                         ClientId = a.ClientCode ?? "—",
                         Username = a.Username ?? "—",
@@ -666,7 +732,7 @@ namespace SessionAdmin
                 {
                     _logs.Add(new LogVM
                     {
-                        LogTime = log.LoggedAt.ToString("yyyy-MM-dd HH:mm:ss"),
+                        LogTime = log.LoggedAt.ToString("MM/dd/yyyy hh:mm tt"),
                         Category = log.Category,
                         LogType = log.Type,
                         Source = log.Source ?? "—",
@@ -719,7 +785,7 @@ namespace SessionAdmin
             sb.AppendLine($"{'═',-72}");
             sb.AppendLine($"  {type.ToUpper()} REPORT");
             sb.AppendLine($"  Period  : {from:yyyy-MM-dd}  →  {to:yyyy-MM-dd}");
-            sb.AppendLine($"  Generated : {DateTime.Now:yyyy-MM-dd HH:mm:ss}  by  {_adminUsername}");
+            sb.AppendLine($"  Generated : {DateTime.Now:MM/dd/yyyy hh:mm:ss tt}  by  {_adminUsername}");
             sb.AppendLine($"{'═',-72}");
             sb.AppendLine();
 
@@ -751,7 +817,7 @@ namespace SessionAdmin
                     sb.AppendLine();
                     foreach (var a in al.OrderByDescending(x => x.Timestamp))
                     {
-                        sb.AppendLine($"  {a.Timestamp:yyyy-MM-dd HH:mm}  [{a.Severity}]  {a.AlertType}");
+                        sb.AppendLine($"  {a.Timestamp:MM/dd/yyyy hh:mm tt}  [{a.Severity}]  {a.AlertType}");
                         sb.AppendLine($"    {a.Description}");
                     }
                     break;
@@ -802,8 +868,8 @@ namespace SessionAdmin
                         Phone = u.Phone,
                         Address = u.Address,
                         Status = u.Status,
-                        CreatedAt = u.CreatedAt.ToString("yyyy-MM-dd HH:mm"),
-                        LastLogin = u.LastLoginAt?.ToString("yyyy-MM-dd HH:mm") ?? "Never"
+                        CreatedAt = u.CreatedAt.ToString("MM/dd/yyyy hh:mm tt"),
+                        LastLogin = u.LastLoginAt?.ToString("MM/dd/yyyy hh:mm tt") ?? "Never"
                     });
                 }
                 lblUserCount.Text = _users.Count.ToString();
@@ -1069,7 +1135,7 @@ namespace SessionAdmin
                     if (msg.IndexOf("ALERT", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         LoadAlerts();
-                        lblLastUpdate.Text = $"Alert received {DateTime.Now:HH:mm:ss}";
+                        lblLastUpdate.Text = $"Alert received {DateTime.Now:hh:mm:ss tt}";
                     }
                     if (msg.IndexOf("session", StringComparison.OrdinalIgnoreCase) >= 0)
                         LoadActiveSessions();
