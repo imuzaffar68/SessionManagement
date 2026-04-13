@@ -217,9 +217,9 @@ namespace SessionManagement.WCF
                 //    "Server");
 
                 // SEQ-02 step 5: push to all subscribed admins (FR-06 real-time monitor)
-                //System.Threading.ThreadPool.QueueUserWorkItem(_ =>
-                //    Broadcast(cb => cb.OnServerMessage(
-                //        $"New session: {clientCode} | {durationMinutes} min | SessionId={sessionId}")));
+                System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+                    Broadcast(cb => cb.OnServerMessage(
+                        $"New session: {clientCode} | {durationMinutes} min | SessionId={sessionId}")));
 
                 return new SessionStartResponse
                 {

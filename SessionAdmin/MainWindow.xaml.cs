@@ -24,6 +24,7 @@ namespace SessionAdmin
 
         private SessionServiceClient _svc;
         private DispatcherTimer _refreshTimer;
+        private DispatcherTimer _toastTimer;
 
         private string _adminFullname;
         private string _adminUsername;
@@ -1239,12 +1240,35 @@ namespace SessionAdmin
                     {
                         LoadAlerts();
                         lblLastUpdate.Text = $"Alert received {DateTime.Now:hh:mm:ss tt}";
+                        ShowToast("New security alert received!");
                     }
                     if (msg.IndexOf("session", StringComparison.OrdinalIgnoreCase) >= 0)
                         LoadActiveSessions();
                 }
                 catch { }
             }));
+        }
+
+        private void ShowToast(string message)
+        {
+            lblToastMessage.Text = message;
+            ToastPanel.Visibility = Visibility.Visible;
+
+            // Reset and (re)start the auto-dismiss timer
+            _toastTimer?.Stop();
+            _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+            _toastTimer.Tick += (_, __) =>
+            {
+                ToastPanel.Visibility = Visibility.Collapsed;
+                _toastTimer.Stop();
+            };
+            _toastTimer.Start();
+        }
+
+        private void btnDismissToast_Click(object sender, RoutedEventArgs e)
+        {
+            _toastTimer?.Stop();
+            ToastPanel.Visibility = Visibility.Collapsed;
         }
 
         #endregion

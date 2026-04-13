@@ -1471,6 +1471,46 @@
                 </Grid>
             </Border>
         </Border>
+        <!-- ══════════════════════════════════════════════════════════
+             IN-APP TOAST NOTIFICATION (anchored top-right)
+        ══════════════════════════════════════════════════════════ -->
+        <Border x:Name="ToastPanel" Grid.ColumnSpan="2"
+                HorizontalAlignment="Right" VerticalAlignment="Top"
+                Margin="0,10,16,0" Width="300"
+                Background="#1A1200" BorderBrush="#854D0E" BorderThickness="1"
+                CornerRadius="10" Padding="14,10"
+                Visibility="Collapsed">
+            <Border.Effect>
+                <DropShadowEffect Color="Black" Opacity="0.5" BlurRadius="12" ShadowDepth="2"/>
+            </Border.Effect>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="⚠" FontSize="16" Foreground="#FBBF24"
+                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <TextBlock x:Name="lblToastMessage"
+                               FontSize="12" FontFamily="Segoe UI"
+                               Foreground="#FDE68A" FontWeight="SemiBold"
+                               TextWrapping="Wrap" VerticalAlignment="Center"/>
+                </StackPanel>
+                <Button Grid.Column="1" Content="✕"
+                        Background="Transparent" BorderThickness="0"
+                        Foreground="#A16207" FontSize="12" Cursor="Hand"
+                        VerticalAlignment="Center" Margin="8,0,0,0"
+                        Click="btnDismissToast_Click">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <TextBlock Text="✕" Foreground="#A16207" FontSize="12"
+                                       VerticalAlignment="Center"/>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+            </Grid>
+        </Border>
+
         </Grid><!-- /main area Grid -->
     </Grid><!-- /outer rows Grid -->
     </Border><!-- /outer border -->
