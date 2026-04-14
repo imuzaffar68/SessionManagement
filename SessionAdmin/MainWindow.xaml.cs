@@ -1310,6 +1310,24 @@ namespace SessionAdmin
 
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
+            // Warn if any client sessions are still running.
+            try
+            {
+                if (_svc?.IsConnected == true)
+                {
+                    SessionInfo[] active = _svc.GetActiveSessions();
+                    if (active.Length > 0 &&
+                        !AppDialog.Confirm(
+                            $"{active.Length} session(s) are currently active.\nClose the admin console anyway?",
+                            "Sessions Active"))
+                    {
+                        e.Cancel = true;
+                        return;
+                    }
+                }
+            }
+            catch { }
+
             _refreshTimer?.Stop();
             try
             {

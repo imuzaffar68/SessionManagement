@@ -184,6 +184,9 @@ namespace SessionClient
             Closing += OnClosingHandler;
             KeyDown += OnKeyDown;
 
+            // OS-level shutdown / logoff (bypasses WPF Closing event entirely).
+            Microsoft.Win32.SystemEvents.SessionEnding += OnSystemSessionEnding;
+
             // Connection status polling
             var connTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
             connTimer.Tick += (s, e) => UpdateConnectionStatus();
@@ -1124,6 +1127,34 @@ namespace SessionClient
                 e.Handled = true;
         }
 
+        /// <summary>
+        /// Fired by Windows on shutdown, restart, or user logoff — bypasses WPF Closing.
+        /// Must be fast and best-effort; OS grants only a few seconds before hard-killing the process.
+        /// </summary>
+        private void OnSystemSessionEnding(object sender,
+            Microsoft.Win32.SessionEndingEventArgs e)
+        {
+            _heartbeatTimer?.Stop();
+            _timer?.Stop();
+            try { StopDetection(); } catch { }
+            try { CloseFloatingTimer(); } catch { }
+            try { UninstallKeyboardHook(); } catch { }
+            try
+            {
+                if (_sessionActive)
+                    EndSessionOnServer("Manual");
+                if (_svc?.IsConnected == true)
+                {
+                    _svc.UpdateClientStatus(_clientCode, "Offline");
+                    _svc.UnsubscribeFromNotifications(_clientCode);
+                    _svc.Disconnect();
+                }
+                _cam?.Dispose();
+            }
+            catch { }
+            Microsoft.Win32.SystemEvents.SessionEnding -= OnSystemSessionEnding;
+        }
+
         private void OnClosingHandler(object sender, System.ComponentModel.CancelEventArgs e)
         {
             if (_sessionActive)
@@ -1140,12 +1171,12 @@ namespace SessionClient
             }
             else
             {
-                // Kiosk: block close on login screen
+                // Kiosk: silently block close on the login screen — no dialog.
                 e.Cancel = true;
-                AppDialog.ShowInfo("Please log in to use this computer.", "Access Restricted");
                 return;
             }
 
+            Microsoft.Win32.SystemEvents.SessionEnding -= OnSystemSessionEnding;
             UninstallKeyboardHook();
             StopDetection();
             CloseFloatingTimer();
