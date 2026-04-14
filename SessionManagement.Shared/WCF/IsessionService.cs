@@ -196,6 +196,7 @@ namespace SessionManagement.WCF
         /// </summary>
         [OperationContract]
         int TerminateOrphanSession(string clientCode);
+
     }
 
     /// <summary>

@@ -50,6 +50,11 @@ namespace SessionManagement.WCF
             _offlineTimer = new Timer(OfflineDetectionScan, null,
                 TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
 
+            // After a server power-cut, all client machines have stale LastSeenAt
+            // from before the crash.  Stamp them now so the first OfflineDetectionScan
+            // (60 s from now) does not immediately kill every active client session.
+            _db.RefreshLastSeenForActiveMachines();
+
             _db.WriteSystemLog(null, null, null, null,
                 "System", "ServiceStart", "SessionService started", "Server");
         }
@@ -223,9 +228,9 @@ namespace SessionManagement.WCF
                 //    "Server");
 
                 // SEQ-02 step 5: push to all subscribed admins (FR-06 real-time monitor)
-                System.Threading.ThreadPool.QueueUserWorkItem(_ =>
-                    Broadcast(cb => cb.OnServerMessage(
-                        $"New session: {clientCode} | {durationMinutes} min | SessionId={sessionId}")));
+                //System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+                //    Broadcast(cb => cb.OnServerMessage(
+                //        $"New session: {clientCode} | {durationMinutes} min | SessionId={sessionId}")));
 
                 return new SessionStartResponse
                 {

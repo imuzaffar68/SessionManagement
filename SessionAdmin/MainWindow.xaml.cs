@@ -503,11 +503,11 @@ namespace SessionAdmin
                 {
                     _sessions.Add(new ActiveSessionVM
                     {
-                        SessionId = s.SessionId,
-                        ClientId = s.ClientCode,
-                        Username = s.Username,
-                        StartTime = s.StartTime.ToString("hh:mm:ss tt"),
-                        Duration = $"{s.SelectedDuration} min",
+                        SessionId     = s.SessionId,
+                        ClientId      = s.ClientCode,
+                        Username      = s.Username,
+                        StartTime     = s.StartTime.ToString("hh:mm:ss tt"),
+                        Duration      = $"{s.SelectedDuration} min",
                         RemainingTime = $"{s.RemainingMinutes} min",
                         CurrentBilling = $"${s.CurrentBilling:F2}",
                         Status = s.SessionStatus,
@@ -1397,11 +1397,11 @@ namespace SessionAdmin
 
     public class ActiveSessionVM : System.ComponentModel.INotifyPropertyChanged
     {
-        public int    SessionId { get; set; }
-        public string ClientId  { get; set; }
-        public string Username  { get; set; }
-        public string StartTime { get; set; }
-        public string Duration  { get; set; }
+        public int      SessionId     { get; set; }
+        public string   ClientId      { get; set; }
+        public string   Username      { get; set; }
+        public string   StartTime     { get; set; }
+        public string   Duration      { get; set; }
 
         private string _remaining;
         public string RemainingTime

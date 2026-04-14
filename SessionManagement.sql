@@ -119,8 +119,9 @@ CREATE TABLE dbo.tblClientMachine (
     Status            NVARCHAR(20) NOT NULL,
     LastSeenAt        DATETIME NOT NULL CONSTRAINT DF_tblClientMachine_LastSeenAt DEFAULT (GETDATE()),
     IsActive          BIT NOT NULL CONSTRAINT DF_tblClientMachine_IsActive DEFAULT (1),
-    CONSTRAINT UQ_tblClientMachine_IP UNIQUE (IPAddress),
-    CONSTRAINT UQ_tblClientMachine_ClientCode UNIQUE (ClientCode), --v2
+    -- IPAddress has no unique constraint: DHCP reassignment and reinstalls
+    -- can produce the same IP on a different machine. ClientCode (MAC-derived) is the unique key.
+    CONSTRAINT UQ_tblClientMachine_ClientCode UNIQUE (ClientCode),
     CONSTRAINT CK_tblClientMachine_Status CHECK (Status IN ('Idle', 'Active', 'Offline'))
 );
 GO
@@ -817,16 +818,8 @@ BEGIN
     DECLARE @MachineId INT;
 
     BEGIN TRY
-        IF EXISTS (
-            SELECT 1
-            FROM dbo.tblClientMachine
-            WHERE IPAddress = @IPAddress
-              AND ClientCode <> @ClientCode
-        )
-        BEGIN
-            RAISERROR('IPAddress already assigned to another client.', 16, 1);
-            RETURN;
-        END;
+        -- IPAddress is informational only — uniqueness is not enforced.
+        -- ClientCode (derived from MAC) is the true unique identifier per machine.
 
         IF EXISTS (SELECT 1 FROM dbo.tblClientMachine WHERE ClientCode = @ClientCode)
         BEGIN
@@ -2284,4 +2277,105 @@ END;
 GO
 
 SELECT 'sp_CalculateSessionBilling EndedAt fix PATCH COMPLETE' AS Status;
+GO
+
+-- ============================================================
+--  PATCH A: Drop IP unique constraint (informational column only)
+-- ============================================================
+IF EXISTS (
+    SELECT 1 FROM sys.key_constraints
+    WHERE name = 'UQ_tblClientMachine_IP'
+      AND parent_object_id = OBJECT_ID('dbo.tblClientMachine')
+)
+    ALTER TABLE dbo.tblClientMachine DROP CONSTRAINT UQ_tblClientMachine_IP;
+GO
+
+SELECT 'UQ_tblClientMachine_IP constraint dropped' AS Status;
+GO
+
+-- ============================================================
+--  PATCH B: Rebuild sp_RegisterClient
+--  - No IP uniqueness check (removed)
+--  - MAC-based fallback: if a row exists with the same MAC but
+--    a different ClientCode (e.g. old "CL001" vs new "CL-AABBCC..."),
+--    update that row's ClientCode to the new value so the machine
+--    keeps its history instead of getting a duplicate row.
+-- ============================================================
+CREATE OR ALTER PROCEDURE dbo.sp_RegisterClient
+    @ClientCode  NVARCHAR(50),
+    @MachineName NVARCHAR(50),
+    @IPAddress   NVARCHAR(45),
+    @MACAddress  NVARCHAR(50) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @MachineId INT;
+
+    BEGIN TRY
+        -- 1. Exact ClientCode match → normal update
+        IF EXISTS (SELECT 1 FROM dbo.tblClientMachine WHERE ClientCode = @ClientCode)
+        BEGIN
+            UPDATE dbo.tblClientMachine
+            SET MachineName = @MachineName,
+                IPAddress   = @IPAddress,
+                MACAddress  = ISNULL(@MACAddress, MACAddress),
+                Status      = 'Idle',
+                LastSeenAt  = GETDATE()
+            WHERE ClientCode = @ClientCode;
+
+            SELECT @MachineId = ClientMachineId
+            FROM   dbo.tblClientMachine
+            WHERE  ClientCode = @ClientCode;
+        END
+        -- 2. Same MAC, different ClientCode → adopt the existing row and update its code.
+        --    This handles machines that were previously registered with a manual code
+        --    (e.g. CL001) and are now auto-generating from their MAC.
+        ELSE IF @MACAddress IS NOT NULL
+            AND EXISTS (SELECT 1 FROM dbo.tblClientMachine WHERE MACAddress = @MACAddress)
+        BEGIN
+            UPDATE dbo.tblClientMachine
+            SET ClientCode  = @ClientCode,
+                MachineName = @MachineName,
+                IPAddress   = @IPAddress,
+                Status      = 'Idle',
+                LastSeenAt  = GETDATE()
+            WHERE MACAddress = @MACAddress;
+
+            SELECT @MachineId = ClientMachineId
+            FROM   dbo.tblClientMachine
+            WHERE  MACAddress = @MACAddress;
+        END
+        -- 3. Genuinely new machine → insert
+        ELSE
+        BEGIN
+            INSERT INTO dbo.tblClientMachine
+                (ClientCode, MachineName, IPAddress, MACAddress, Status, IsActive)
+            VALUES
+                (@ClientCode, @MachineName, @IPAddress, @MACAddress, 'Idle', 1);
+
+            SET @MachineId = SCOPE_IDENTITY();
+        END;
+
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source, ClientMachineId)
+        VALUES
+            ('System', 'ClientRegistered',
+             'Client ' + @ClientCode + ' (' + @MachineName + ') registered/updated',
+             'Server', @MachineId);
+
+        SELECT @MachineId AS ClientMachineId;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source)
+        VALUES
+            ('System', 'Error', 'sp_RegisterClient: ' + ERROR_MESSAGE(), 'Server');
+
+        SELECT 0 AS ClientMachineId;
+    END CATCH
+END;
+GO
+
+SELECT 'sp_RegisterClient patch COMPLETE' AS Status;
 GO

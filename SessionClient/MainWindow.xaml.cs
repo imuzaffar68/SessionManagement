@@ -1,6 +1,7 @@
 using System;
 using System.Configuration;
 using System.Drawing;
+using System.Linq;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
@@ -47,6 +48,14 @@ namespace SessionClient
         private bool _manualLogout;
         private bool _sessionActive;
 
+        // Server power-cut recovery: retry EndSession when server comes back.
+        private bool   _pendingSessionEnd;
+        private int    _pendingSessionId;
+        private string _pendingSessionEndType;
+
+        // Reconnect detection: track whether we were connected on the previous poll.
+        private bool _prevConnected;
+
         // Selected duration from preset buttons
         private int _selectedDurationMinutes = 60;
 
@@ -90,6 +99,9 @@ namespace SessionClient
 
         [DllImport("user32.dll")]
         private static extern short GetAsyncKeyState(int vKey);
+
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
 
         [StructLayout(LayoutKind.Sequential)]
         private struct KBDLLHOOKSTRUCT
@@ -178,7 +190,7 @@ namespace SessionClient
 
             _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
             _timer.Tick += Timer_Tick;
-            _clientCode = ConfigurationManager.AppSettings["ClientCode"] ?? "CL001";
+            _clientCode = ResolveClientCode();
 
             Loaded += OnLoaded;
             Closing += OnClosingHandler;
@@ -259,18 +271,35 @@ namespace SessionClient
                 WindowState = WindowState.Maximized;
                 ResizeMode = ResizeMode.NoResize;
                 InstallKeyboardHook();
+                HeaderBar.Visibility = Visibility.Visible;
+                lblMachineCode.Text = "Machine: " + _clientCode;
             }
             else
             {
                 Topmost = false;
                 WindowStyle = WindowStyle.SingleBorderWindow;
                 WindowState = WindowState.Normal;
-                Width = 500; Height = 600;
-                ResizeMode = ResizeMode.CanResize;
+                Width = 560; Height = 700;
+                Left = (SystemParameters.WorkArea.Width  - 560) / 2;
+                Top  = (SystemParameters.WorkArea.Height - 700) / 2;
+                ResizeMode = ResizeMode.NoResize;
+                Title = "NetCafé — Sign In";
+                HeaderBar.Visibility = Visibility.Collapsed;
+                ApplyDarkTitleBar();
             }
             ShowInTaskbar = true;
-            HeaderBar.Visibility = Visibility.Visible;
-            lblMachineCode.Text = "Machine: " + _clientCode + (_kioskMode ? "" : " [DEV]");
+        }
+
+        private void ApplyDarkTitleBar()
+        {
+            try
+            {
+                var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                if (hwnd == IntPtr.Zero) return;
+                int value = 1; // enable immersive dark mode
+                DwmSetWindowAttribute(hwnd, 20, ref value, sizeof(int));
+            }
+            catch { }
         }
 
         /// <summary>
@@ -312,11 +341,63 @@ namespace SessionClient
         private void UpdateConnectionStatus()
         {
             bool connected = _svc != null && _svc.IsConnected;
+
             ellipseConnectionStatus.Fill = connected
                 ? System.Windows.Media.Brushes.LimeGreen
                 : System.Windows.Media.Brushes.OrangeRed;
             lblConnectionStatus.Text = connected ? "Connected" : "Disconnected";
             btnConnect.Visibility = connected ? Visibility.Collapsed : Visibility.Visible;
+
+            // Show / hide server-offline warning on the session screen.
+            if (_sessionActive)
+            {
+                if (!connected)
+                {
+                    lblWarning.Text       = "⚠ Server offline — your session continues locally";
+                    lblWarning.Visibility = Visibility.Visible;
+                }
+                else if (lblWarning.Text.StartsWith("⚠ Server offline"))
+                {
+                    // Server came back — clear the offline banner (let the timer
+                    // reinstate the low-time warning if needed).
+                    lblWarning.Visibility = Visibility.Collapsed;
+                }
+            }
+
+            // Reconnect detected: re-register and re-subscribe so WCF callbacks
+            // (admin termination, time warnings) resume for the running session.
+            bool justReconnected = connected && !_prevConnected;
+            if (justReconnected && _svc != null)
+            {
+                try
+                {
+                    string machine = ConfigurationManager.AppSettings["ClientMachineName"]
+                                     ?? Environment.MachineName;
+                    _svc.RegisterClient(_clientCode, machine, GetLocalIp(), GetMac());
+                    _svc.SubscribeForNotifications(_clientCode);
+                    _svc.UpdateClientStatus(_clientCode, _sessionActive ? "InUse" : "Idle");
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine("[Reconnect] re-register failed: " + ex.Message);
+                }
+
+                // Retry a queued EndSession that failed while the server was down.
+                if (_pendingSessionEnd)
+                {
+                    try
+                    {
+                        _svc.EndSession(_pendingSessionId, _pendingSessionEndType);
+                        _pendingSessionEnd = false;
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine("[Reconnect] retry EndSession failed: " + ex.Message);
+                    }
+                }
+            }
+
+            _prevConnected = connected;
         }
 
         private void btnConnect_Click(object sender, RoutedEventArgs e)
@@ -775,9 +856,20 @@ namespace SessionClient
         /// <summary>Tells the server to finalize the session (fire-and-forget result).</summary>
         private void EndSessionOnServer(string type)
         {
-            try { _svc.EndSession(_sessionId, type); }
+            try
+            {
+                _svc.EndSession(_sessionId, type);
+                _pendingSessionEnd = false;  // success — clear any pending flag
+            }
             catch (Exception ex)
-            { System.Diagnostics.Debug.WriteLine("[EndSession] " + ex.Message); }
+            {
+                System.Diagnostics.Debug.WriteLine("[EndSession] " + ex.Message);
+                // Server unreachable — queue the call so UpdateConnectionStatus() retries
+                // as soon as the channel is restored (covers server power-cut scenario).
+                _pendingSessionEnd     = true;
+                _pendingSessionId      = _sessionId;
+                _pendingSessionEndType = type;
+            }
         }
 
         /// <summary>Returns how many full minutes were used and the PKR charge.</summary>
@@ -1113,11 +1205,73 @@ namespace SessionClient
             try
             {
                 foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
-                    if (nic.OperationalStatus == OperationalStatus.Up)
+                    if (nic.OperationalStatus == OperationalStatus.Up &&
+                        nic.NetworkInterfaceType != NetworkInterfaceType.Loopback)
                         return nic.GetPhysicalAddress().ToString();
             }
             catch { }
             return null;
+        }
+
+        /// <summary>
+        /// Returns the client code to use for this machine.
+        /// If App.config has a non-default value the admin set it intentionally — use it.
+        /// Otherwise auto-derive from MAC address so every fresh install gets a unique
+        /// code without any manual config step (NFR-12: 30-50 concurrent machines).
+        ///
+        /// NIC priority: Ethernet (wired) → WiFi → any other physical adapter.
+        /// This keeps the code stable across reboots on machines with multiple adapters,
+        /// because the OS does not guarantee NIC enumeration order.
+        /// </summary>
+        private static string ResolveClientCode()
+        {
+            string configured = ConfigurationManager.AppSettings["ClientCode"];
+            if (!string.IsNullOrWhiteSpace(configured) &&
+                !configured.Equals("CL001", StringComparison.OrdinalIgnoreCase))
+                return configured;   // admin override — honour it
+
+            // Try preferred NIC types in order: wired Ethernet first, then WiFi,
+            // then any remaining Up non-loopback adapter.
+            var preferred = new[]
+            {
+                NetworkInterfaceType.Ethernet,
+                NetworkInterfaceType.Wireless80211,
+                NetworkInterfaceType.GigabitEthernet,
+                NetworkInterfaceType.FastEthernetFx,
+                NetworkInterfaceType.FastEthernetT,
+            };
+
+            try
+            {
+                var nics = NetworkInterface.GetAllNetworkInterfaces()
+                    .Where(n => n.OperationalStatus == OperationalStatus.Up &&
+                                n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+                    .ToList();
+
+                // Walk preferred types in order.
+                foreach (var preferredType in preferred)
+                {
+                    var match = nics.FirstOrDefault(n => n.NetworkInterfaceType == preferredType);
+                    if (match != null)
+                    {
+                        string mac = match.GetPhysicalAddress().ToString();
+                        if (!string.IsNullOrEmpty(mac) && mac != "000000000000")
+                            return "CL-" + mac;
+                    }
+                }
+
+                // Fallback: any Up non-loopback adapter with a real MAC.
+                foreach (var nic in nics)
+                {
+                    string mac = nic.GetPhysicalAddress().ToString();
+                    if (!string.IsNullOrEmpty(mac) && mac != "000000000000")
+                        return "CL-" + mac;
+                }
+            }
+            catch { }
+
+            // Last resort: stable hash of machine name.
+            return "CL-" + Math.Abs(Environment.MachineName.GetHashCode()).ToString("X8");
         }
 
         private void OnKeyDown(object sender, KeyEventArgs e)

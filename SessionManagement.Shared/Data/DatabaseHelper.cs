@@ -745,6 +745,25 @@ namespace SessionManagement.Data
         }
 
         /// <summary>
+        /// Server restart: stamp LastSeenAt = NOW for all non-Offline machines so that
+        /// the OfflineDetectionScan (which runs 60 s after startup) does not immediately
+        /// mark all connected clients as stale and kill their active sessions.
+        /// </summary>
+        public void RefreshLastSeenForActiveMachines()
+        {
+            const string sql = @"
+                UPDATE dbo.tblClientMachine
+                SET    LastSeenAt = GETDATE()
+                WHERE  Status <> 'Offline'";
+            try
+            {
+                using (var c = Conn()) using (var cmd = new SqlCommand(sql, c))
+                { c.Open(); cmd.ExecuteNonQuery(); }
+            }
+            catch (Exception ex) { LogError("RefreshLastSeenForActiveMachines", ex); }
+        }
+
+        /// <summary>
         /// Heartbeat: touch LastSeenAt only — does NOT change Status.
         /// Returns false if no row found.
         /// </summary>
@@ -936,10 +955,14 @@ namespace SessionManagement.Data
                     cmd.Parameters.AddWithValue("@Type", type);
                     cmd.Parameters.AddWithValue("@Message", message);
                     cmd.Parameters.AddWithValue("@Source", source);
-                    cmd.Parameters.AddWithValue("@SessionId", (object)sessionId ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@UserId", (object)userId ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@ClientMachineId", (object)clientMachineId ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@AdminUserId", (object)adminUserId ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@SessionId",       (object)sessionId ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@UserId",          (object)userId ?? DBNull.Value);
+                    // Treat 0 as NULL — 0 is never a valid FK value and causes a constraint
+                    // violation when the machine hasn't registered yet (e.g. sp_RegisterClient failed).
+                    cmd.Parameters.AddWithValue("@ClientMachineId",
+                        clientMachineId.HasValue && clientMachineId.Value > 0
+                            ? (object)clientMachineId.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@AdminUserId",     (object)adminUserId ?? DBNull.Value);
                     c.Open();
                     cmd.ExecuteNonQuery();
                 }
