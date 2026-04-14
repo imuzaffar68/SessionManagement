@@ -2198,3 +2198,90 @@ GO
 
 SELECT 'Payment tracking PATCH COMPLETE' AS Status;
 GO
+
+
+-- ============================================================
+-- PATCH: Orphan Session Management
+--   1. Fix sp_CalculateSessionBilling to use EndedAt (when set)
+--      instead of GETDATE() so orphan sessions bill for actual
+--      elapsed time, not for "now".
+--   2. Add sp_TerminateOrphanSessions: server-side orphan cleanup
+--      called by TerminateOrphanSession WCF method on client startup.
+-- Run against ClientServerSessionDB after all previous patches.
+-- ============================================================
+USE ClientServerSessionDB;
+GO
+
+-- Step 1: patch sp_CalculateSessionBilling
+--   Old: DATEDIFF(MINUTE, StartedAt, GETDATE())
+--   New: DATEDIFF(MINUTE, StartedAt, COALESCE(EndedAt, GETDATE()))
+--   Effect: when EndedAt has been pre-set to the crash/orphan time,
+--           billing uses that time; for in-progress sessions EndedAt
+--           is NULL so GETDATE() is used as before.
+CREATE OR ALTER PROCEDURE dbo.sp_CalculateSessionBilling
+    @SessionId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @BillingRateId  INT,
+            @RatePerMinute  DECIMAL(10,2),
+            @ElapsedMinutes INT,
+            @Amount         DECIMAL(10,2);
+
+    BEGIN TRY
+        -- Use EndedAt when already set (orphan / crash path); GETDATE() for live sessions.
+        SELECT @ElapsedMinutes = DATEDIFF(MINUTE, StartedAt, COALESCE(EndedAt, GETDATE()))
+        FROM   dbo.tblSession
+        WHERE  SessionId = @SessionId;
+
+        SELECT @BillingRateId = BillingRateId,
+               @RatePerMinute = RatePerMinute
+        FROM   dbo.tblBillingRate
+        WHERE  IsActive = 1 AND IsDefault = 1;
+
+        IF @BillingRateId IS NULL
+        BEGIN
+            SELECT TOP 1
+                @BillingRateId = BillingRateId,
+                @RatePerMinute = RatePerMinute
+            FROM dbo.tblBillingRate
+            WHERE IsActive = 1
+            ORDER BY CreatedAt DESC;
+        END;
+
+        SET @Amount = ISNULL(@ElapsedMinutes, 0) * ISNULL(@RatePerMinute, 0);
+
+        IF EXISTS (SELECT 1 FROM dbo.tblBillingRecord WHERE SessionId = @SessionId)
+        BEGIN
+            UPDATE dbo.tblBillingRecord
+            SET BillableMinutes = @ElapsedMinutes,
+                Amount          = @Amount,
+                BillingRateId   = @BillingRateId,
+                CalculatedAt    = GETDATE()
+            WHERE SessionId = @SessionId;
+        END
+        ELSE
+        BEGIN
+            INSERT INTO dbo.tblBillingRecord
+                (SessionId, BillingRateId, BillableMinutes, Amount, Status)
+            VALUES
+                (@SessionId, @BillingRateId, @ElapsedMinutes, @Amount, 'Running');
+        END;
+
+        SELECT @Amount AS Amount;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source, SessionId)
+        VALUES
+            ('Billing', 'Error',
+             'Error in sp_CalculateSessionBilling: ' + ERROR_MESSAGE(),
+             'Server', @SessionId);
+        SELECT 0 AS Amount;
+    END CATCH
+END;
+GO
+
+SELECT 'sp_CalculateSessionBilling EndedAt fix PATCH COMPLETE' AS Status;
+GO

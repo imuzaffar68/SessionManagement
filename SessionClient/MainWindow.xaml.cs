@@ -25,6 +25,7 @@ namespace SessionClient
         #region State Fields
 
         private DispatcherTimer _timer;
+        private DispatcherTimer _heartbeatTimer;
         private TimeSpan _remaining;
         private TimeSpan _total;
 
@@ -213,9 +214,20 @@ namespace SessionClient
 
                 string machine = ConfigurationManager.AppSettings["ClientMachineName"]
                                  ?? Environment.MachineName;
+                // Terminate any orphan session from a previous crash BEFORE calling
+                // RegisterClient(), because RegisterClient() overwrites LastSeenAt with
+                // GETDATE() — losing the pre-crash heartbeat time we use for billing.
+                _svc.TerminateOrphanSession(_clientCode);
+
                 _svc.RegisterClient(_clientCode, machine, GetLocalIp(), GetMac());
                 _svc.SubscribeForNotifications(_clientCode);
                 _svc.UpdateClientStatus(_clientCode, "Idle");
+
+                // Send a heartbeat every 30 s so server can detect crashes/offline.
+                _heartbeatTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+                _heartbeatTimer.Tick += (s, ea) => _svc?.Heartbeat(_clientCode);
+                _heartbeatTimer.Start();
+
                 lblLoginStatus.Text = "Ready — please sign in.";
 
                 _cam = new WebcamHelper();
@@ -1137,6 +1149,7 @@ namespace SessionClient
             UninstallKeyboardHook();
             StopDetection();
             CloseFloatingTimer();
+            _heartbeatTimer?.Stop();
             try
             {
                 if (_svc?.IsConnected == true)

@@ -339,6 +339,118 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("GetActiveSessions", ex); return new DataTable(); }
         }
 
+        /// <summary>
+        /// Returns all active sessions for a given client machine.
+        /// Used by the offline detection scan to auto-terminate orphaned sessions.
+        /// </summary>
+        public DataTable GetActiveSessionsByMachine(int clientMachineId)
+        {
+            const string sql = @"
+                SELECT SessionId FROM dbo.tblSession
+                WHERE  ClientMachineId = @MachineId AND Status = 'Active'";
+            try
+            {
+                using (var c = Conn()) using (var cmd = new SqlCommand(sql, c))
+                {
+                    cmd.Parameters.AddWithValue("@MachineId", clientMachineId);
+                    c.Open();
+                    var dt = new DataTable();
+                    new SqlDataAdapter(cmd).Fill(dt);
+                    return dt;
+                }
+            }
+            catch (Exception ex) { LogError("GetActiveSessionsByMachine", ex); return new DataTable(); }
+        }
+
+        /// <summary>
+        /// Returns the LastSeenAt timestamp for a client machine, or null if never seen.
+        /// Called before RegisterClient (which resets LastSeenAt) so the value still
+        /// reflects the last heartbeat before a crash.
+        /// </summary>
+        public DateTime? GetClientLastSeen(string clientCode)
+        {
+            const string sql = @"
+                SELECT LastSeenAt FROM dbo.tblClientMachine WHERE ClientCode = @Code";
+            try
+            {
+                using (var c = Conn()) using (var cmd = new SqlCommand(sql, c))
+                {
+                    cmd.Parameters.AddWithValue("@Code", clientCode);
+                    c.Open();
+                    object val = cmd.ExecuteScalar();
+                    return (val == null || val == DBNull.Value) ? (DateTime?)null : Convert.ToDateTime(val);
+                }
+            }
+            catch (Exception ex) { LogError("GetClientLastSeen", ex); return null; }
+        }
+
+        /// <summary>
+        /// Terminates all Active sessions for a machine as 'OrphanTerminated', setting
+        /// EndedAt to <paramref name="actualEndTime"/> (the last known heartbeat time) so
+        /// billing reflects actual elapsed time, not "time of cleanup".
+        /// Each session is ended + billed atomically.  Returns the number of sessions terminated.
+        /// </summary>
+        public int TerminateOrphanSessionsForMachine(string clientCode, DateTime? actualEndTime)
+        {
+            int machineId = GetClientMachineIdByCode(clientCode);
+            if (machineId == 0) return 0;
+
+            DataTable active = GetActiveSessionsByMachine(machineId);
+            if (active.Rows.Count == 0) return 0;
+
+            DateTime endTime = actualEndTime ?? DateTime.Now;
+            int terminated = 0;
+
+            foreach (DataRow r in active.Rows)
+            {
+                int sessionId = Convert.ToInt32(r["SessionId"]);
+                try
+                {
+                    using (var c = Conn())
+                    {
+                        c.Open();
+                        using (var tx = c.BeginTransaction())
+                        {
+                            try
+                            {
+                                // End the session with the override end time so billing is accurate.
+                                const string endSql = @"
+                                    UPDATE dbo.tblSession
+                                    SET EndedAt               = @EndTime,
+                                        Status                = 'Terminated',
+                                        TerminationReason     = 'OrphanTerminated',
+                                        ActualDurationMinutes =
+                                            DATEDIFF(MINUTE, StartedAt, @EndTime)
+                                    WHERE SessionId = @SessionId
+                                      AND Status    = 'Active'";
+
+                                using (var cmd = new SqlCommand(endSql, c, tx))
+                                {
+                                    cmd.Parameters.AddWithValue("@EndTime",   endTime);
+                                    cmd.Parameters.AddWithValue("@SessionId", sessionId);
+                                    cmd.ExecuteNonQuery();
+                                }
+
+                                // Bill using EndedAt (sp_CalculateSessionBilling now uses
+                                // COALESCE(EndedAt, GETDATE()) after the SQL patch).
+                                ExecSP(c, tx, "sp_CalculateSessionBilling",
+                                    P("@SessionId", sessionId));
+                                ExecSP(c, tx, "sp_FinalizeSessionBilling",
+                                    P("@SessionId", sessionId));
+
+                                tx.Commit();
+                                terminated++;
+                            }
+                            catch { tx.Rollback(); throw; }
+                        }
+                    }
+                }
+                catch (Exception ex) { LogError("TerminateOrphanSessionsForMachine", ex); }
+            }
+
+            return terminated;
+        }
+
         // ═══════════════════════════════════════════════════════════
         //  UC-04 / UC-05 / UC-12  —  SESSION IMAGES
         // ═══════════════════════════════════════════════════════════
@@ -630,6 +742,57 @@ namespace SessionManagement.Data
                 }
             }
             catch (Exception ex) { LogError("UpdateClientMachineStatus", ex); return false; }
+        }
+
+        /// <summary>
+        /// Heartbeat: touch LastSeenAt only — does NOT change Status.
+        /// Returns false if no row found.
+        /// </summary>
+        public bool UpdateClientLastSeen(string clientCode)
+        {
+            const string sql = @"
+                UPDATE dbo.tblClientMachine
+                SET    LastSeenAt = GETDATE()
+                WHERE  ClientCode = @Code";
+            try
+            {
+                using (var c = Conn()) using (var cmd = new SqlCommand(sql, c))
+                {
+                    cmd.Parameters.AddWithValue("@Code", clientCode);
+                    c.Open();
+                    return cmd.ExecuteNonQuery() > 0;
+                }
+            }
+            catch (Exception ex) { LogError("UpdateClientLastSeen", ex); return false; }
+        }
+
+        /// <summary>
+        /// Offline detection scan: marks every non-Offline machine whose
+        /// LastSeenAt is older than <paramref name="thresholdSeconds"/> as 'Offline'.
+        /// Returns rows (ClientMachineId, ClientCode) for each machine just marked offline
+        /// so the caller can terminate active sessions and clean up subscriptions.
+        /// </summary>
+        public DataTable MarkStaleClientsOffline(int thresholdSeconds)
+        {
+            const string sql = @"
+                UPDATE dbo.tblClientMachine
+                SET    Status = 'Offline'
+                OUTPUT INSERTED.ClientMachineId, INSERTED.ClientCode
+                WHERE  Status <> 'Offline'
+                AND    LastSeenAt IS NOT NULL
+                AND    LastSeenAt < DATEADD(SECOND, -@Threshold, GETDATE())";
+            try
+            {
+                using (var c = Conn()) using (var cmd = new SqlCommand(sql, c))
+                {
+                    cmd.Parameters.AddWithValue("@Threshold", thresholdSeconds);
+                    c.Open();
+                    var dt = new DataTable();
+                    new SqlDataAdapter(cmd).Fill(dt);
+                    return dt;
+                }
+            }
+            catch (Exception ex) { LogError("MarkStaleClientsOffline", ex); return new DataTable(); }
         }
 
         /// <summary>UC-11: all client machines + current session user (if any).</summary>

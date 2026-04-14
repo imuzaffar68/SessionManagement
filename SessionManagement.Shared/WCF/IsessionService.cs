@@ -174,6 +174,28 @@ namespace SessionManagement.WCF
 
         [OperationContract]
         void UnsubscribeFromNotifications(string clientCode);
+
+        // ── Heartbeat ─────────────────────────────────────────────
+
+        /// <summary>
+        /// Client calls this every 30 s to prove it is alive.
+        /// Server stamps tblClientMachine.LastSeenAt = GETDATE().
+        /// A background scan marks machines Offline if not heard from in 90 s.
+        /// </summary>
+        [OperationContract]
+        void Heartbeat(string clientCode);
+
+        // ── Orphan Session Management ──────────────────────────────
+
+        /// <summary>
+        /// Called by the client at startup BEFORE RegisterClient().
+        /// Ends any Active session left on this machine from a previous
+        /// crash or power-cut, billing for actual elapsed time using
+        /// tblClientMachine.LastSeenAt as the effective session-end proxy.
+        /// Returns the number of orphan sessions terminated (0 = clean state).
+        /// </summary>
+        [OperationContract]
+        int TerminateOrphanSession(string clientCode);
     }
 
     /// <summary>

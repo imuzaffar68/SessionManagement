@@ -437,6 +437,20 @@ namespace SessionManagement.Client
             catch (Exception ex) { Log($"Unsubscribe: {ex.Message}"); }
         }
 
+        public void Heartbeat(string clientCode)
+        {
+            if (!EnsureConnection()) return;
+            try { _proxy.Heartbeat(clientCode); }
+            catch (Exception ex) { Log($"Heartbeat: {ex.Message}"); }
+        }
+
+        public int TerminateOrphanSession(string clientCode)
+        {
+            if (!EnsureConnection()) return 0;
+            try { return _proxy.TerminateOrphanSession(clientCode); }
+            catch (Exception ex) { Log($"TerminateOrphanSession: {ex.Message}"); return 0; }
+        }
+
         // ─────────────────────────────────────────────────────────
         //  IDisposable
         // ─────────────────────────────────────────────────────────

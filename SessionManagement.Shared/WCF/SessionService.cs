@@ -31,6 +31,9 @@ namespace SessionManagement.WCF
         // ── server-side session expiry (every 30 s) ───────────────
         private readonly Timer _expiryTimer;
 
+        // ── server-side offline detection (every 60 s) ────────────
+        private readonly Timer _offlineTimer;
+
         // ── image storage path ────────────────────────────────────
         private readonly string _imgPath;
 
@@ -43,6 +46,9 @@ namespace SessionManagement.WCF
 
             _expiryTimer = new Timer(ServerExpiryScan, null,
                 TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+
+            _offlineTimer = new Timer(OfflineDetectionScan, null,
+                TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
 
             _db.WriteSystemLog(null, null, null, null,
                 "System", "ServiceStart", "SessionService started", "Server");
@@ -651,6 +657,104 @@ namespace SessionManagement.WCF
         }
 
         // ═══════════════════════════════════════════════════════════
+        //  HEARTBEAT  (FR-HB: liveness signalling)
+        // ═══════════════════════════════════════════════════════════
+
+        public void Heartbeat(string clientCode)
+        {
+            try { _db.UpdateClientLastSeen(clientCode); }
+            catch { /* best-effort; must not throw on the client */ }
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        //  ORPHAN SESSION MANAGEMENT
+        //  Called at client startup (before RegisterClient) so that
+        //  LastSeenAt in the DB still holds the pre-crash heartbeat time.
+        // ═══════════════════════════════════════════════════════════
+
+        public int TerminateOrphanSession(string clientCode)
+        {
+            try
+            {
+                // LastSeenAt is read NOW, before the client calls RegisterClient()
+                // which would overwrite it with the restart time.
+                // This gives us the best available proxy for when the machine crashed.
+                DateTime? lastSeen = _db.GetClientLastSeen(clientCode);
+
+                int count = _db.TerminateOrphanSessionsForMachine(clientCode, lastSeen);
+
+                if (count > 0)
+                {
+                    _db.WriteSystemLog(null, null, null, null,
+                        "Session", "OrphanTerminated",
+                        $"{count} orphan session(s) terminated for {clientCode} " +
+                        $"(effective end: {lastSeen?.ToString("HH:mm:ss") ?? "now"})",
+                        "Server");
+
+                    ThreadPool.QueueUserWorkItem(_ =>
+                        Broadcast(cb => cb.OnServerMessage(
+                            $"Orphan cleanup: {count} session(s) terminated on {clientCode}. Refresh dashboard.")));
+                }
+
+                return count;
+            }
+            catch (Exception ex)
+            {
+                _db.LogSystemEvent(null, null, null, "OrphanTerminateErr", ex.Message, "Error");
+                return 0;
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        //  BACKGROUND: server-side offline detection (every 60 s)
+        //  Any machine with LastSeenAt < NOW-90s that is not 'Offline'
+        //  is marked Offline and its active session is auto-terminated.
+        // ═══════════════════════════════════════════════════════════
+
+        private void OfflineDetectionScan(object state)
+        {
+            try
+            {
+                System.Data.DataTable stale = _db.MarkStaleClientsOffline(thresholdSeconds: 90);
+                if (stale.Rows.Count == 0) return;
+
+                foreach (System.Data.DataRow r in stale.Rows)
+                {
+                    int    machineId  = Convert.ToInt32(r["ClientMachineId"]);
+                    string clientCode = r["ClientCode"].ToString();
+
+                    // remove dead WCF callback channel if still registered
+                    ISessionServiceCallback removed;
+                    _subs.TryRemove(clientCode, out removed);
+
+                    // auto-terminate any active session on this machine
+                    System.Data.DataTable activeSessions = _db.GetActiveSessionsByMachine(machineId);
+                    foreach (System.Data.DataRow sr in activeSessions.Rows)
+                    {
+                        int sessionId = Convert.ToInt32(sr["SessionId"]);
+                        _db.EndSession(sessionId, "Crash");
+                        _db.WriteSystemLog(sessionId, null, machineId, null,
+                            "Session", "CrashTermination",
+                            $"Session {sessionId} auto-terminated: machine {clientCode} went offline",
+                            "Server");
+                    }
+
+                    _db.WriteSystemLog(null, null, machineId, null,
+                        "System", "MachineOffline",
+                        $"Machine {clientCode} marked Offline — missed heartbeat", "Server");
+                }
+
+                ThreadPool.QueueUserWorkItem(__ =>
+                    Broadcast(cb => cb.OnServerMessage(
+                        $"{stale.Rows.Count} machine(s) went offline. Refresh client list.")));
+            }
+            catch (Exception ex)
+            {
+                _db.LogSystemEvent(null, null, null, "OfflineDetectionErr", ex.Message, "Error");
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════
         //  BACKGROUND: server-side auto-expiry  (FR-09 / NFR-03)
         // ═══════════════════════════════════════════════════════════
 
@@ -1173,27 +1277,38 @@ namespace SessionManagement.WCF
         private static AuthenticationResponse Fail(string msg)
             => new AuthenticationResponse { IsAuthenticated = false, ErrorMessage = msg };
 
-        /// <summary>Push to ONE subscriber; remove on dead channel.</summary>
-        private static void Notify(string code, Action<ISessionServiceCallback> act)
+        /// <summary>Push to ONE subscriber; remove and mark Offline on dead channel.</summary>
+        private void Notify(string code, Action<ISessionServiceCallback> act)
         {
             if (code == null) return;
             if (_subs.TryGetValue(code, out var cb))
                 try { act(cb); }
-                catch { _subs.TryRemove(code, out _); }
+                catch (CommunicationException)
+                {
+                    _subs.TryRemove(code, out _);
+                    try { _db.UpdateClientMachineStatus(_db.GetClientMachineIdByCode(code), "Offline"); }
+                    catch { /* best-effort */ }
+                }
         }
 
-        /// <summary>Push to ALL subscribers; prune dead channels.</summary>
-        private static void Broadcast(Action<ISessionServiceCallback> act)
+        /// <summary>Push to ALL subscribers; prune dead channels and mark them Offline.</summary>
+        private void Broadcast(Action<ISessionServiceCallback> act)
         {
             foreach (var key in _subs.Keys.ToList())
                 if (_subs.TryGetValue(key, out var cb))
                     try { act(cb); }
-                    catch { _subs.TryRemove(key, out _); }
+                    catch (CommunicationException)
+                    {
+                        _subs.TryRemove(key, out _);
+                        try { _db.UpdateClientMachineStatus(_db.GetClientMachineIdByCode(key), "Offline"); }
+                        catch { /* best-effort */ }
+                    }
         }
 
         public void Dispose()
         {
             _expiryTimer?.Dispose();
+            _offlineTimer?.Dispose();
             _db.WriteSystemLog(null, null, null, null,
                 "System", "ServiceStop", "SessionService stopped", "Server");
         }
