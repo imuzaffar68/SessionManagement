@@ -686,6 +686,8 @@ BEGIN
         VALUES
             (@ActivityTypeId, @SessionId, @ClientMachineId, @UserId, GETDATE(), @Severity, 'New', @Details);
 
+        DECLARE @AlertId INT = SCOPE_IDENTITY();
+
         INSERT INTO dbo.tblSystemLog
             (Category, Type, Message, Source, SessionId, UserId, ClientMachineId)
         VALUES
@@ -693,7 +695,7 @@ BEGIN
              'Security Alert: ' + @ActivityTypeName + ' - ' + @Details,
              'Server', @SessionId, @UserId, @ClientMachineId);
 
-        SELECT 1 AS Result;
+        SELECT @AlertId AS AlertId;   -- returns inserted AlertId (used to set IsNotifiedToAdmin)
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog
@@ -701,7 +703,7 @@ BEGIN
         VALUES
             ('System', 'Error', 'Error in sp_LogSecurityAlert: ' + ERROR_MESSAGE(), 'Server');
 
-        SELECT 0 AS Result;
+        SELECT -1 AS AlertId;
     END CATCH
 END;
 GO

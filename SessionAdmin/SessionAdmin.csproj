@@ -83,6 +83,19 @@
     <Reference Include="WindowsBase" />
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
+    <!-- WinRT metadata — Windows-native toast notifications -->
+    <Reference Include="Windows.UI">
+      <HintPath>C:\Windows\System32\WinMetadata\Windows.UI.winmd</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Windows.Data">
+      <HintPath>C:\Windows\System32\WinMetadata\Windows.Data.winmd</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Windows.Foundation">
+      <HintPath>C:\Windows\System32\WinMetadata\Windows.Foundation.winmd</HintPath>
+      <Private>False</Private>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml">

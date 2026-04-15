@@ -846,9 +846,10 @@ namespace SessionManagement.Data
 
         /// <summary>
         /// Calls sp_LogSecurityAlert → inserts tblAlert + tblSystemLog.
+        /// Returns the new AlertId on success, -1 on failure.
         /// SEQ-16/17: alert generated, persisted, admin notified.
         /// </summary>
-        public bool InsertSecurityAlert(string activityTypeName, int? sessionId,
+        public int InsertSecurityAlert(string activityTypeName, int? sessionId,
             int? clientMachineId, int? userId, string details, string severity)
         {
             try
@@ -864,10 +865,33 @@ namespace SessionManagement.Data
                     cmd.Parameters.AddWithValue("@Details", details);
                     cmd.Parameters.AddWithValue("@Severity", severity);
                     c.Open();
-                    return Convert.ToInt32(cmd.ExecuteScalar()) == 1;
+                    var scalar = cmd.ExecuteScalar();
+                    int id = (scalar != null && scalar != DBNull.Value) ? Convert.ToInt32(scalar) : -1;
+                    return id > 0 ? id : -1;
                 }
             }
-            catch (Exception ex) { LogError("InsertSecurityAlert", ex); return false; }
+            catch (Exception ex) { LogError("InsertSecurityAlert", ex); return -1; }
+        }
+
+        /// <summary>
+        /// Marks tblAlert.IsNotifiedToAdmin = 1 after the WCF broadcast was sent.
+        /// </summary>
+        public bool MarkAlertNotifiedToAdmin(int alertId)
+        {
+            const string sql = @"
+                UPDATE dbo.tblAlert
+                SET    IsNotifiedToAdmin = 1
+                WHERE  AlertId = @AlertId";
+            try
+            {
+                using (var c = Conn()) using (var cmd = new SqlCommand(sql, c))
+                {
+                    cmd.Parameters.AddWithValue("@AlertId", alertId);
+                    c.Open();
+                    return cmd.ExecuteNonQuery() > 0;
+                }
+            }
+            catch (Exception ex) { LogError("MarkAlertNotifiedToAdmin", ex); return false; }
         }
 
         /// <summary>UC-17: all unacknowledged alerts with ActivityType name.</summary>

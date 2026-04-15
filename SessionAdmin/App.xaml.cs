@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using SessionManagement.UI;
 
 namespace SessionAdmin
 {
@@ -8,6 +9,7 @@ namespace SessionAdmin
     {
         private void OnStartup(object sender, StartupEventArgs e)
         {
+            ToastHelper.EnsureRegistered(ToastHelper.AdminAppId, "NetCafé Session Admin");
             // Dark calendar pop-up styling for every DatePicker in the app.
             EventManager.RegisterClassHandler(
                 typeof(DatePicker),

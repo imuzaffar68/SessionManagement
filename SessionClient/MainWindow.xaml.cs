@@ -355,6 +355,13 @@ namespace SessionClient
                 {
                     lblWarning.Text       = "⚠ Server offline — your session continues locally";
                     lblWarning.Visibility = Visibility.Visible;
+
+                    // OS toast — only on transition to offline, not every poll cycle
+                    if (_prevConnected)
+                        SessionManagement.UI.ToastHelper.Show(
+                            SessionManagement.UI.ToastHelper.ClientAppId,
+                            "Server Offline",
+                            "Connection lost. Your session timer continues running locally.");
                 }
                 else if (lblWarning.Text.StartsWith("⚠ Server offline"))
                 {
@@ -967,6 +974,12 @@ namespace SessionClient
             {
                 if (!_sessionActive) return;  // already handled
 
+                // OS toast so the user sees the alert regardless of window state
+                SessionManagement.UI.ToastHelper.Show(
+                    SessionManagement.UI.ToastHelper.ClientAppId,
+                    "Session Terminated",
+                    "Your session was ended by the administrator.");
+
                 _timer.Stop();
                 StopDetection();
 
@@ -995,6 +1008,13 @@ namespace SessionClient
             Dispatcher.BeginInvoke(new Action(() =>
             {
                 _remaining = TimeSpan.FromMinutes(e.RemainingMinutes);
+
+                // OS toast — visible even if minimised or floating timer is showing
+                SessionManagement.UI.ToastHelper.Show(
+                    SessionManagement.UI.ToastHelper.ClientAppId,
+                    "Session Time Warning",
+                    $"Only {e.RemainingMinutes} minute(s) remaining in your session.");
+
                 if (WindowState == WindowState.Minimized) { WindowState = WindowState.Normal; Activate(); }
                 AppDialog.ShowWarning($"Only {e.RemainingMinutes} minute(s) remaining!", "Time Warning");
             }));

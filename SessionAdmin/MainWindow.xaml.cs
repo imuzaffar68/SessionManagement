@@ -1236,14 +1236,49 @@ namespace SessionAdmin
                 try
                 {
                     string msg = e.Message ?? "";
-                    if (msg.IndexOf("ALERT", StringComparison.OrdinalIgnoreCase) >= 0)
+                    if (msg.StartsWith("SESSION_STARTED:"))
+                    {
+                        string info = msg.Substring("SESSION_STARTED:".Length);
+                        LoadActiveSessions();
+                        UpdateKPIs();
+                        if (_currentPage == "dashboard") UpdateKanban();
+                        SessionManagement.UI.ToastHelper.Show(
+                            SessionManagement.UI.ToastHelper.AdminAppId,
+                            "Session Started",
+                            info);
+                    }
+                    else if (msg.StartsWith("SESSION_ENDED:"))
+                    {
+                        string info = msg.Substring("SESSION_ENDED:".Length);
+                        LoadActiveSessions();
+                        UpdateKPIs();
+                        if (_currentPage == "dashboard") UpdateKanban();
+                        SessionManagement.UI.ToastHelper.Show(
+                            SessionManagement.UI.ToastHelper.AdminAppId,
+                            "Session Ended",
+                            info);
+                    }
+                    else if (msg.IndexOf("ALERT", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         LoadAlerts();
+                        UpdateKPIs();
                         lblLastUpdate.Text = $"Alert received {DateTime.Now:hh:mm:ss tt}";
                         ShowToast("New security alert received!");
+                        SessionManagement.UI.ToastHelper.Show(
+                            SessionManagement.UI.ToastHelper.AdminAppId,
+                            "Security Alert",
+                            "A new security alert was detected. Check the Alerts tab.");
                     }
-                    if (msg.IndexOf("session", StringComparison.OrdinalIgnoreCase) >= 0)
+                    else if (msg.IndexOf("offline", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
                         LoadActiveSessions();
+                        UpdateKPIs();
+                        if (_currentPage == "dashboard") UpdateKanban();
+                        SessionManagement.UI.ToastHelper.Show(
+                            SessionManagement.UI.ToastHelper.AdminAppId,
+                            "Client Machine Offline",
+                            "One or more client machines stopped responding. Check the Clients tab.");
+                    }
                 }
                 catch { }
             }));

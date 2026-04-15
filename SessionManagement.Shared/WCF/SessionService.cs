@@ -228,9 +228,9 @@ namespace SessionManagement.WCF
                 //    "Server");
 
                 // SEQ-02 step 5: push to all subscribed admins (FR-06 real-time monitor)
-                //System.Threading.ThreadPool.QueueUserWorkItem(_ =>
-                //    Broadcast(cb => cb.OnServerMessage(
-                //        $"New session: {clientCode} | {durationMinutes} min | SessionId={sessionId}")));
+                System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+                    Broadcast(cb => cb.OnServerMessage(
+                        $"SESSION_STARTED:{clientCode} — {durationMinutes} min (Session #{sessionId})")));
 
                 return new SessionStartResponse
                 {
@@ -281,6 +281,12 @@ namespace SessionManagement.WCF
                 // SEQ-14 step 5: push termination to the client machine (WCF callback)
                 System.Threading.ThreadPool.QueueUserWorkItem(_ =>
                     Notify(code, cb => cb.OnSessionTerminated(sessionId, reason)));
+
+                // step 6: notify all admins so dashboard refreshes in real-time
+                string username = row["Username"]?.ToString() ?? "?";
+                System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+                    Broadcast(cb => cb.OnServerMessage(
+                        $"SESSION_ENDED:{code} [{username}] — {reason} (Session #{sessionId})")));
 
                 return true;
             }
@@ -491,17 +497,20 @@ namespace SessionManagement.WCF
                 string code     = row?["ClientCode"]?.ToString();
 
                 // SEQ-16 step 3: sp_LogSecurityAlert (writes tblAlert + tblSystemLog)
-                bool ok = _db.InsertSecurityAlert(alertType,
+                int alertId = _db.InsertSecurityAlert(alertType,
                     sessionId == 0 ? (int?)null : sessionId,
                     machineId, userId, description, severity);
 
-                if (ok)
+                if (alertId > 0)
                 {
                     // SEQ-17 step 1: real-time push to all subscribed admins (FR-14)
                     Broadcast(cb => cb.OnServerMessage(
                         $"[{severity}] ALERT from {code ?? "??"}: {alertType} — {description}"));
+
+                    // Mark IsNotifiedToAdmin = 1 to record that broadcast was sent
+                    _db.MarkAlertNotifiedToAdmin(alertId);
                 }
-                return ok;
+                return alertId > 0;
             }
             catch (Exception ex)
             {
@@ -1296,17 +1305,23 @@ namespace SessionManagement.WCF
                 }
         }
 
-        /// <summary>Push to ALL subscribers; prune dead channels and mark them Offline.</summary>
+        /// <summary>
+        /// Push to admin subscribers only (keys starting with "ADMIN").
+        /// Client machines are always notified via Notify(code, ...) — never via Broadcast.
+        /// Keeping Broadcast admin-only prevents a deadlock where a client's duplex channel
+        /// is blocked waiting for a service-call reply while the server simultaneously tries
+        /// to push a callback on that same channel.
+        /// </summary>
         private void Broadcast(Action<ISessionServiceCallback> act)
         {
-            foreach (var key in _subs.Keys.ToList())
+            foreach (var key in _subs.Keys
+                                     .Where(k => k.StartsWith("ADMIN", StringComparison.OrdinalIgnoreCase))
+                                     .ToList())
                 if (_subs.TryGetValue(key, out var cb))
                     try { act(cb); }
                     catch (CommunicationException)
                     {
                         _subs.TryRemove(key, out _);
-                        try { _db.UpdateClientMachineStatus(_db.GetClientMachineIdByCode(key), "Offline"); }
-                        catch { /* best-effort */ }
                     }
         }
 

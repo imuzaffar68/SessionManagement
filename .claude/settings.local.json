@@ -34,7 +34,11 @@
       "Bash(where py:*)",
       "Read(//c/Users/Muzaffar Iqbal/Downloads/Project Data//**)",
       "Bash(head -1568 \"C:/Users/Muzaffar Iqbal/source/repos/imuzaffar68/SessionManagement/SessionAdmin/MainWindow.xaml.cs\")",
-      "Bash(cp /tmp/mw_clean.cs \"C:/Users/Muzaffar Iqbal/source/repos/imuzaffar68/SessionManagement/SessionAdmin/MainWindow.xaml.cs\")"
+      "Bash(cp /tmp/mw_clean.cs \"C:/Users/Muzaffar Iqbal/source/repos/imuzaffar68/SessionManagement/SessionAdmin/MainWindow.xaml.cs\")",
+      "Bash(where nuget:*)",
+      "Read(//c/Program Files \\(x86\\)/Windows Kits/10/UnionMetadata\" 2>/dev/**)",
+      "Read(//c/Program Files \\(x86\\)/Windows Kits//**)",
+      "Read(//c/Program Files/**)"
     ]
   }
 }
