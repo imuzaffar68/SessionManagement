@@ -1,7 +1,4 @@
 using System;
-using System.Configuration;
-using System.Net;
-using System.Net.NetworkInformation;
 using System.Threading.Tasks;
 using System.Windows;
 using SessionManagement.Client;
@@ -32,9 +29,6 @@ namespace SessionClient
             bool connected           = false;
             Exception error          = null;
 
-            string clientCode = ConfigurationManager.AppSettings["ClientCode"]        ?? "CL001";
-            string machine    = ConfigurationManager.AppSettings["ClientMachineName"] ?? Environment.MachineName;
-
             try
             {
                 svc       = new SessionServiceClient();
@@ -42,14 +36,6 @@ namespace SessionClient
 
                 if (connected)
                 {
-                    SetStatus("Registering client station…");
-                    await Task.Run(() =>
-                    {
-                        svc.RegisterClient(clientCode, machine, GetLocalIp(), GetMac());
-                        svc.SubscribeForNotifications(clientCode);
-                        svc.UpdateClientStatus(clientCode, "Idle");
-                    });
-
                     SetStatus("Initializing webcam…");
                     cam = new WebcamHelper();
                     await Task.Delay(200);
@@ -85,29 +71,5 @@ namespace SessionClient
 
         private async void btnRetry_Click(object sender, RoutedEventArgs e)
             => await ConnectAsync();
-
-        private static string GetLocalIp()
-        {
-            try
-            {
-                foreach (var ip in Dns.GetHostEntry(Dns.GetHostName()).AddressList)
-                    if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
-                        return ip.ToString();
-            }
-            catch { }
-            return "127.0.0.1";
-        }
-
-        private static string GetMac()
-        {
-            try
-            {
-                foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
-                    if (nic.OperationalStatus == OperationalStatus.Up)
-                        return nic.GetPhysicalAddress().ToString();
-            }
-            catch { }
-            return null;
-        }
     }
 }

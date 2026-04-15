@@ -119,6 +119,7 @@ CREATE TABLE dbo.tblClientMachine (
     Status            NVARCHAR(20) NOT NULL,
     LastSeenAt        DATETIME NOT NULL CONSTRAINT DF_tblClientMachine_LastSeenAt DEFAULT (GETDATE()),
     IsActive          BIT NOT NULL CONSTRAINT DF_tblClientMachine_IsActive DEFAULT (1),
+    MissedHeartbeats  INT NOT NULL CONSTRAINT DF_tblClientMachine_MissedHeartbeats DEFAULT (0),
     -- IPAddress has no unique constraint: DHCP reassignment and reinstalls
     -- can produce the same IP on a different machine. ClientCode (MAC-derived) is the unique key.
     CONSTRAINT UQ_tblClientMachine_ClientCode UNIQUE (ClientCode),
@@ -2380,4 +2381,22 @@ END;
 GO
 
 SELECT 'sp_RegisterClient patch COMPLETE' AS Status;
+GO
+
+-- ============================================================
+--  PATCH C: Add MissedHeartbeats column to tblClientMachine
+--  Supports heartbeat grace counter: machine is only marked
+--  Offline after 3 consecutive missed scans (~3 min), preventing
+--  false-positive offline detection under local dev load.
+-- ============================================================
+IF NOT EXISTS (
+    SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_NAME = 'tblClientMachine' AND COLUMN_NAME = 'MissedHeartbeats'
+)
+    ALTER TABLE dbo.tblClientMachine
+        ADD MissedHeartbeats INT NOT NULL
+            CONSTRAINT DF_tblClientMachine_MissedHeartbeats DEFAULT (0);
+GO
+
+SELECT 'PATCH C: MissedHeartbeats column added to tblClientMachine' AS Status;
 GO

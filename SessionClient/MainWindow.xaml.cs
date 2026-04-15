@@ -210,9 +210,35 @@ namespace SessionClient
             LockScreen();
             lblLoginStatus.Visibility = Visibility.Visible;
 
-            // Skip full init if splash already connected and registered.
+            // Splash already connected — finish registration on the correct _clientCode
+            // and start the heartbeat timer (which the splash path skips otherwise).
             if (_svc != null && _svc.IsConnected)
             {
+                try
+                {
+                    string machine = ConfigurationManager.AppSettings["ClientMachineName"]
+                                     ?? Environment.MachineName;
+                    _svc.TerminateOrphanSession(_clientCode);
+                    _svc.RegisterClient(_clientCode, machine, GetLocalIp(), GetMac());
+                    _svc.SubscribeForNotifications(_clientCode);
+                    _svc.UpdateClientStatus(_clientCode, "Idle");
+                }
+                catch (Exception ex)
+                {
+                    lblLoginStatus.Text = "Init error: " + ex.Message;
+                }
+
+                _heartbeatTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+                _heartbeatTimer.Tick += (s, ea) => _svc?.Heartbeat(_clientCode);
+                _heartbeatTimer.Start();
+
+                if (_cam == null)
+                {
+                    _cam = new WebcamHelper();
+                    _cam.CaptureError += (s2, ev) =>
+                        System.Diagnostics.Debug.WriteLine("[Cam] " + ev.ErrorMessage);
+                }
+
                 lblLoginStatus.Text = "Ready — please sign in.";
                 return;
             }
@@ -521,8 +547,11 @@ namespace SessionClient
                 {
                     if (!_cam.IsDeviceAvailable)
                     {
-                        _svc.LogSecurityAlert(0, _userId, "CameraUnavailable",
-                            "No webcam at login", "Low");
+                        // WCF proxy is NOT thread-safe — dispatch to UI thread
+                        int uid = _userId;
+                        Dispatcher.BeginInvoke(new Action(() =>
+                            _svc?.LogSecurityAlert(0, uid, "CameraUnavailable",
+                                "No webcam at login", "Low")));
                         return;
                     }
                     Bitmap img = _cam.CaptureImage();
@@ -530,8 +559,10 @@ namespace SessionClient
                     { retried = true; System.Threading.Thread.Sleep(500); goto TryCapture; }
                     if (img == null)
                     {
-                        _svc.LogSecurityAlert(0, _userId, "ImageCaptureFailed",
-                            "Webcam capture failed", "Low");
+                        int uid2 = _userId;
+                        Dispatcher.BeginInvoke(new Action(() =>
+                            _svc?.LogSecurityAlert(0, uid2, "ImageCaptureFailed",
+                                "Webcam capture failed", "Low")));
                         return;
                     }
                     _pendingImage = WebcamHelper.BitmapToBase64(img,
@@ -658,11 +689,14 @@ namespace SessionClient
                     int sid = _sessionId, uid = _userId;
                     string img = _pendingImage;
                     _pendingImage = null;
-                    System.Threading.Tasks.Task.Run(() =>
+                    // Use BeginInvoke so the upload runs on the UI thread — same thread
+                    // as the heartbeat DispatcherTimer — preventing concurrent _proxy access.
+                    // Localhost WCF upload is fast (< 500 ms) so no noticeable UI impact.
+                    Dispatcher.BeginInvoke(new Action(() =>
                     {
-                        try { _svc.UploadLoginImage(sid, uid, img); }
+                        try { _svc?.UploadLoginImage(sid, uid, img); }
                         catch { }
-                    });
+                    }));
                 }
 
                 _svc.UpdateClientStatus(_clientCode, "Active");
@@ -949,15 +983,20 @@ namespace SessionClient
 
         private void OnIllegalActivityDetected(object sender, SecurityAlertEventArgs e)
         {
-            System.Threading.ThreadPool.QueueUserWorkItem(delegate (object state)
+            // IMPORTANT: _svc/_proxy is NOT thread-safe for concurrent access.
+            // The detection timer fires on a thread-pool thread; all WCF proxy
+            // calls (including Heartbeat from DispatcherTimer) must run on the
+            // UI thread to avoid channel corruption.  BeginInvoke queues the
+            // call without blocking the detection timer thread.
+            Dispatcher.BeginInvoke(new Action(() =>
             {
                 try
                 {
-                    _svc.LogSecurityAlert(e.SessionId, e.UserId, e.AlertType,
+                    _svc?.LogSecurityAlert(e.SessionId, e.UserId, e.AlertType,
                         e.Description, e.Severity);
                 }
                 catch { }
-            });
+            }));
         }
 
         #endregion

@@ -503,12 +503,21 @@ namespace SessionManagement.WCF
 
                 if (alertId > 0)
                 {
-                    // SEQ-17 step 1: real-time push to all subscribed admins (FR-14)
-                    Broadcast(cb => cb.OnServerMessage(
-                        $"[{severity}] ALERT from {code ?? "??"}: {alertType} — {description}"));
-
-                    // Mark IsNotifiedToAdmin = 1 to record that broadcast was sent
+                    // Mark notified BEFORE the async broadcast so the DB is always
+                    // consistent even if the thread pool task is delayed.
                     _db.MarkAlertNotifiedToAdmin(alertId);
+
+                    // SEQ-17 step 1: real-time push to all subscribed admins (FR-14).
+                    // MUST be async (thread pool) — NOT synchronous.
+                    // LogSecurityAlert is invoked on the client's UI thread.  A
+                    // synchronous Broadcast here acquires the admin channel's TCP send
+                    // lock, which is also held by the admin's data-refresh WCF calls.
+                    // That lock contention blocks the server from returning this call,
+                    // which blocks the client UI thread, which starves the heartbeat
+                    // DispatcherTimer — causing false-positive offline detection.
+                    System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+                        Broadcast(cb => cb.OnServerMessage(
+                            $"[{severity}] ALERT from {code ?? "??"}: {alertType} — {description}")));
                 }
                 return alertId > 0;
             }
@@ -676,7 +685,34 @@ namespace SessionManagement.WCF
 
         public void Heartbeat(string clientCode)
         {
-            try { _db.UpdateClientLastSeen(clientCode); }
+            try
+            {
+                // Read status BEFORE updating — used for recovery detection below.
+                string previousStatus = _db.GetClientStatus(clientCode);
+
+                // Touch LastSeenAt and reset MissedHeartbeats counter.
+                _db.UpdateClientLastSeen(clientCode);
+
+                // Recovery path: if this heartbeat arrives after the machine was
+                // prematurely marked Offline (grace counter exhausted before the
+                // delayed heartbeat got through), restore it to Idle and notify admins.
+                if (string.Equals(previousStatus, "Offline", StringComparison.OrdinalIgnoreCase))
+                {
+                    int machineId = _db.GetClientMachineIdByCode(clientCode);
+                    if (machineId != 0)
+                        _db.UpdateClientMachineStatus(machineId, "Idle");
+
+                    _db.WriteSystemLog(null, null,
+                        machineId != 0 ? (int?)machineId : null, null,
+                        "System", "MachineOnline",
+                        $"Machine {clientCode} came back online — late heartbeat received after offline marking",
+                        "Server");
+
+                    ThreadPool.QueueUserWorkItem(_ =>
+                        Broadcast(cb => cb.OnServerMessage(
+                            $"MACHINE_ONLINE:{clientCode} — Machine is back online")));
+                }
+            }
             catch { /* best-effort; must not throw on the client */ }
         }
 

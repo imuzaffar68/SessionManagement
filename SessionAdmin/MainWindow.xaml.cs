@@ -1269,6 +1269,18 @@ namespace SessionAdmin
                             "Security Alert",
                             "A new security alert was detected. Check the Alerts tab.");
                     }
+                    else if (msg.StartsWith("MACHINE_ONLINE:"))
+                    {
+                        string info = msg.Substring("MACHINE_ONLINE:".Length);
+                        LoadActiveSessions();
+                        UpdateKPIs();
+                        if (_currentPage == "dashboard") UpdateKanban();
+                        ShowToast($"Machine back online: {info}");
+                        SessionManagement.UI.ToastHelper.Show(
+                            SessionManagement.UI.ToastHelper.AdminAppId,
+                            "Client Machine Online",
+                            $"{info}");
+                    }
                     else if (msg.IndexOf("offline", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         LoadActiveSessions();

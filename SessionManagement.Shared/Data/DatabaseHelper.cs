@@ -724,7 +724,7 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("UpdateClientMachineIsActive", ex); return false; }
         }
 
-        /// <summary>Update Status + LastSeenAt on a client machine row.</summary>
+/// <summary>Update Status + LastSeenAt on a client machine row.</summary>
         public bool UpdateClientMachineStatus(int clientMachineId, string status)
         {
             const string sql = @"
@@ -764,14 +764,15 @@ namespace SessionManagement.Data
         }
 
         /// <summary>
-        /// Heartbeat: touch LastSeenAt only — does NOT change Status.
+        /// Heartbeat: touch LastSeenAt and reset MissedHeartbeats to 0.
+        /// Does NOT change Status (status restoration is handled in SessionService.Heartbeat).
         /// Returns false if no row found.
         /// </summary>
         public bool UpdateClientLastSeen(string clientCode)
         {
             const string sql = @"
                 UPDATE dbo.tblClientMachine
-                SET    LastSeenAt = GETDATE()
+                SET    LastSeenAt = GETDATE(), MissedHeartbeats = 0
                 WHERE  ClientCode = @Code";
             try
             {
@@ -786,32 +787,71 @@ namespace SessionManagement.Data
         }
 
         /// <summary>
-        /// Offline detection scan: marks every non-Offline machine whose
-        /// LastSeenAt is older than <paramref name="thresholdSeconds"/> as 'Offline'.
+        /// Offline detection scan with grace counter.
+        /// Step A: increments MissedHeartbeats for every non-Offline machine whose
+        ///         LastSeenAt is older than <paramref name="thresholdSeconds"/>.
+        /// Step B: marks Offline (and resets counter) only machines whose
+        ///         MissedHeartbeats has reached <paramref name="graceCount"/>.
         /// Returns rows (ClientMachineId, ClientCode) for each machine just marked offline
         /// so the caller can terminate active sessions and clean up subscriptions.
+        /// Default graceCount=3 means a machine must miss 3 consecutive 60-second scans
+        /// (~3 minutes total) before being declared offline — prevents false positives
+        /// under local dev load where thread-pool contention can delay heartbeats.
         /// </summary>
-        public DataTable MarkStaleClientsOffline(int thresholdSeconds)
+        public DataTable MarkStaleClientsOffline(int thresholdSeconds, int graceCount = 3)
         {
-            const string sql = @"
+            // Step A: increment miss counter for stale-but-not-yet-offline machines
+            const string stepA = @"
                 UPDATE dbo.tblClientMachine
-                SET    Status = 'Offline'
+                SET    MissedHeartbeats = MissedHeartbeats + 1
+                WHERE  Status <> 'Offline'
+                  AND  LastSeenAt IS NOT NULL
+                  AND  LastSeenAt < DATEADD(SECOND, -@Threshold, GETDATE())";
+
+            // Step B: mark offline only those that have exhausted the grace window
+            const string stepB = @"
+                UPDATE dbo.tblClientMachine
+                SET    Status = 'Offline', MissedHeartbeats = 0
                 OUTPUT INSERTED.ClientMachineId, INSERTED.ClientCode
                 WHERE  Status <> 'Offline'
-                AND    LastSeenAt IS NOT NULL
-                AND    LastSeenAt < DATEADD(SECOND, -@Threshold, GETDATE())";
+                  AND  MissedHeartbeats >= @GraceCount";
+            try
+            {
+                using (var c = Conn())
+                {
+                    c.Open();
+                    using (var cmdA = new SqlCommand(stepA, c))
+                    {
+                        cmdA.Parameters.AddWithValue("@Threshold", thresholdSeconds);
+                        cmdA.ExecuteNonQuery();
+                    }
+                    using (var cmdB = new SqlCommand(stepB, c))
+                    {
+                        cmdB.Parameters.AddWithValue("@GraceCount", graceCount);
+                        var dt = new DataTable();
+                        new SqlDataAdapter(cmdB).Fill(dt);
+                        return dt;
+                    }
+                }
+            }
+            catch (Exception ex) { LogError("MarkStaleClientsOffline", ex); return new DataTable(); }
+        }
+
+        /// <summary>Returns the current Status of a client machine, or null if not found.</summary>
+        public string GetClientStatus(string clientCode)
+        {
+            const string sql = "SELECT Status FROM dbo.tblClientMachine WHERE ClientCode = @Code";
             try
             {
                 using (var c = Conn()) using (var cmd = new SqlCommand(sql, c))
                 {
-                    cmd.Parameters.AddWithValue("@Threshold", thresholdSeconds);
+                    cmd.Parameters.AddWithValue("@Code", clientCode);
                     c.Open();
-                    var dt = new DataTable();
-                    new SqlDataAdapter(cmd).Fill(dt);
-                    return dt;
+                    var r = cmd.ExecuteScalar();
+                    return r?.ToString();
                 }
             }
-            catch (Exception ex) { LogError("MarkStaleClientsOffline", ex); return new DataTable(); }
+            catch (Exception ex) { LogError("GetClientStatus", ex); return null; }
         }
 
         /// <summary>UC-11: all client machines + current session user (if any).</summary>

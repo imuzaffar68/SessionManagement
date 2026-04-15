@@ -368,13 +368,16 @@ namespace SessionManagement.Client
 
         public void OnServerMessage(string message)
         {
-            // Always marshal to UI thread if needed
+            // Use BeginInvoke (non-blocking / fire-and-forget onto the UI thread).
+            // Invoke (synchronous) would block this WCF callback thread while
+            // waiting for the UI thread — if the UI thread is itself blocked on
+            // an outgoing WCF call (e.g. Heartbeat), that produces a deadlock.
             if (System.Windows.Application.Current != null &&
                 !System.Windows.Application.Current.Dispatcher.CheckAccess())
             {
-                System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                    ServerMessage?.Invoke(this,
-                        new ServerMessageEventArgs { Message = message, Timestamp = DateTime.Now }));
+                System.Windows.Application.Current.Dispatcher.BeginInvoke(
+                    new Action(() => ServerMessage?.Invoke(this,
+                        new ServerMessageEventArgs { Message = message, Timestamp = DateTime.Now })));
             }
             else
             {
