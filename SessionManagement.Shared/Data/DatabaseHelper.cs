@@ -26,7 +26,11 @@ namespace SessionManagement.Data
         public bool TestConnection()
         {
             try { using (var c = Conn()) { c.Open(); return true; } }
-            catch { return false; }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DB.TestConnection] {ex.Message}");
+                return false;   // probe method — caller checks the bool, no throw needed
+            }
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -1437,7 +1441,12 @@ namespace SessionManagement.Data
             System.Diagnostics.Debug.WriteLine($"[DB.{method}] {ex.Message}");
             try { WriteSystemLog(null, null, null, null, "System", "DBError",
                 $"DB.{method}: {ex.Message}"); }
-            catch { /* swallow */ }
+            catch (Exception logEx)
+            {
+                // swallow intentionally — if the DB logger itself fails (e.g. DB is down)
+                // we must not throw from inside LogError or we mask the original exception
+                System.Diagnostics.Debug.WriteLine($"[DB.LogError] secondary log failure: {logEx.Message}");
+            }
         }
     }
 }

@@ -3,7 +3,6 @@ using System.Configuration;
 using System.ServiceModel;
 using System.ServiceModel.Description;
 using SessionManagement.WCF;
-using SessionManagement.Security;
 
 /// <summary>
 /// SessionServer — WCF service host.
@@ -25,30 +24,6 @@ class Program
         // ── Verify DB connection before opening WCF ───────────────
         try
         {
-            //var passwords = new[]
-            //{
-            //    new { Username = "admin", Password = "Admin@123456" },
-            //    new { Username = "user1", Password = "User1@123456" },
-            //    new { Username = "user2", Password = "User2@123456" },
-            //    new { Username = "user3", Password = "User3@123456" }
-            //};
-
-            //Console.WriteLine("Password Hash Generation for SessionManagement Database");
-            //Console.WriteLine("========================================================\n");
-
-            //foreach (var user in passwords)
-            //{
-            //    var hash = AuthenticationHelper.HashPassword(user.Password);
-            //    Console.WriteLine($"Username: {user.Username}");
-            //    Console.WriteLine($"Password: {user.Password}");
-            //    Console.WriteLine($"Hash: {hash}");
-            //    Console.WriteLine($"SQL: ('{user.Username}', '{hash}', ...)");
-            //    Console.WriteLine();
-            //}
-
-            //Console.WriteLine("\nCopy the hashes above and update the SQL seed data in SessionManagement.sql");
-            //Console.WriteLine("Press any key to exit...");
-            //Console.ReadKey();
             string cs = ConfigurationManager
                 .ConnectionStrings["SessionManagementDB"]?.ConnectionString
                 ?? throw new ConfigurationErrorsException(
@@ -73,14 +48,20 @@ class Program
         }
 
         // ── WCF Service Host ──────────────────────────────────────
-        var baseAddress = new Uri("net.tcp://localhost:8001/SessionService");
+        string listenHost = ConfigurationManager.AppSettings["ListenAddress"] ?? "localhost";
+        string listenPort = ConfigurationManager.AppSettings["ServerPort"]    ?? "8001";
+        var baseAddress = new Uri($"net.tcp://{listenHost}:{listenPort}/SessionService");
 
         using (var host = new ServiceHost(typeof(SessionService), baseAddress))
         {
             try
             {
                 // NetTcpBinding — required for duplex (callback) channels
+#if DEBUG
                 var binding = new NetTcpBinding(SecurityMode.None)
+#else
+                var binding = new NetTcpBinding(SecurityMode.Transport)
+#endif
                 {
                     MaxReceivedMessageSize = 20_971_520,  // 20 MB (for image payloads)
                     MaxBufferSize          = 20_971_520,
@@ -93,10 +74,13 @@ class Program
 
                 host.AddServiceEndpoint(typeof(ISessionService), binding, "");
 
-                // Enable detailed fault messages for development
                 var debug = host.Description.Behaviors.Find<ServiceDebugBehavior>()
                             ?? new ServiceDebugBehavior();
-                debug.IncludeExceptionDetailInFaults = true;
+#if DEBUG
+                debug.IncludeExceptionDetailInFaults = true;   // dev only — never expose in Release
+#else
+                debug.IncludeExceptionDetailInFaults = false;
+#endif
                 if (!host.Description.Behaviors.Contains(debug))
                     host.Description.Behaviors.Add(debug);
 
