@@ -43,6 +43,11 @@ namespace SessionManagement.Client
                 _factory = new DuplexChannelFactory<ISessionService>(
                     ctx, "SessionServiceEndpoint");
 
+                // Override address from AppSettings so changing ServerAddress/ServerPort
+                // in App.config is sufficient to point the admin app at a different server PC.
+                _factory.Endpoint.Address =
+                    new EndpointAddress(ServiceConfiguration.GetServiceAddress());
+
                 _proxy = _factory.CreateChannel();
                 ((IClientChannel)_proxy).Open();
 

@@ -43,6 +43,11 @@ namespace SessionManagement.Client
                 _factory = new DuplexChannelFactory<ISessionService>(
                     ctx, "SessionServiceEndpoint");
 
+                // Override address from AppSettings so changing ServerAddress/ServerPort
+                // in App.config is sufficient to point clients at a different server PC.
+                _factory.Endpoint.Address =
+                    new EndpointAddress(ServiceConfiguration.GetServiceAddress());
+
                 // Ensure callbacks do not marshal to UI thread
                 foreach (var op in _factory.Endpoint.Contract.Operations)
                 {

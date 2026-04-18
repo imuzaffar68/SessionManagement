@@ -38,7 +38,8 @@
       "Bash(where nuget:*)",
       "Read(//c/Program Files \\(x86\\)/Windows Kits/10/UnionMetadata\" 2>/dev/**)",
       "Read(//c/Program Files \\(x86\\)/Windows Kits//**)",
-      "Read(//c/Program Files/**)"
+      "Read(//c/Program Files/**)",
+      "Bash(grep \"\\\\.cs$\")"
     ]
   }
 }
