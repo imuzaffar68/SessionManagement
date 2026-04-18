@@ -59,6 +59,17 @@ namespace SessionManagement.WCF
                 "System", "ServiceStart", "SessionService started", "Server");
         }
 
+        // ─────────────────────────────────────────────────────────
+        //  Input validation helper
+        // ─────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Returns true when the string is non-null, non-whitespace, and within maxLen.
+        /// Keeps every service method's guard a one-liner.
+        /// </summary>
+        private static bool IsValidString(string value, int maxLen = 255)
+            => !string.IsNullOrWhiteSpace(value) && value.Length <= maxLen;
+
         // ═══════════════════════════════════════════════════════════
         //  UC-01 / UC-09  —  AUTHENTICATION
         //  SEQ-01: Client→Server→DB→Server→Client
@@ -67,6 +78,10 @@ namespace SessionManagement.WCF
         public AuthenticationResponse AuthenticateUser(
             string username, string password, string clientCode)
         {
+            if (!IsValidString(username) || !IsValidString(password) || !IsValidString(clientCode, 50))
+                return new AuthenticationResponse
+                { IsAuthenticated = false, ErrorMessage = "Invalid input." };
+
             // SEQ-01 step 1: resolve machine id (needed for LoginAttempt row)
             int machineId = _db.GetClientMachineIdByCode(clientCode);
             bool isAdminLogin = string.Equals(clientCode, "ADMIN", StringComparison.OrdinalIgnoreCase);
@@ -174,7 +189,7 @@ namespace SessionManagement.WCF
             catch (Exception ex)
             {
                 _db.WriteSystemLog(null, null, isAdminLogin ? (int?)null : machineId, null,
-                    "Auth", "LoginError", ex.Message, "Server");
+                    "Auth", ExceptionCategory(ex), $"AuthenticateUser: {ex.Message}", "Server");
                 return Fail("Authentication service error. Please try again.");
             }
         }
@@ -190,6 +205,10 @@ namespace SessionManagement.WCF
         public SessionStartResponse StartSession(
             int userId, string clientCode, int durationMinutes)
         {
+            if (userId <= 0 || !IsValidString(clientCode, 50) || durationMinutes <= 0 || durationMinutes > 1440)
+                return new SessionStartResponse
+                { Success = false, ErrorMessage = "Invalid input." };
+
             try
             {
                 int machineId = _db.GetClientMachineIdByCode(clientCode);
@@ -242,7 +261,8 @@ namespace SessionManagement.WCF
             }
             catch (Exception ex)
             {
-                _db.LogSystemEvent(null, userId, null, "SessionStartError", ex.Message, "Error");
+                _db.LogSystemEvent(null, userId, null, ExceptionCategory(ex),
+                    $"StartSession: {ex.Message}", "Error");
                 return new SessionStartResponse
                 { Success = false, ErrorMessage = "Session start failed. Please retry." };
             }
@@ -255,6 +275,9 @@ namespace SessionManagement.WCF
 
         public bool EndSession(int sessionId, string terminationType)
         {
+            if (sessionId <= 0 || !IsValidString(terminationType, 50))
+                return false;
+
             try
             {
                 DataRow row = _db.GetSessionById(sessionId);
@@ -292,7 +315,8 @@ namespace SessionManagement.WCF
             }
             catch (Exception ex)
             {
-                _db.LogSystemEvent(sessionId, null, null, "SessionEndError", ex.Message, "Error");
+                _db.LogSystemEvent(sessionId, null, null, ExceptionCategory(ex),
+                    $"EndSession: {ex.Message}", "Error");
                 return false;
             }
         }
@@ -399,6 +423,9 @@ namespace SessionManagement.WCF
         public bool RegisterClient(string clientCode, string machineName,
             string ipAddress, string macAddress)
         {
+            if (!IsValidString(clientCode, 50) || !IsValidString(machineName))
+                return false;
+
             try
             {
                 int id = _db.RegisterOrUpdateClient(clientCode, machineName,
@@ -487,6 +514,9 @@ namespace SessionManagement.WCF
         public bool LogSecurityAlert(int sessionId, int userId,
             string alertType, string description, string severity)
         {
+            if (!IsValidString(alertType, 100) || !IsValidString(description) || !IsValidString(severity, 20))
+                return false;
+
             try
             {
                 // SEQ-16 step 2: look up machine for complete alert row
@@ -1448,6 +1478,35 @@ namespace SessionManagement.WCF
                     "Billing", "Error", $"SetDefaultBillingRate: {ex.Message}", "Server");
                 return false;
             }
+        }
+
+        // ─────────────────────────────────────────────────────────
+        //  Exception categorization helper  (H-6)
+        // ─────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Classifies an exception so log records distinguish infrastructure
+        /// failures (DB down, network) from code bugs (null ref, argument).
+        /// Use the returned tag as the Type field in WriteSystemLog calls.
+        ///
+        ///   SqlException        → "DBError"       (infra — DB/SP failure)
+        ///   TimeoutException    → "Timeout"        (infra — slow query / network)
+        ///   NullReferenceEx     → "CodeBug"        (bug — unexpected null)
+        ///   ArgumentEx          → "CodeBug"        (bug — bad internal call)
+        ///   anything else       → "ServiceError"   (unknown — investigate)
+        ///
+        /// Pattern: replace the generic catch body with
+        ///   string tag = ExceptionCategory(ex);
+        ///   _db.WriteSystemLog(..., "System", tag, $"Method: {ex.Message}", "Server");
+        /// </summary>
+        private static string ExceptionCategory(Exception ex)
+        {
+            if (ex is System.Data.SqlClient.SqlException)    return "DBError";
+            if (ex is TimeoutException)                      return "Timeout";
+            if (ex is NullReferenceException
+             || ex is ArgumentException
+             || ex is InvalidOperationException)             return "CodeBug";
+            return "ServiceError";
         }
     }
 }
