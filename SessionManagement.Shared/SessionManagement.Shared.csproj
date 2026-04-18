@@ -108,6 +108,7 @@
     <Compile Include="Security\IllegalActivityDetectionService.cs" />
     <Compile Include="WCF\IsessionService.cs" />
     <Compile Include="WCF\SessionService.cs" />
+    <Compile Include="WCF\ServiceConstants.cs" />
     <Compile Include="WCF\SessionServiceClientBase.cs" />
   </ItemGroup>
   <ItemGroup>

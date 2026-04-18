@@ -403,7 +403,7 @@ namespace SessionAdmin
                         imgAdminAvatar.Visibility = Visibility.Visible;
                         lblAdminInitial.Visibility = Visibility.Collapsed;
                     }
-                    catch { /* fall through to initial */ }
+                    catch { /* profile picture load failed (corrupt/missing file) — show initial instead */ }
                 }
 
                 _svc.SubscribeForNotifications("ADMIN");
@@ -1292,7 +1292,7 @@ namespace SessionAdmin
                             "One or more client machines stopped responding. Check the Clients tab.");
                     }
                 }
-                catch { }
+                catch { /* UI refresh during server callback — swallow to prevent crashing the callback thread */ }
             }));
         }
 
@@ -1340,7 +1340,7 @@ namespace SessionAdmin
             if (!AppDialog.Confirm("Sign out of admin console?", "Confirm Sign Out")) return;
 
             _refreshTimer.Stop();
-            try { _svc?.UnsubscribeFromNotifications("ADMIN_" + _adminUserId); } catch { }
+            try { _svc?.UnsubscribeFromNotifications("ADMIN_" + _adminUserId); } catch { /* best-effort WCF unsubscribe on close */ }
 
             _sessions.Clear(); _clients.Clear(); _alerts.Clear(); _logs.Clear();
             txtAdminUsername.Clear();
@@ -1373,7 +1373,7 @@ namespace SessionAdmin
                     }
                 }
             }
-            catch { }
+            catch { /* GetActiveSessions may fail if server is down — allow close to proceed */ }
 
             _refreshTimer?.Stop();
             try
@@ -1384,7 +1384,7 @@ namespace SessionAdmin
                     _svc.Disconnect();
                 }
             }
-            catch { }
+            catch { /* best-effort WCF cleanup on window close */ }
             base.OnClosing(e);
         }
 

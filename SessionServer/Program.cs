@@ -3,6 +3,7 @@ using System.Configuration;
 using System.ServiceModel;
 using System.ServiceModel.Description;
 using SessionManagement.WCF;
+using static SessionManagement.WCF.ServiceConstants;
 
 /// <summary>
 /// SessionServer — WCF service host.
@@ -63,8 +64,8 @@ class Program
                 var binding = new NetTcpBinding(SecurityMode.Transport)
 #endif
                 {
-                    MaxReceivedMessageSize = 20_971_520,  // 20 MB (for image payloads)
-                    MaxBufferSize          = 20_971_520,
+                    MaxReceivedMessageSize = WcfMaxMessageBytes,
+                    MaxBufferSize          = WcfMaxMessageBytes,
                     ReceiveTimeout         = TimeSpan.FromMinutes(20),
                     SendTimeout            = TimeSpan.FromMinutes(20),
                     OpenTimeout            = TimeSpan.FromMinutes(1),
@@ -84,13 +85,15 @@ class Program
                 if (!host.Description.Behaviors.Contains(debug))
                     host.Description.Behaviors.Add(debug);
 
-                // Throttling: support up to 100 concurrent client connections
+                // Throttling is unconditional — resource limits apply in Debug and Release.
+                // ServiceDebugBehavior above is #if DEBUG because exposing fault details
+                // is dev-only; throttling is a correctness concern in both environments.
                 var throttle = host.Description.Behaviors
                                    .Find<ServiceThrottlingBehavior>()
                                ?? new ServiceThrottlingBehavior();
-                throttle.MaxConcurrentCalls     = 100;
-                throttle.MaxConcurrentInstances = 1;   // singleton
-                throttle.MaxConcurrentSessions  = 100;
+                throttle.MaxConcurrentCalls     = MaxConcurrentCalls;
+                throttle.MaxConcurrentInstances = 1;   // singleton service
+                throttle.MaxConcurrentSessions  = MaxConcurrentSessions;
                 if (!host.Description.Behaviors.Contains(throttle))
                     host.Description.Behaviors.Add(throttle);
 

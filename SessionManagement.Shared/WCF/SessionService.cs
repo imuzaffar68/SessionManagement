@@ -29,10 +29,10 @@ namespace SessionManagement.WCF
                 StringComparer.OrdinalIgnoreCase);
 
         // ── server-side session expiry (every 30 s) ───────────────
-        private readonly Timer _expiryTimer;
+        private readonly Timer _sessionExpiryTimer;
 
         // ── server-side offline detection (every 60 s) ────────────
-        private readonly Timer _offlineTimer;
+        private readonly Timer _clientOfflineTimer;
 
         // ── image storage path ────────────────────────────────────
         private readonly string _imgPath;
@@ -41,14 +41,20 @@ namespace SessionManagement.WCF
         public SessionService()
         {
             _db = new DatabaseHelper();
-            _imgPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Images");
+            // Use %PROGRAMDATA% so the server can write images even when installed under
+            // C:\Program Files (which requires elevation for writes to BaseDirectory).
+            _imgPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "SessionManagement", "Images");
             Directory.CreateDirectory(_imgPath);
 
-            _expiryTimer = new Timer(ServerExpiryScan, null,
-                TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+            _sessionExpiryTimer = new Timer(ServerExpiryScan, null,
+                TimeSpan.FromSeconds(ServiceConstants.ExpiryCheckIntervalSeconds),
+                TimeSpan.FromSeconds(ServiceConstants.ExpiryCheckIntervalSeconds));
 
-            _offlineTimer = new Timer(OfflineDetectionScan, null,
-                TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(60));
+            _clientOfflineTimer = new Timer(OfflineDetectionScan, null,
+                TimeSpan.FromSeconds(ServiceConstants.OfflineCheckIntervalSeconds),
+                TimeSpan.FromSeconds(ServiceConstants.OfflineCheckIntervalSeconds));
 
             // After a server power-cut, all client machines have stale LastSeenAt
             // from before the crash.  Stamp them now so the first OfflineDetectionScan
@@ -795,7 +801,7 @@ namespace SessionManagement.WCF
         {
             try
             {
-                System.Data.DataTable stale = _db.MarkStaleClientsOffline(thresholdSeconds: 90);
+                System.Data.DataTable stale = _db.MarkStaleClientsOffline(thresholdSeconds: ServiceConstants.OfflineThresholdSeconds);
                 if (stale.Rows.Count == 0) return;
 
                 foreach (System.Data.DataRow r in stale.Rows)
@@ -1137,7 +1143,8 @@ namespace SessionManagement.WCF
             try
             {
                 string dir = System.IO.Path.Combine(
-                    AppDomain.CurrentDomain.BaseDirectory, "ProfilePics");
+                    Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                    "SessionManagement", "ProfilePics");
                 System.IO.Directory.CreateDirectory(dir);
                 string path = System.IO.Path.Combine(dir, $"{userId}.jpg");
                 System.IO.File.WriteAllBytes(path, Convert.FromBase64String(base64));
@@ -1393,8 +1400,8 @@ namespace SessionManagement.WCF
 
         public void Dispose()
         {
-            _expiryTimer?.Dispose();
-            _offlineTimer?.Dispose();
+            _sessionExpiryTimer?.Dispose();
+            _clientOfflineTimer?.Dispose();
             _db.WriteSystemLog(null, null, null, null,
                 "System", "ServiceStop", "SessionService stopped", "Server");
         }

@@ -132,7 +132,7 @@ namespace SessionClient
         {
             if (_hookHandle == IntPtr.Zero) return;
             try { UnhookWindowsHookEx(_hookHandle); }
-            catch { }
+            catch { /* Win32 unhook can fail if the hook was never installed — safe to ignore */ }
             finally { _hookHandle = IntPtr.Zero; }
         }
 
@@ -184,8 +184,8 @@ namespace SessionClient
                     System.Diagnostics.Debug.WriteLine("[Cam] " + ev.ErrorMessage);
             }
 
-            string kioskSetting = ConfigurationManager.AppSettings["EnableKioskMode"] ?? "true";
-            _kioskMode = string.Equals(kioskSetting, "true", StringComparison.OrdinalIgnoreCase);
+            if (!bool.TryParse(ConfigurationManager.AppSettings["EnableKioskMode"], out _kioskMode))
+                _kioskMode = true; // default ON — safe for unattended kiosk deployment
             _keyboardProc = KeyboardHookCallback;
 
             _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
@@ -214,32 +214,7 @@ namespace SessionClient
             // and start the heartbeat timer (which the splash path skips otherwise).
             if (_svc != null && _svc.IsConnected)
             {
-                try
-                {
-                    string machine = ConfigurationManager.AppSettings["ClientMachineName"]
-                                     ?? Environment.MachineName;
-                    _svc.TerminateOrphanSession(_clientCode);
-                    _svc.RegisterClient(_clientCode, machine, GetLocalIp(), GetMac());
-                    _svc.SubscribeForNotifications(_clientCode);
-                    _svc.UpdateClientStatus(_clientCode, "Idle");
-                }
-                catch (Exception ex)
-                {
-                    lblLoginStatus.Text = "Init error: " + ex.Message;
-                }
-
-                _heartbeatTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
-                _heartbeatTimer.Tick += (s, ea) => _svc?.Heartbeat(_clientCode);
-                _heartbeatTimer.Start();
-
-                if (_cam == null)
-                {
-                    _cam = new WebcamHelper();
-                    _cam.CaptureError += (s2, ev) =>
-                        System.Diagnostics.Debug.WriteLine("[Cam] " + ev.ErrorMessage);
-                }
-
-                lblLoginStatus.Text = "Ready — please sign in.";
+                RegisterAndStartHeartbeat();
                 return;
             }
 
@@ -247,38 +222,59 @@ namespace SessionClient
             {
                 _svc = new SessionServiceClient();
                 _svc.SessionTerminated += OnSessionTerminated;
-                _svc.TimeWarning += OnTimeWarning;
-                _svc.ServerMessage += OnServerMessage;
+                _svc.TimeWarning       += OnTimeWarning;
+                _svc.ServerMessage     += OnServerMessage;
 
                 if (!_svc.Connect())
                 { lblLoginStatus.Text = "⚠ Server unreachable."; return; }
-
-                string machine = ConfigurationManager.AppSettings["ClientMachineName"]
-                                 ?? Environment.MachineName;
-                // Terminate any orphan session from a previous crash BEFORE calling
-                // RegisterClient(), because RegisterClient() overwrites LastSeenAt with
-                // GETDATE() — losing the pre-crash heartbeat time we use for billing.
-                _svc.TerminateOrphanSession(_clientCode);
-
-                _svc.RegisterClient(_clientCode, machine, GetLocalIp(), GetMac());
-                _svc.SubscribeForNotifications(_clientCode);
-                _svc.UpdateClientStatus(_clientCode, "Idle");
-
-                // Send a heartbeat every 30 s so server can detect crashes/offline.
-                _heartbeatTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
-                _heartbeatTimer.Tick += (s, ea) => _svc?.Heartbeat(_clientCode);
-                _heartbeatTimer.Start();
-
-                lblLoginStatus.Text = "Ready — please sign in.";
-
-                _cam = new WebcamHelper();
-                _cam.CaptureError += (s2, ev) =>
-                    System.Diagnostics.Debug.WriteLine("[Cam] " + ev.ErrorMessage);
             }
             catch (Exception ex)
             {
                 lblLoginStatus.Text = "Init error: " + ex.Message;
+                return;
             }
+
+            RegisterAndStartHeartbeat();
+        }
+
+        /// <summary>
+        /// Registers this machine with the server, starts the heartbeat timer, and
+        /// initialises the webcam.  Called from both the "already connected via Splash"
+        /// path and the "fresh connect" path in OnLoaded so the logic lives in one place.
+        /// </summary>
+        private void RegisterAndStartHeartbeat()
+        {
+            try
+            {
+                string machine = ConfigurationManager.AppSettings["ClientMachineName"]
+                                 ?? Environment.MachineName;
+                // Terminate orphan session BEFORE RegisterClient() — RegisterClient() stamps
+                // LastSeenAt = GETDATE(), which would overwrite the pre-crash timestamp
+                // that TerminateOrphanSession() uses to calculate billable elapsed time.
+                _svc.TerminateOrphanSession(_clientCode);
+                _svc.RegisterClient(_clientCode, machine, GetLocalIp(), GetMac());
+                _svc.SubscribeForNotifications(_clientCode);
+                _svc.UpdateClientStatus(_clientCode, "Idle");
+            }
+            catch (Exception ex)
+            {
+                lblLoginStatus.Text = "Init error: " + ex.Message;
+                return;
+            }
+
+            // Send a heartbeat every 30 s so server can detect crashes/offline.
+            _heartbeatTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
+            _heartbeatTimer.Tick += (s, ea) => _svc?.Heartbeat(_clientCode);
+            _heartbeatTimer.Start();
+
+            if (_cam == null)
+            {
+                _cam = new WebcamHelper();
+                _cam.CaptureError += (s2, ev) =>
+                    System.Diagnostics.Debug.WriteLine("[Cam] " + ev.ErrorMessage);
+            }
+
+            lblLoginStatus.Text = "Ready — please sign in.";
         }
 
         #endregion
@@ -325,7 +321,7 @@ namespace SessionClient
                 int value = 1; // enable immersive dark mode
                 DwmSetWindowAttribute(hwnd, 20, ref value, sizeof(int));
             }
-            catch { }
+            catch { /* DWM dark mode unsupported on Windows < 10 build 18985 — skip */ }
         }
 
         /// <summary>
@@ -695,7 +691,7 @@ namespace SessionClient
                     Dispatcher.BeginInvoke(new Action(() =>
                     {
                         try { _svc?.UploadLoginImage(sid, uid, img); }
-                        catch { }
+                        catch { /* image upload is best-effort — session continues if webcam/upload fails */ }
                     }));
                 }
 
@@ -995,7 +991,7 @@ namespace SessionClient
                     _svc?.LogSecurityAlert(e.SessionId, e.UserId, e.AlertType,
                         e.Description, e.Severity);
                 }
-                catch { }
+                catch { /* security alert logging is best-effort — detection continues if server is unreachable */ }
             }));
         }
 
@@ -1076,7 +1072,7 @@ namespace SessionClient
             _sessionActive = false;
             LockScreen();
 
-            try { _svc?.UpdateClientStatus(_clientCode, "Idle"); } catch { }
+            try { _svc?.UpdateClientStatus(_clientCode, "Idle"); } catch { /* best-effort status reset on logout */ }
 
             _username             = null;
             _fullname             = null;
@@ -1255,7 +1251,7 @@ namespace SessionClient
                     if (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork)
                         return ip.ToString();
             }
-            catch { }
+            catch { /* DNS resolution failed — fall back to loopback */ }
             return "127.0.0.1";
         }
 
@@ -1268,7 +1264,7 @@ namespace SessionClient
                         nic.NetworkInterfaceType != NetworkInterfaceType.Loopback)
                         return nic.GetPhysicalAddress().ToString();
             }
-            catch { }
+            catch { /* NIC enumeration failed — ResolveClientCode() will fall back to machine-name hash */ }
             return null;
         }
 
@@ -1327,7 +1323,7 @@ namespace SessionClient
                         return "CL-" + mac;
                 }
             }
-            catch { }
+            catch { /* NIC enumeration failed — fall through to machine-name hash fallback */ }
 
             // Last resort: stable hash of machine name.
             return "CL-" + Math.Abs(Environment.MachineName.GetHashCode()).ToString("X8");
@@ -1349,9 +1345,9 @@ namespace SessionClient
         {
             _heartbeatTimer?.Stop();
             _timer?.Stop();
-            try { StopDetection(); } catch { }
-            try { CloseFloatingTimer(); } catch { }
-            try { UninstallKeyboardHook(); } catch { }
+            try { StopDetection(); }      catch { /* best-effort shutdown — OS grants only a few seconds */ }
+            try { CloseFloatingTimer(); } catch { /* best-effort shutdown */ }
+            try { UninstallKeyboardHook(); } catch { /* best-effort shutdown */ }
             try
             {
                 if (_sessionActive)
@@ -1364,7 +1360,7 @@ namespace SessionClient
                 }
                 _cam?.Dispose();
             }
-            catch { }
+            catch { /* best-effort OS shutdown — any WCF/cam error here is non-fatal */ }
             Microsoft.Win32.SystemEvents.SessionEnding -= OnSystemSessionEnding;
         }
 
@@ -1404,7 +1400,7 @@ namespace SessionClient
                 }
                 _cam?.Dispose();
             }
-            catch { }
+            catch { /* best-effort WCF cleanup on window close */ }
         }
 
         #endregion

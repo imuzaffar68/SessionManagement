@@ -1,4 +1,5 @@
-﻿using System.Windows;
+﻿using System.Configuration;
+using System.Windows;
 using SessionManagement.UI;
 
 namespace SessionClient
@@ -7,7 +8,8 @@ namespace SessionClient
     {
         private void OnStartup(object sender, StartupEventArgs e)
         {
-            ToastHelper.EnsureRegistered(ToastHelper.ClientAppId, "NetCafé Session Client");
+            string displayName = ConfigurationManager.AppSettings["AppDisplayName"] ?? "NetCafé Session Client";
+            ToastHelper.EnsureRegistered(ToastHelper.ClientAppId, displayName);
             var splash = new SplashWindow();
             MainWindow = splash;
             splash.Show();
