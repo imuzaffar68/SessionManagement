@@ -38,6 +38,15 @@ namespace SessionManagement.Client
 
         public bool IsConnected => _connected;
 
+        /// <summary>
+        /// True only when the underlying WCF channel is currently Open.
+        /// Does NOT attempt reconnection — safe to call from the UI thread
+        /// without any risk of blocking on a TCP timeout.
+        /// Use this instead of IsConnected wherever a reconnect must not be triggered.
+        /// </summary>
+        public bool IsChannelReady
+            => _connected && (_proxy as IClientChannel)?.State == CommunicationState.Opened;
+
         // ─────────────────────────────────────────────────────────
         //  Connection management
         // ─────────────────────────────────────────────────────────
@@ -72,10 +81,11 @@ namespace SessionManagement.Client
                 _factory.Endpoint.Address =
                     new EndpointAddress(ServiceConfiguration.GetServiceAddress());
 
-                // Cap the Open() wait to ConnectTimeoutSeconds.
-                // The default WCF open timeout is 1 minute which freezes the UI thread
-                // for the entire duration when the server is unreachable over TCP.
+                // Cap Open() — default is 1 minute, freezes UI thread when server unreachable.
                 _factory.Endpoint.Binding.OpenTimeout = TimeSpan.FromSeconds(ConnectTimeoutSeconds);
+                // Cap Send() — default is 20 minutes.  A LAN call should complete in < 5 s;
+                // bounding at 10 s means a mid-call server crash unblocks the UI in ≤ 10 s.
+                _factory.Endpoint.Binding.SendTimeout = TimeSpan.FromSeconds(10);
 
                 // Prevent callback threads from marshalling to the UI thread.
                 // Without this, a WCF callback arriving while the UI thread is blocked on

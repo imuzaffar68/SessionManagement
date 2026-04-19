@@ -42,6 +42,12 @@ namespace SessionAdmin
         // Current active nav page
         private string _currentPage = "dashboard";
 
+        // Custom-maximize state — tracks whether the window is filling the work area.
+        // We do NOT use WindowState.Maximized because with WindowStyle="None" it extends
+        // over the taskbar; instead we manually size the window to SystemParameters.WorkArea.
+        private bool _isManuallyMaximized;
+        private Rect _normalBounds;
+
         #endregion
 
         // ═══════════════════════════════════════════════════════════
@@ -1399,8 +1405,10 @@ namespace SessionAdmin
         {
             if (e.LeftButton == System.Windows.Input.MouseButtonState.Pressed)
             {
-                if (e.ClickCount == 2) ToggleMaximize();
-                else DragMove();
+                if (e.ClickCount == 2)
+                    ToggleMaximize();
+                else if (!_isManuallyMaximized)
+                    DragMove();
             }
         }
 
@@ -1416,15 +1424,37 @@ namespace SessionAdmin
 
         private void ToggleMaximize()
         {
-            if (WindowState == WindowState.Maximized)
+            if (_isManuallyMaximized)
             {
-                WindowState = WindowState.Normal;
-                btnMaximize.Content = "□";
+                // Restore the resize border first, then set bounds, to avoid a
+                // one-frame flash where the window briefly has no resize handles.
+                ResizeMode = ResizeMode.CanResize;
+                Left   = _normalBounds.Left;
+                Top    = _normalBounds.Top;
+                Width  = _normalBounds.Width;
+                Height = _normalBounds.Height;
+                _isManuallyMaximized = false;
+                btnMaximize.Content  = "□";
             }
             else
             {
-                WindowState = WindowState.Maximized;
-                btnMaximize.Content = "❐";
+                // Save current bounds so Restore works correctly.
+                _normalBounds = new Rect(Left, Top, Width, Height);
+
+                // NoResize removes WPF's invisible non-client resize border (~4-8 px each
+                // side with WindowStyle="None" + CanResize). Without this the border eats
+                // into the bounds, leaving a visible gap on all four edges when maximized.
+                ResizeMode = ResizeMode.NoResize;
+
+                // WorkArea excludes the taskbar; WindowState.Maximized with
+                // WindowStyle="None" would use the full screen rect and hide it.
+                var area = SystemParameters.WorkArea;
+                Left   = area.Left;
+                Top    = area.Top;
+                Width  = area.Width;
+                Height = area.Height;
+                _isManuallyMaximized = true;
+                btnMaximize.Content  = "❐";
             }
         }
 

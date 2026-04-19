@@ -455,8 +455,9 @@ namespace SessionClient
                 {
                     try
                     {
-                        _svc.EndSession(_pendingSessionId, _pendingSessionEndType);
-                        _pendingSessionEnd = false;
+                        bool ok = _svc.EndSession(_pendingSessionId, _pendingSessionEndType);
+                        if (ok) _pendingSessionEnd = false;
+                        // If ok == false: keep _pendingSessionEnd = true and retry next reconnect.
                     }
                     catch (Exception ex)
                     {
@@ -919,9 +920,15 @@ namespace SessionClient
             }
 
             var (elapsed, amount) = ComputeBillingSummary();
-            EndSessionOnServer("Auto");
             CloseFloatingTimer();
+
+            // RC-2 fix: lock the screen FIRST, then tell the server.
+            // The old order blocked the UI waiting for the server call before
+            // ShowSummaryPanel could run, leaving the session screen visible.
+            // EndSessionOnServer is now non-blocking: if the channel is not ready
+            // it queues the call for retry on reconnect and returns immediately.
             ShowSummaryPanel("Your session time has expired.", elapsed, amount, "Auto — time expired");
+            EndSessionOnServer("Auto");
         }
 
         private void btnEndSession_Click(object sender, RoutedEventArgs e)
@@ -940,16 +947,40 @@ namespace SessionClient
         /// <summary>Tells the server to finalize the session (fire-and-forget result).</summary>
         private void EndSessionOnServer(string type)
         {
+            // RC-1 fix: do NOT call EnsureConnection() / Connect() here.
+            // Those methods may block the UI thread for ConnectTimeoutSeconds while
+            // attempting a TCP open — which freezes the DispatcherTimer and causes
+            // the countdown to stick at 00:00:01 when the server is offline.
+            // IsChannelReady is a pure state-read with zero blocking.
+            if (_svc == null || !_svc.IsChannelReady)
+            {
+                // Queue for retry the moment the server reconnects.
+                _pendingSessionEnd     = true;
+                _pendingSessionId      = _sessionId;
+                _pendingSessionEndType = type;
+                return;
+            }
+
             try
             {
-                _svc.EndSession(_sessionId, type);
-                _pendingSessionEnd = false;  // success — clear any pending flag
+                // RC-3 fix: EndSession() returns bool — it does not throw on failure.
+                // The old code set _pendingSessionEnd = false unconditionally, losing
+                // the session-end when the server returned false without throwing.
+                bool ok = _svc.EndSession(_sessionId, type);
+                if (ok)
+                {
+                    _pendingSessionEnd = false;
+                }
+                else
+                {
+                    _pendingSessionEnd     = true;
+                    _pendingSessionId      = _sessionId;
+                    _pendingSessionEndType = type;
+                }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine("[EndSession] " + ex.Message);
-                // Server unreachable — queue the call so UpdateConnectionStatus() retries
-                // as soon as the channel is restored (covers server power-cut scenario).
                 _pendingSessionEnd     = true;
                 _pendingSessionId      = _sessionId;
                 _pendingSessionEndType = type;
