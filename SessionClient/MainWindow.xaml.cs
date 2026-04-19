@@ -425,42 +425,75 @@ namespace SessionClient
                 }
             }
 
-            // Reconnect detected: re-register and re-subscribe so WCF callbacks
-            // (admin termination, time warnings) resume for the running session.
+            // Reconnect detected: run all WCF calls on a background thread so the
+            // DispatcherTimer poll never blocks the UI during reconnect recovery.
             bool justReconnected = connected && !_prevConnected;
             if (justReconnected && _svc != null)
             {
-                try
-                {
-                    string machine = ConfigurationManager.AppSettings["ClientMachineName"]
-                                     ?? Environment.MachineName;
-                    _svc.RegisterClient(_clientCode, machine, GetLocalIp(), GetMac());
+                // Snapshot all state needed by the background task before yielding.
+                var  svc          = _svc;
+                var  code         = _clientCode;
+                bool sessActive   = _sessionActive;
+                int  sessId       = _sessionId;
+                bool pendingEnd   = _pendingSessionEnd;
+                int  pendingId    = _pendingSessionId;
+                var  pendingType  = _pendingSessionEndType;
+                string machine    = ConfigurationManager.AppSettings["ClientMachineName"]
+                                    ?? Environment.MachineName;
+                string ip  = GetLocalIp();
+                string mac = GetMac();
 
-                    // Subscribe BEFORE validating session state so that any pending
-                    // termination stored server-side is replayed on this call (RC-4).
-                    _svc.SubscribeForNotifications(_clientCode);
-
-                    // RC-1 fix: "Active" is correct for an in-progress session.
-                    // "InUse" is a transitional state for session-start only.
-                    _svc.UpdateClientStatus(_clientCode, _sessionActive ? "Active" : "Idle");
-                }
-                catch (Exception ex)
+                Task.Run(async () =>
                 {
-                    System.Diagnostics.Debug.WriteLine("[Reconnect] re-register failed: " + ex.Message);
-                }
-
-                // RC-2: Validate the running session against server state.
-                // The session may have been crash-terminated by the offline scan while
-                // the server was down — the client must not keep running a dead session.
-                if (_sessionActive && _sessionId > 0)
-                {
+                    // Step 1 — Re-register (RC-4: subscribe before session validation).
                     try
                     {
-                        var info = _svc.GetSessionInfo(_sessionId);
-                        if (info == null || !string.Equals(info.SessionStatus, "Active",
-                                StringComparison.OrdinalIgnoreCase))
+                        svc.RegisterClient(code, machine, ip, mac);
+                        svc.SubscribeForNotifications(code);
+                        svc.UpdateClientStatus(code, sessActive ? "Active" : "Idle");
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine("[Reconnect] re-register failed: " + ex.Message);
+                    }
+
+                    // Step 2 — Validate running session (RC-2).
+                    SessionInfo info       = null;
+                    bool        terminated = false;
+                    if (sessActive && sessId > 0)
+                    {
+                        try
                         {
-                            // Session was terminated server-side during the outage.
+                            info = svc.GetSessionInfo(sessId);
+                            if (info == null || !string.Equals(info.SessionStatus, "Active",
+                                    StringComparison.OrdinalIgnoreCase))
+                                terminated = true;
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine("[Reconnect] session validate failed: " + ex.Message);
+                        }
+                    }
+
+                    // Step 3 — Retry queued EndSession.
+                    bool endOk = false;
+                    if (pendingEnd)
+                    {
+                        try
+                        {
+                            endOk = svc.EndSession(pendingId, pendingType);
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine("[Reconnect] retry EndSession failed: " + ex.Message);
+                        }
+                    }
+
+                    // Step 4 — Apply results on the UI thread.
+                    await Dispatcher.InvokeAsync(() =>
+                    {
+                        if (terminated)
+                        {
                             _timer.Stop();
                             StopDetection();
                             var (elapsed, amount) = ComputeBillingSummary();
@@ -470,43 +503,24 @@ namespace SessionClient
                                 elapsed, amount,
                                 "Server — session terminated during outage");
                         }
-                        else
+                        else if (info != null)
                         {
-                            // Re-sync local countdown to the server's authoritative expected end time
-                            // (second-precision) so the timer doesn't jump to a whole-minute boundary.
                             var serverRemaining = info.ExpectedEndTime - DateTime.Now;
                             if (serverRemaining > TimeSpan.Zero)
                                 _remaining = serverRemaining;
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine("[Reconnect] session validate failed: " + ex.Message);
-                    }
-                }
 
-                // Retry a queued EndSession that failed while the server was down.
-                if (_pendingSessionEnd)
-                {
-                    try
-                    {
-                        bool ok = _svc.EndSession(_pendingSessionId, _pendingSessionEndType);
-                        if (ok) _pendingSessionEnd = false;
-                        // If ok == false: keep _pendingSessionEnd = true and retry next reconnect.
-                    }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine("[Reconnect] retry EndSession failed: " + ex.Message);
-                    }
-                }
+                        if (pendingEnd && endOk)
+                            _pendingSessionEnd = false;
 
-                // RC-6: Toast only when a session is still running after validation —
-                // confirms to the user that termination callbacks are live again.
-                if (_sessionActive)
-                    SessionManagement.UI.ToastHelper.Show(
-                        SessionManagement.UI.ToastHelper.ClientAppId,
-                        "Server Reconnected",
-                        "Connection restored. Session is active and monitored.");
+                        // RC-6: Toast only when a session is still running after validation.
+                        if (_sessionActive)
+                            SessionManagement.UI.ToastHelper.Show(
+                                SessionManagement.UI.ToastHelper.ClientAppId,
+                                "Server Reconnected",
+                                "Connection restored. Session is active and monitored.");
+                    });
+                });
             }
 
             _prevConnected = connected;
@@ -542,7 +556,7 @@ namespace SessionClient
         // ═══════════════════════════════════════════════════════════
         #region Login
 
-        private void btnLogin_Click(object sender, RoutedEventArgs e)
+        private async void btnLogin_Click(object sender, RoutedEventArgs e)
         {
             string user = txtUsername.Text.Trim();
             string pass = _passwordVisible ? txtPasswordPlain.Text : txtPassword.Password;
@@ -555,47 +569,66 @@ namespace SessionClient
             if (_failCount >= MAX_ATTEMPTS)
             { ShowLoginError("Too many failed attempts. Contact the administrator."); return; }
 
+            if (_svc?.IsChannelReady != true)
+            { ShowLoginError("Not connected to server. Please reconnect first."); return; }
+
             btnLogin.IsEnabled = false;
-            btnLogin.Content = "Signing in…";
+            btnLogin.Content   = "Signing in…";
+
+            AuthenticationResponse resp = null;
+            decimal billingRate         = 0.50m;
+            Exception loginEx           = null;
 
             try
             {
-                var resp = _svc.AuthenticateUser(user, pass, _clientCode);
-                if (resp.IsAuthenticated)
+                var svc  = _svc;
+                var code = _clientCode;
+                (resp, billingRate) = await Task.Run(() =>
                 {
-                    _failCount = 0;
-                    _fullname              = resp.FullName;
-                    _username              = resp.Username;
-                    _userId                = resp.UserId;
-                    _profilePictureBase64  = resp.ProfilePictureBase64;
-                    CaptureImageAsync();
-
-                    // Fetch billing rate now so cost previews are ready before the user picks a duration
-                    try { _billingRate = _svc.GetCurrentBillingRate(); }
-                    catch { _billingRate = 0.50m; }
-                    UpdateDurationButtonCosts();
-
-                    lblWelcome.Text = $"Welcome, {(_fullname ?? _username)}!";
-                    SetUserAvatar(_profilePictureBase64,
-                                  imgDurationAvatar, lblDurationInitial,
-                                  _fullname ?? _username);
-                    ShowPanel(DurationPanel);
-                }
-                else
-                {
-                    _failCount++;
-                    ShowLoginError(resp.ErrorMessage ?? "Invalid credentials. Please try again.");
-                }
+                    var r    = svc.AuthenticateUser(user, pass, code);
+                    decimal rate = 0.50m;
+                    if (r.IsAuthenticated)
+                        try { rate = svc.GetCurrentBillingRate(); } catch { }
+                    return (r, rate);
+                });
             }
             catch (Exception ex)
             {
-                ShowLoginError("Connection error. Please try again.");
-                System.Diagnostics.Debug.WriteLine("[Login] " + ex.Message);
+                loginEx = ex;
             }
             finally
             {
                 btnLogin.IsEnabled = true;
-                btnLogin.Content = "Sign In →";
+                btnLogin.Content   = "Sign In →";
+            }
+
+            if (loginEx != null)
+            {
+                ShowLoginError("Connection error. Please try again.");
+                System.Diagnostics.Debug.WriteLine("[Login] " + loginEx.Message);
+                return;
+            }
+
+            if (resp.IsAuthenticated)
+            {
+                _failCount            = 0;
+                _fullname             = resp.FullName;
+                _username             = resp.Username;
+                _userId               = resp.UserId;
+                _profilePictureBase64 = resp.ProfilePictureBase64;
+                _billingRate          = billingRate;
+                CaptureImageAsync();
+                UpdateDurationButtonCosts();
+                lblWelcome.Text = $"Welcome, {(_fullname ?? _username)}!";
+                SetUserAvatar(_profilePictureBase64,
+                              imgDurationAvatar, lblDurationInitial,
+                              _fullname ?? _username);
+                ShowPanel(DurationPanel);
+            }
+            else
+            {
+                _failCount++;
+                ShowLoginError(resp.ErrorMessage ?? "Invalid credentials. Please try again.");
             }
         }
 
@@ -761,60 +794,71 @@ namespace SessionClient
         // ═══════════════════════════════════════════════════════════
         #region Start Session
 
-        private void btnStartSession_Click(object sender, RoutedEventArgs e)
+        private async void btnStartSession_Click(object sender, RoutedEventArgs e)
         {
             int minutes;
             if (!TryGetDuration(out minutes)) return;
 
             btnStartSession.IsEnabled = false;
-            btnStartSession.Content = "Starting…";
+            btnStartSession.Content   = "Starting…";
+
+            SessionStartResponse resp = null;
+            Exception startEx         = null;
 
             try
             {
-                var resp = _svc.StartSession(_userId, _clientCode, minutes);
-                if (!resp.Success)
-                {
-                    AppDialog.ShowError(resp.ErrorMessage ?? "Failed to start session.");
-                    return;
-                }
-                _sessionId = resp.SessionId;
+                var svc  = _svc;
+                var uid  = _userId;
+                var code = _clientCode;
+                var img  = _pendingImage;
+                _pendingImage = null;
 
-                // Upload image in background
-                if (!string.IsNullOrEmpty(_pendingImage))
+                (resp, startEx) = await Task.Run(() =>
                 {
-                    int sid = _sessionId, uid = _userId;
-                    string img = _pendingImage;
-                    _pendingImage = null;
-                    // Use BeginInvoke so the upload runs on the UI thread — same thread
-                    // as the heartbeat DispatcherTimer — preventing concurrent _proxy access.
-                    // Localhost WCF upload is fast (< 500 ms) so no noticeable UI impact.
-                    Dispatcher.BeginInvoke(new Action(() =>
+                    try
                     {
-                        try { _svc?.UploadLoginImage(sid, uid, img); }
-                        catch { /* image upload is best-effort — session continues if webcam/upload fails */ }
-                    }));
-                }
-
-                _svc.UpdateClientStatus(_clientCode, "Active");
-
-                // Synchronous unlock — window resized before ShowPanel
-                UnlockScreen(minutes);
-                ShowPanel(SessionPanel);
-                StartDetection();
-                StartCountdown(minutes);
-            }
-            catch (Exception ex)
-            {
-                AppDialog.ShowError("Error starting session: " + ex.Message);
-                _sessionActive = false;
-                LockScreen();
-                ShowPanel(DurationPanel);
+                        var r = svc.StartSession(uid, code, minutes);
+                        if (r.Success)
+                        {
+                            // Status update and image upload while still on background thread.
+                            try { svc.UpdateClientStatus(code, "Active"); } catch { }
+                            if (!string.IsNullOrEmpty(img))
+                                try { svc.UploadLoginImage(r.SessionId, uid, img); } catch { }
+                        }
+                        return (r, (Exception)null);
+                    }
+                    catch (Exception ex)
+                    {
+                        return (null, ex);
+                    }
+                });
             }
             finally
             {
                 btnStartSession.IsEnabled = true;
-                btnStartSession.Content = "▶  Start Session";
+                btnStartSession.Content   = "▶  Start Session";
             }
+
+            if (startEx != null)
+            {
+                AppDialog.ShowError("Error starting session: " + startEx.Message);
+                _sessionActive = false;
+                LockScreen();
+                ShowPanel(DurationPanel);
+                return;
+            }
+
+            if (!resp.Success)
+            {
+                AppDialog.ShowError(resp.ErrorMessage ?? "Failed to start session.");
+                return;
+            }
+
+            _sessionId = resp.SessionId;
+            UnlockScreen(minutes);
+            ShowPanel(SessionPanel);
+            StartDetection();
+            StartCountdown(minutes);
         }
 
         #endregion
@@ -1230,6 +1274,14 @@ namespace SessionClient
             _failCount = 0;
             _billingRate = 0m;
             _selectedDurationMinutes = 60;
+
+            // Clear duration button highlight state so the next login starts clean.
+            foreach (Button b in new[] { btnDur15, btnDur30, btnDur60, btnDur120 })
+            {
+                if (b == null) continue;
+                b.BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x2D, 0x37, 0x48));
+                b.Foreground  = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x94, 0xA3, 0xB8));
+            }
 
             ResetLoginFields();
             txtCustomDuration?.Clear();
