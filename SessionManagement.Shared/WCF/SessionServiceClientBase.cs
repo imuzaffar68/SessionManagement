@@ -22,6 +22,10 @@ namespace SessionManagement.Client
         private   SessionCallbackHandler                     _handler;
         private   bool                                       _connected;
 
+        // Serialises Connect() / EnsureConnection() so concurrent background calls
+        // (poll timer + heartbeat + login) never race on the proxy/factory fields.
+        private readonly object _connectLock = new object();
+
         // Tracks last failed connect attempt so we don't hammer the TCP stack
         // (and block the UI thread) more than once per cooldown window.
         private DateTime _lastConnectAttempt = DateTime.MinValue;
@@ -142,14 +146,17 @@ namespace SessionManagement.Client
 
         public bool EnsureConnection()
         {
-            if (!_connected) return Connect();
-            var ch = _proxy as IClientChannel;
-            if (ch == null || ch.State != CommunicationState.Opened)
+            lock (_connectLock)
             {
-                _connected = false;
-                return Connect();
+                if (!_connected) return Connect();
+                var ch = _proxy as IClientChannel;
+                if (ch == null || ch.State != CommunicationState.Opened)
+                {
+                    _connected = false;
+                    return Connect();
+                }
+                return true;
             }
-            return true;
         }
 
         // ─────────────────────────────────────────────────────────

@@ -61,6 +61,9 @@ namespace SessionClient
         // permanently hiding the low-time warning after server reconnects.
         private bool _lowTimeWarning;
 
+        // Prevents spawning concurrent background reconnect tasks from the 2-second poll.
+        private bool _reconnectInProgress;
+
         // Selected duration from preset buttons
         private int _selectedDurationMinutes = 60;
 
@@ -379,13 +382,21 @@ namespace SessionClient
         {
             bool connected = _svc != null && _svc.IsChannelReady;
 
-            // When disconnected, attempt a background reconnect on every poll cycle.
-            // EnsureConnection() handles the faulted-channel case and Connect() has a
-            // built-in 10-second cooldown, so this never hammers the network.
-            if (!connected && _svc != null)
+            // When disconnected, attempt a background reconnect.
+            // _reconnectInProgress ensures only one attempt runs at a time — prevents
+            // concurrent Task.Run calls from racing on the WCF proxy.
+            // EnsureConnection() also holds an internal lock, so login / heartbeat tasks
+            // that overlap will queue safely rather than corrupt the channel.
+            if (!connected && _svc != null && !_reconnectInProgress)
             {
+                _reconnectInProgress = true;
                 var svc = _svc;
-                Task.Run(() => { try { svc.EnsureConnection(); } catch { } });
+                Task.Run(() =>
+                {
+                    try { svc.EnsureConnection(); } catch { }
+                    // Reset the guard on the UI thread so the next poll can retry.
+                    Dispatcher.BeginInvoke(new Action(() => _reconnectInProgress = false));
+                });
             }
 
             ellipseConnectionStatus.Fill = connected
@@ -449,11 +460,14 @@ namespace SessionClient
                 var  pendingType  = _pendingSessionEndType;
                 string machine    = ConfigurationManager.AppSettings["ClientMachineName"]
                                     ?? Environment.MachineName;
-                string ip  = GetLocalIp();
-                string mac = GetMac();
 
                 Task.Run(async () =>
                 {
+                    // Resolve IP/MAC on background thread — Dns.GetHostEntry can block
+                    // for several seconds when the network is disrupted.
+                    string ip  = GetLocalIp();
+                    string mac = GetMac();
+
                     // Step 1 — Re-register (RC-4: subscribe before session validation).
                     try
                     {
