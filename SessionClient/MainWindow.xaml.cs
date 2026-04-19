@@ -383,7 +383,16 @@ namespace SessionClient
                 ? System.Windows.Media.Brushes.LimeGreen
                 : System.Windows.Media.Brushes.OrangeRed;
             lblConnectionStatus.Text = connected ? "Connected" : "Disconnected";
-            btnConnect.Visibility = connected ? Visibility.Collapsed : Visibility.Visible;
+            btnConnect.Visibility    = connected ? Visibility.Collapsed : Visibility.Visible;
+
+            // Update the session-panel header indicator to reflect real server state.
+            if (_sessionActive)
+            {
+                ellipseSessionStatus.Fill    = connected
+                    ? new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x34, 0xD3, 0x99))
+                    : System.Windows.Media.Brushes.OrangeRed;
+                lblSessionStatusHeader.Text  = connected ? "Session Active" : "Server Offline";
+            }
 
             // Show / hide server-offline warning on the session screen.
             if (_sessionActive)
@@ -505,8 +514,8 @@ namespace SessionClient
 
         private async void btnConnect_Click(object sender, RoutedEventArgs e)
         {
-            btnConnect.IsEnabled       = false;
-            lblConnectionStatus.Text   = "Connecting…";
+            btnConnect.IsEnabled         = false;
+            lblConnectionStatus.Text     = "Connecting…";
             ConnectingOverlay.Visibility = Visibility.Visible;
             try
             {
@@ -518,6 +527,11 @@ namespace SessionClient
                 ConnectingOverlay.Visibility = Visibility.Collapsed;
                 btnConnect.IsEnabled = true;
                 UpdateConnectionStatus();
+
+                if (_svc?.IsChannelReady != true && !_sessionActive)
+                    AppDialog.ShowError(
+                        "Could not reach the server.\nPlease try again in a moment.",
+                        "Reconnect Failed");
             }
         }
 
@@ -1054,6 +1068,9 @@ namespace SessionClient
             _sessionActive  = false;
             _lowTimeWarning = false;
             _heartbeatTimer?.Stop(); // prevent blocking UI thread while summary is displayed
+            // Reset session header indicator so it's clean for the next session.
+            ellipseSessionStatus.Fill   = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(0x34, 0xD3, 0x99));
+            lblSessionStatusHeader.Text = "Session Active";
             LockScreen();   // restore full-screen / kiosk state
 
             lblSummaryUser.Text     = _fullname ?? _username ?? "—";

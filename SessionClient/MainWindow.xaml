@@ -382,9 +382,11 @@
                 <Grid Margin="12,0">
                     <!-- Left: status indicator + label -->
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                        <Ellipse Width="7" Height="7" Fill="#34D399"
+                        <Ellipse x:Name="ellipseSessionStatus"
+                                 Width="7" Height="7" Fill="#34D399"
                                  VerticalAlignment="Center" Margin="0,0,6,0"/>
-                        <TextBlock Text="Session Active" FontSize="11" FontWeight="SemiBold"
+                        <TextBlock x:Name="lblSessionStatusHeader"
+                                   Text="Session Active" FontSize="11" FontWeight="SemiBold"
                                    Foreground="#64748B" FontFamily="Segoe UI"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
