@@ -379,6 +379,15 @@ namespace SessionClient
         {
             bool connected = _svc != null && _svc.IsChannelReady;
 
+            // When disconnected, attempt a background reconnect on every poll cycle.
+            // EnsureConnection() handles the faulted-channel case and Connect() has a
+            // built-in 10-second cooldown, so this never hammers the network.
+            if (!connected && _svc != null)
+            {
+                var svc = _svc;
+                Task.Run(() => { try { svc.EnsureConnection(); } catch { } });
+            }
+
             ellipseConnectionStatus.Fill = connected
                 ? System.Windows.Media.Brushes.LimeGreen
                 : System.Windows.Media.Brushes.OrangeRed;
@@ -568,9 +577,6 @@ namespace SessionClient
 
             if (_failCount >= MAX_ATTEMPTS)
             { ShowLoginError("Too many failed attempts. Contact the administrator."); return; }
-
-            if (_svc?.IsChannelReady != true)
-            { ShowLoginError("Not connected to server. Please reconnect first."); return; }
 
             btnLogin.IsEnabled = false;
             btnLogin.Content   = "Signing in…";

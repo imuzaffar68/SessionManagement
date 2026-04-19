@@ -140,7 +140,7 @@ namespace SessionManagement.Client
             _factory = null;
         }
 
-        protected bool EnsureConnection()
+        public bool EnsureConnection()
         {
             if (!_connected) return Connect();
             var ch = _proxy as IClientChannel;
