@@ -28,6 +28,13 @@ namespace SessionManagement.WCF
             _subs = new ConcurrentDictionary<string, ISessionServiceCallback>(
                 StringComparer.OrdinalIgnoreCase);
 
+        // ── Pending terminations for clients with no live callback channel ──
+        // Populated by EndSession() when the target client is not in _subs.
+        // Drained by SubscribeForNotifications() the moment the client reconnects.
+        private static readonly ConcurrentDictionary<string, (int SessionId, string Reason)>
+            _pendingTerminations = new ConcurrentDictionary<string, (int, string)>(
+                StringComparer.OrdinalIgnoreCase);
+
         // ── server-side session expiry (every 30 s) ───────────────
         private readonly Timer _sessionExpiryTimer;
 
@@ -307,9 +314,21 @@ namespace SessionManagement.WCF
                     "Session", "SessionEnded",
                     $"Session {sessionId} ended — reason: {reason}", "Server");
 
-                // SEQ-14 step 5: push termination to the client machine (WCF callback)
-                System.Threading.ThreadPool.QueueUserWorkItem(_ =>
-                    Notify(code, cb => cb.OnSessionTerminated(sessionId, reason)));
+                // SEQ-14 step 5: push termination to the client machine (WCF callback).
+                // If the client has no live subscription (e.g. mid-reconnect after a server
+                // restart), store the event so SubscribeForNotifications() replays it the
+                // instant the client re-subscribes — guaranteeing zero missed terminations.
+                if (_subs.ContainsKey(code))
+                {
+                    int capturedSid    = sessionId;
+                    string capturedRsn = reason;
+                    System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+                        Notify(code, cb => cb.OnSessionTerminated(capturedSid, capturedRsn)));
+                }
+                else
+                {
+                    _pendingTerminations[code] = (sessionId, reason);
+                }
 
                 // step 6: notify all admins so dashboard refreshes in real-time
                 string username = row["Username"]?.ToString() ?? "?";
@@ -697,6 +716,26 @@ namespace SessionManagement.WCF
                 var cb = OperationContext.Current
                              .GetCallbackChannel<ISessionServiceCallback>();
                 _subs[clientCode] = cb;
+
+                // RC-4: replay any termination that fired while this client had no
+                // subscription channel (e.g. admin terminated during server-restart window).
+                if (_pendingTerminations.TryRemove(clientCode, out var pending))
+                {
+                    var replayCb     = cb;
+                    int replaySid    = pending.SessionId;
+                    string replayRsn = pending.Reason;
+                    ThreadPool.QueueUserWorkItem(_ =>
+                    {
+                        try { replayCb.OnSessionTerminated(replaySid, replayRsn); }
+                        catch (Exception) { /* best-effort — client also validates via GetSessionInfo */ }
+                    });
+
+                    _db.WriteSystemLog(null, null, null, null,
+                        "System", "TerminationReplayed",
+                        $"Replayed OnSessionTerminated (session {replaySid}) to {clientCode} on reconnect",
+                        "Server");
+                }
+
                 _db.WriteSystemLog(null, null, null, null,
                     "System", "ClientSubscribed",
                     $"Client {clientCode} subscribed for notifications", "Server");
@@ -731,12 +770,20 @@ namespace SessionManagement.WCF
 
                 // Recovery path: if this heartbeat arrives after the machine was
                 // prematurely marked Offline (grace counter exhausted before the
-                // delayed heartbeat got through), restore it to Idle and notify admins.
+                // delayed heartbeat got through), restore its status and notify admins.
                 if (string.Equals(previousStatus, "Offline", StringComparison.OrdinalIgnoreCase))
                 {
                     int machineId = _db.GetClientMachineIdByCode(clientCode);
                     if (machineId != 0)
-                        _db.UpdateClientMachineStatus(machineId, "Idle");
+                    {
+                        // RC-3: restore to Active if the machine still has a running session
+                        // (client kept its timer going during the outage), otherwise Idle.
+                        // Unconditionally using "Idle" was wrong — it showed the machine as
+                        // available for new sessions while the old session was still live.
+                        var activeSessions = _db.GetActiveSessionsByMachine(machineId);
+                        string recoveryStatus = activeSessions.Rows.Count > 0 ? "Active" : "Idle";
+                        _db.UpdateClientMachineStatus(machineId, recoveryStatus);
+                    }
 
                     _db.WriteSystemLog(null, null,
                         machineId != 0 ? (int?)machineId : null, null,
@@ -1370,8 +1417,11 @@ namespace SessionManagement.WCF
             if (code == null) return;
             if (_subs.TryGetValue(code, out var cb))
                 try { act(cb); }
-                catch (CommunicationException)
+                catch (Exception)
                 {
+                    // RC-5: catch all WCF exceptions (CommunicationException, TimeoutException,
+                    // ObjectDisposedException) — not just CommunicationException — to prevent
+                    // unhandled exceptions on the ThreadPool from terminating the host process.
                     _subs.TryRemove(code, out _);
                     try { _db.UpdateClientMachineStatus(_db.GetClientMachineIdByCode(code), "Offline"); }
                     catch { /* best-effort */ }
@@ -1392,8 +1442,9 @@ namespace SessionManagement.WCF
                                      .ToList())
                 if (_subs.TryGetValue(key, out var cb))
                     try { act(cb); }
-                    catch (CommunicationException)
+                    catch (Exception)
                     {
+                        // RC-5: catch all exceptions so a dead admin channel never crashes the host.
                         _subs.TryRemove(key, out _);
                     }
         }

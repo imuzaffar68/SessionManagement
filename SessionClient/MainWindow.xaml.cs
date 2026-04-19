@@ -403,12 +403,51 @@ namespace SessionClient
                     string machine = ConfigurationManager.AppSettings["ClientMachineName"]
                                      ?? Environment.MachineName;
                     _svc.RegisterClient(_clientCode, machine, GetLocalIp(), GetMac());
+
+                    // Subscribe BEFORE validating session state so that any pending
+                    // termination stored server-side is replayed on this call (RC-4).
                     _svc.SubscribeForNotifications(_clientCode);
-                    _svc.UpdateClientStatus(_clientCode, _sessionActive ? "InUse" : "Idle");
+
+                    // RC-1 fix: "Active" is correct for an in-progress session.
+                    // "InUse" is a transitional state for session-start only.
+                    _svc.UpdateClientStatus(_clientCode, _sessionActive ? "Active" : "Idle");
                 }
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine("[Reconnect] re-register failed: " + ex.Message);
+                }
+
+                // RC-2: Validate the running session against server state.
+                // The session may have been crash-terminated by the offline scan while
+                // the server was down — the client must not keep running a dead session.
+                if (_sessionActive && _sessionId > 0)
+                {
+                    try
+                    {
+                        var info = _svc.GetSessionInfo(_sessionId);
+                        if (info == null || !string.Equals(info.SessionStatus, "Active",
+                                StringComparison.OrdinalIgnoreCase))
+                        {
+                            // Session was terminated server-side during the outage.
+                            _timer.Stop();
+                            StopDetection();
+                            var (elapsed, amount) = ComputeBillingSummary();
+                            CloseFloatingTimer();
+                            ShowSummaryPanel(
+                                "Your session was ended while the server was offline.",
+                                elapsed, amount,
+                                "Server — session terminated during outage");
+                        }
+                        else if (info.RemainingMinutes > 0)
+                        {
+                            // Re-sync local countdown to the server's authoritative value.
+                            _remaining = TimeSpan.FromMinutes(info.RemainingMinutes);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine("[Reconnect] session validate failed: " + ex.Message);
+                    }
                 }
 
                 // Retry a queued EndSession that failed while the server was down.
@@ -424,6 +463,14 @@ namespace SessionClient
                         System.Diagnostics.Debug.WriteLine("[Reconnect] retry EndSession failed: " + ex.Message);
                     }
                 }
+
+                // RC-6: Toast only when a session is still running after validation —
+                // confirms to the user that termination callbacks are live again.
+                if (_sessionActive)
+                    SessionManagement.UI.ToastHelper.Show(
+                        SessionManagement.UI.ToastHelper.ClientAppId,
+                        "Server Reconnected",
+                        "Connection restored. Session is active and monitored.");
             }
 
             _prevConnected = connected;

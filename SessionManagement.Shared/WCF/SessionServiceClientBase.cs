@@ -22,6 +22,15 @@ namespace SessionManagement.Client
         private   SessionCallbackHandler                     _handler;
         private   bool                                       _connected;
 
+        // Tracks last failed connect attempt so we don't hammer the TCP stack
+        // (and block the UI thread) more than once per cooldown window.
+        private DateTime _lastConnectAttempt = DateTime.MinValue;
+        private const int ConnectCooldownSeconds = 10;
+
+        // Maximum time to wait for a channel Open() before giving up.
+        // Default WCF value is 1 minute; 5 s is enough for a LAN server.
+        private const int ConnectTimeoutSeconds = 5;
+
         // ── Server-push events ────────────────────────────────────
         public event EventHandler<SessionTerminatedEventArgs> SessionTerminated;
         public event EventHandler<TimeWarningEventArgs>        TimeWarning;
@@ -36,6 +45,17 @@ namespace SessionManagement.Client
         public bool Connect()
         {
             if (_connected) return true;
+
+            // Cooldown: avoid blocking the UI thread on every heartbeat tick when the
+            // server is known to be unreachable.  One genuine attempt per cooldown window
+            // is enough; the rest return false instantly.
+            if ((DateTime.Now - _lastConnectAttempt).TotalSeconds < ConnectCooldownSeconds)
+                return false;
+            _lastConnectAttempt = DateTime.Now;
+
+            // Abort any previously faulted channel/factory before creating a new one.
+            AbortChannel();
+
             try
             {
                 _handler = new SessionCallbackHandler();
@@ -52,6 +72,11 @@ namespace SessionManagement.Client
                 _factory.Endpoint.Address =
                     new EndpointAddress(ServiceConfiguration.GetServiceAddress());
 
+                // Cap the Open() wait to ConnectTimeoutSeconds.
+                // The default WCF open timeout is 1 minute which freezes the UI thread
+                // for the entire duration when the server is unreachable over TCP.
+                _factory.Endpoint.Binding.OpenTimeout = TimeSpan.FromSeconds(ConnectTimeoutSeconds);
+
                 // Prevent callback threads from marshalling to the UI thread.
                 // Without this, a WCF callback arriving while the UI thread is blocked on
                 // an outgoing WCF call (e.g. Heartbeat) causes a deadlock.
@@ -65,11 +90,22 @@ namespace SessionManagement.Client
                 ((IClientChannel)_proxy).Open();
 
                 _connected = true;
+                // Reset cooldown on success so the next failure starts a fresh window.
+                _lastConnectAttempt = DateTime.MinValue;
                 return true;
+            }
+            catch (EndpointNotFoundException ex)
+            {
+                // Server process is not running or the port is blocked.
+                Log($"Server unreachable ({ServiceConfiguration.GetServiceAddress()}): {ex.Message}");
+                AbortChannel();
+                _connected = false;
+                return false;
             }
             catch (Exception ex)
             {
-                Log($"Connect failed: {ex.Message}");
+                Log($"Connect failed: {ex.GetType().Name} — {ex.Message}");
+                AbortChannel();
                 _connected = false;
                 return false;
             }
@@ -77,14 +113,21 @@ namespace SessionManagement.Client
 
         public void Disconnect()
         {
-            try
-            {
-                var ch = _proxy as IClientChannel;
-                if (ch?.State == CommunicationState.Opened) ch.Close();
-                _factory?.Close();
-            }
-            catch { /* best-effort */ }
-            finally { _connected = false; }
+            AbortChannel();
+            _connected = false;
+        }
+
+        /// <summary>
+        /// Aborts the proxy and factory without throwing.
+        /// Must be used instead of Close() whenever the channel may be in a Faulted state —
+        /// calling Close() on a faulted channel throws CommunicationObjectFaultedException.
+        /// </summary>
+        private void AbortChannel()
+        {
+            try { (_proxy as IClientChannel)?.Abort(); } catch { }
+            try { _factory?.Abort(); } catch { }
+            _proxy   = null;
+            _factory = null;
         }
 
         protected bool EnsureConnection()
@@ -92,7 +135,10 @@ namespace SessionManagement.Client
             if (!_connected) return Connect();
             var ch = _proxy as IClientChannel;
             if (ch == null || ch.State != CommunicationState.Opened)
-            { _connected = false; return Connect(); }
+            {
+                _connected = false;
+                return Connect();
+            }
             return true;
         }
 
