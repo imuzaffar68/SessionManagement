@@ -1003,6 +1003,7 @@ namespace SessionClient
         private void ShowSummaryPanel(string subtitle, int elapsedMinutes, decimal amount, string reason)
         {
             _sessionActive = false;
+            _heartbeatTimer?.Stop(); // prevent blocking UI thread while summary is displayed
             LockScreen();   // restore full-screen / kiosk state
 
             lblSummaryUser.Text     = _fullname ?? _username ?? "—";
@@ -1150,7 +1151,9 @@ namespace SessionClient
             _sessionActive = false;
             LockScreen();
 
-            try { _svc?.UpdateClientStatus(_clientCode, "Idle"); } catch { /* best-effort status reset on logout */ }
+            if (_svc?.IsChannelReady == true)
+                try { _svc.UpdateClientStatus(_clientCode, "Idle"); } catch { /* best-effort status reset on logout */ }
+            _heartbeatTimer?.Start(); // resume heartbeat now that we are back to login (idle)
 
             _username             = null;
             _fullname             = null;
