@@ -649,5 +649,29 @@
                 </StackPanel>
             </Border>
         </Grid>
+
+        <!-- ══════════════════════════════════════════════════════════
+             CONNECTING OVERLAY — shown while btnConnect async connect is in progress.
+             Rendered last so it appears above all panels (including kiosk Topmost window).
+        ══════════════════════════════════════════════════════════ -->
+        <Grid x:Name="ConnectingOverlay" Visibility="Collapsed" Background="#B2000000">
+            <Border Background="#0F1117" BorderBrush="#2D3748" BorderThickness="1"
+                    CornerRadius="14" Width="300" Height="120"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Border.Effect>
+                    <DropShadowEffect Color="Black" BlurRadius="32" ShadowDepth="0" Opacity="0.8"/>
+                </Border.Effect>
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24,16">
+                    <TextBlock Text="Reconnecting to server…"
+                               FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold"
+                               Foreground="#F1F5F9" HorizontalAlignment="Center"
+                               Margin="0,0,0,12"/>
+                    <ProgressBar IsIndeterminate="True" Height="4"
+                                 Background="#1E2433" Foreground="#34D399"
+                                 BorderThickness="0"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
     </Grid>
 </Window>

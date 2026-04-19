@@ -2,6 +2,7 @@ using System;
 using System.Configuration;
 using System.Drawing;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Runtime.InteropServices;
@@ -55,6 +56,10 @@ namespace SessionClient
 
         // Reconnect detection: track whether we were connected on the previous poll.
         private bool _prevConnected;
+
+        // Warning priority: true when < 5 min remaining; prevents offline banner from
+        // permanently hiding the low-time warning after server reconnects.
+        private bool _lowTimeWarning;
 
         // Selected duration from preset buttons
         private int _selectedDurationMinutes = 60;
@@ -264,7 +269,17 @@ namespace SessionClient
 
             // Send a heartbeat every 30 s so server can detect crashes/offline.
             _heartbeatTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
-            _heartbeatTimer.Tick += (s, ea) => _svc?.Heartbeat(_clientCode);
+            _heartbeatTimer.Tick += (s, ea) =>
+            {
+                // Run off the UI thread so a slow/offline server call never freezes the countdown.
+                var code = _clientCode;
+                var svc  = _svc;
+                System.Threading.Tasks.Task.Run(() =>
+                {
+                    try { svc?.Heartbeat(code); }
+                    catch { /* best-effort; next tick will retry */ }
+                });
+            };
             _heartbeatTimer.Start();
 
             if (_cam == null)
@@ -362,7 +377,7 @@ namespace SessionClient
 
         private void UpdateConnectionStatus()
         {
-            bool connected = _svc != null && _svc.IsConnected;
+            bool connected = _svc != null && _svc.IsChannelReady;
 
             ellipseConnectionStatus.Fill = connected
                 ? System.Windows.Media.Brushes.LimeGreen
@@ -387,9 +402,17 @@ namespace SessionClient
                 }
                 else if (lblWarning.Text.StartsWith("⚠ Server offline"))
                 {
-                    // Server came back — clear the offline banner (let the timer
-                    // reinstate the low-time warning if needed).
-                    lblWarning.Visibility = Visibility.Collapsed;
+                    // Server came back — restore low-time warning if still applicable,
+                    // otherwise hide the banner.
+                    if (_lowTimeWarning && _remaining.TotalSeconds > 0)
+                    {
+                        lblWarning.Text       = "⚠ Less than 5 minutes remaining!";
+                        lblWarning.Visibility = Visibility.Visible;
+                    }
+                    else
+                    {
+                        lblWarning.Visibility = Visibility.Collapsed;
+                    }
                 }
             }
 
@@ -438,10 +461,13 @@ namespace SessionClient
                                 elapsed, amount,
                                 "Server — session terminated during outage");
                         }
-                        else if (info.RemainingMinutes > 0)
+                        else
                         {
-                            // Re-sync local countdown to the server's authoritative value.
-                            _remaining = TimeSpan.FromMinutes(info.RemainingMinutes);
+                            // Re-sync local countdown to the server's authoritative expected end time
+                            // (second-precision) so the timer doesn't jump to a whole-minute boundary.
+                            var serverRemaining = info.ExpectedEndTime - DateTime.Now;
+                            if (serverRemaining > TimeSpan.Zero)
+                                _remaining = serverRemaining;
                         }
                     }
                     catch (Exception ex)
@@ -477,10 +503,22 @@ namespace SessionClient
             _prevConnected = connected;
         }
 
-        private void btnConnect_Click(object sender, RoutedEventArgs e)
+        private async void btnConnect_Click(object sender, RoutedEventArgs e)
         {
-            _svc?.Connect();
-            UpdateConnectionStatus();
+            btnConnect.IsEnabled       = false;
+            lblConnectionStatus.Text   = "Connecting…";
+            ConnectingOverlay.Visibility = Visibility.Visible;
+            try
+            {
+                var svc = _svc;
+                await Task.Run(() => { try { svc?.Connect(); } catch { } });
+            }
+            finally
+            {
+                ConnectingOverlay.Visibility = Visibility.Collapsed;
+                btnConnect.IsEnabled = true;
+                UpdateConnectionStatus();
+            }
         }
 
         #endregion
@@ -860,10 +898,17 @@ namespace SessionClient
 
             if (_remaining.TotalMinutes <= 5 && _remaining.TotalSeconds > 0)
             {
+                _lowTimeWarning = true;
                 lblTimeRemaining.Foreground = new SolidColorBrush(
                     System.Windows.Media.Color.FromRgb(0xF8, 0x71, 0x71));
-                lblWarning.Text = "⚠ Less than 5 minutes remaining!";
-                lblWarning.Visibility = Visibility.Visible;
+
+                // Only write the low-time text when the offline banner isn't already showing
+                // (offline warning takes priority; it will restore this text on reconnect).
+                if (!lblWarning.Text.StartsWith("⚠ Server offline"))
+                {
+                    lblWarning.Text       = "⚠ Less than 5 minutes remaining!";
+                    lblWarning.Visibility = Visibility.Visible;
+                }
 
                 if (WindowState == WindowState.Minimized)
                 {
@@ -876,6 +921,10 @@ namespace SessionClient
                     Activate();
                     Title = "Session Timer — ⚠ 5 min left!";
                 }
+            }
+            else
+            {
+                _lowTimeWarning = false;
             }
 
             if (_remaining.TotalSeconds <= 0)
@@ -1002,7 +1051,8 @@ namespace SessionClient
         /// </summary>
         private void ShowSummaryPanel(string subtitle, int elapsedMinutes, decimal amount, string reason)
         {
-            _sessionActive = false;
+            _sessionActive  = false;
+            _lowTimeWarning = false;
             _heartbeatTimer?.Stop(); // prevent blocking UI thread while summary is displayed
             LockScreen();   // restore full-screen / kiosk state
 
