@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         WindowStyle="None" AllowsTransparency="False"
-        Height="560" Width="560"
+        Height="560" Width="590"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         Background="#0F1117">
@@ -118,9 +118,9 @@
                     <!-- Effective From + To -->
                     <Grid Margin="0,0,0,4">
                         <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="256"/>
                             <ColumnDefinition Width="16"/>
-                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="256"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel Grid.Column="0">
                             <TextBlock Text="EFFECTIVE FROM *" FontSize="10" FontWeight="SemiBold"

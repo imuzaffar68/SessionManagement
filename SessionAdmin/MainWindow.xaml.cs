@@ -40,6 +40,13 @@ namespace SessionAdmin
         private ObservableCollection<UserVM> _users = new ObservableCollection<UserVM>();
         private ObservableCollection<BillingRateVM>    _billingRates   = new ObservableCollection<BillingRateVM>();
         private ObservableCollection<BillingRecordVM>  _billingRecords = new ObservableCollection<BillingRecordVM>();
+        private ObservableCollection<ReportSessionVM> _reportSessions = new ObservableCollection<ReportSessionVM>();
+
+        // Cached last report data so export always works regardless of which panel is visible
+        private ReportData _lastReportData;
+        private string     _lastReportType;
+        private DateTime   _lastReportFrom;
+        private DateTime   _lastReportTo;
 
         // Current active nav page
         private string _currentPage = "dashboard";
@@ -64,6 +71,7 @@ namespace SessionAdmin
         public MainWindow(SessionServiceClient svc = null)
         {
             InitializeComponent();
+            Loaded += (_, __) => ToggleMaximize();
 
             if (svc != null)
             {
@@ -72,10 +80,11 @@ namespace SessionAdmin
             }
 
             // Bind collections
-            dgActiveSessions.ItemsSource = _sessions;
-            dgClients.ItemsSource = _clients;
-            dgAlerts.ItemsSource = _alerts;
-            dgLogs.ItemsSource = _logs;
+            dgActiveSessions.ItemsSource  = _sessions;
+            dgClients.ItemsSource         = _clients;
+            dgAlerts.ItemsSource          = _alerts;
+            dgLogs.ItemsSource            = _logs;
+            dgReportSessions.ItemsSource  = _reportSessions;
             dgUsers.ItemsSource = _users;
             dgBillingRates.ItemsSource   = _billingRates;
             dgBillingRecords.ItemsSource = _billingRecords;
@@ -884,30 +893,41 @@ namespace SessionAdmin
             string cat = (cboLogCategory.SelectedItem as ComboBoxItem)?.Content.ToString();
             if (cat == "All") cat = null;
 
-            SessionManagement.WCF.SystemLogInfo[] logs = null;
-            Exception err = null;
-            var svc = _svc;
-            (logs, err) = await Task.Run(() =>
+            btnLoadLogs.IsEnabled = false;
+            btnLoadLogs.Content   = "⏳ Loading…";
+            try
             {
-                try   { return (svc.GetSystemLogs(from, to, cat), (Exception)null); }
-                catch (Exception ex) { return ((SessionManagement.WCF.SystemLogInfo[])null, ex); }
-            });
-
-            if (err != null) { ShowToast($"Error loading logs: {err.Message}", "error"); return; }
-
-            _logs.Clear();
-            foreach (var log in logs)
-            {
-                _logs.Add(new LogVM
+                SessionManagement.WCF.SystemLogInfo[] logs = null;
+                Exception err = null;
+                var svc = _svc;
+                (logs, err) = await Task.Run(() =>
                 {
-                    LogTime    = log.LoggedAt.ToString("MM/dd/yyyy hh:mm tt"),
-                    Category   = log.Category,
-                    LogType    = log.Type,
-                    Source     = log.Source    ?? "—",
-                    ClientCode = log.ClientCode ?? "—",
-                    Username   = log.Username   ?? "—",
-                    Message    = log.Message
+                    try   { return (svc.GetSystemLogs(from, to, cat), (Exception)null); }
+                    catch (Exception ex) { return ((SessionManagement.WCF.SystemLogInfo[])null, ex); }
                 });
+
+                if (err != null) { ShowToast($"Error loading logs: {err.Message}", "error"); return; }
+
+                _logs.Clear();
+                foreach (var log in logs)
+                {
+                    _logs.Add(new LogVM
+                    {
+                        LogTime    = log.LoggedAt.ToString("MM/dd/yyyy hh:mm tt"),
+                        Category   = log.Category,
+                        LogType    = log.Type,
+                        Source     = log.Source    ?? "—",
+                        ClientCode = log.ClientCode ?? "—",
+                        Username   = log.Username   ?? "—",
+                        Message    = log.Message
+                    });
+                }
+                ShowToast($"{_logs.Count} log entr{(_logs.Count == 1 ? "y" : "ies")} loaded.");
+            }
+            finally
+            {
+                btnLoadLogs.IsEnabled = true;
+                btnLoadLogs.Content   = "⊳ Load Logs";
             }
         }
 
@@ -925,21 +945,65 @@ namespace SessionAdmin
 
             DateTime from = dpFromDate.SelectedDate.Value;
             DateTime to   = dpToDate.SelectedDate.Value;
+            string type   = (cboReportType.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "Session Usage";
 
-            string type = (cboReportType.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "Session Usage";
-
-            ReportData data = null;
-            Exception err = null;
-            var svc = _svc;
-            (data, err) = await Task.Run(() =>
+            btnGenerateReport.IsEnabled = false;
+            btnGenerateReport.Content   = "⏳ Generating…";
+            try
             {
-                try   { return (svc.GetSessionReport(from, to), (Exception)null); }
-                catch (Exception ex) { return ((ReportData)null, ex); }
-            });
+                ReportData data = null;
+                Exception err = null;
+                var svc = _svc;
+                (data, err) = await Task.Run(() =>
+                {
+                    try   { return (svc.GetSessionReport(from, to), (Exception)null); }
+                    catch (Exception ex) { return ((ReportData)null, ex); }
+                });
 
-            if (err != null) { ShowToast($"Error generating report: {err.Message}", "error"); return; }
+                if (err != null) { ShowToast($"Error generating report: {err.Message}", "error"); return; }
 
-            txtReportOutput.Text = BuildReportText(type, data, from, to);
+                _lastReportData = data;
+                _lastReportType = type;
+                _lastReportFrom = from;
+                _lastReportTo   = to;
+
+                if (type == "Session Usage")
+                {
+                    lblRptSessions.Text = data.TotalSessions.ToString();
+                    lblRptHours.Text    = $"{data.TotalHours:F2}";
+                    lblRptRevenue.Text  = $"${data.TotalRevenue:F2}";
+
+                    _reportSessions.Clear();
+                    foreach (var s in data.Sessions ?? Array.Empty<SessionInfo>())
+                        _reportSessions.Add(new ReportSessionVM
+                        {
+                            Username    = s.Username,
+                            FullName    = s.FullName,
+                            ClientCode  = s.ClientCode,
+                            MachineName = s.MachineName,
+                            StartTime   = s.StartTime.ToString("MM/dd/yyyy hh:mm tt"),
+                            ActualMin   = s.SelectedDuration.ToString(),
+                            Billing     = $"${s.CurrentBilling:F2}",
+                            Status      = s.SessionStatus
+                        });
+
+                    pnlSessionUsage.Visibility = Visibility.Visible;
+                    pnlTextReport.Visibility   = Visibility.Collapsed;
+                    ShowToast($"Report ready — {data.TotalSessions} session(s).");
+                }
+                else
+                {
+                    txtReportOutput.Text = BuildReportText(type, data, from, to);
+                    pnlTextReport.Visibility   = Visibility.Visible;
+                    pnlSessionUsage.Visibility = Visibility.Collapsed;
+                    ShowToast("Report generated.");
+                }
+            }
+            finally
+            {
+                btnGenerateReport.IsEnabled = true;
+                btnGenerateReport.Content   = "⊳ Generate";
+            }
         }
 
         private string BuildReportText(string type, ReportData data, DateTime from, DateTime to)
@@ -959,10 +1023,10 @@ namespace SessionAdmin
                     sb.AppendLine($"  Total Hours      : {data.TotalHours:F2}");
                     sb.AppendLine($"  Total Revenue    : ${data.TotalRevenue:F2}");
                     sb.AppendLine();
-                    sb.AppendLine($"  {"User",-18} {"Client",-12} {"Duration",8}  {"Billing",10}  Status");
-                    sb.AppendLine(new string('─', 70));
+                    sb.AppendLine($"  {"User",-14} {"Full Name",-20} {"Client",-16} {"Machine",-16} {"Start Time",-20} {"Actual",6}  {"Billing",9}  Status");
+                    sb.AppendLine(new string('─', 115));
                     foreach (var s in data.Sessions ?? Array.Empty<SessionInfo>())
-                        sb.AppendLine($"  {s.Username,-18} {s.ClientCode,-12} {s.SelectedDuration,6}min  ${s.CurrentBilling,8:F2}  {s.SessionStatus}");
+                        sb.AppendLine($"  {s.Username,-14} {s.FullName,-20} {s.ClientCode,-16} {s.MachineName,-16} {s.StartTime:MM/dd/yyyy hh:mm tt}  {s.SelectedDuration,4}min  ${s.CurrentBilling,7:F2}  {s.SessionStatus}");
                     break;
 
                 case "Billing Summary":
@@ -975,7 +1039,7 @@ namespace SessionAdmin
 
                 case "Security Alerts":
                     var al = _svc.GetUnacknowledgedAlerts()
-                        .Where(a => a.Timestamp >= from && a.Timestamp <= to.AddDays(1)).ToArray();
+                        .Where(a => a.Timestamp >= from && a.Timestamp <= to.AddDays(1).AddSeconds(-1)).ToArray();
                     sb.AppendLine($"  Unresolved Alerts : {al.Length}");
                     sb.AppendLine();
                     foreach (var a in al.OrderByDescending(x => x.Timestamp))
@@ -990,9 +1054,10 @@ namespace SessionAdmin
 
         private void btnExportReport_Click(object sender, RoutedEventArgs e)
         {
-            string text = txtReportOutput.Text;
-            if (string.IsNullOrWhiteSpace(text) || text.StartsWith("Generate"))
+            if (_lastReportData == null)
             { ShowToast("Generate a report first before exporting.", "warning"); return; }
+
+            string text = BuildReportText(_lastReportType, _lastReportData, _lastReportFrom, _lastReportTo);
 
             var dlg = new Microsoft.Win32.SaveFileDialog
             {
@@ -1776,6 +1841,18 @@ namespace SessionAdmin
         public string StatusBackground  => IsPaid ? "#14532D" : "#4C0519";
         public string StatusForeground  => IsPaid ? "#6EE7B7" : "#FCA5A5";
         public Visibility MarkPaidVisibility => IsPaid ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    public class ReportSessionVM
+    {
+        public string Username    { get; set; }
+        public string FullName    { get; set; }
+        public string ClientCode  { get; set; }
+        public string MachineName { get; set; }
+        public string StartTime   { get; set; }
+        public string ActualMin   { get; set; }
+        public string Billing     { get; set; }
+        public string Status      { get; set; }
     }
 
     #endregion

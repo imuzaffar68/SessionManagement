@@ -726,8 +726,8 @@ namespace SessionManagement.WCF
                         ClientCode       = r["ClientCode"].ToString(),
                         MachineName      = r["MachineName"].ToString(),
                         StartTime        = Convert.ToDateTime(r["StartedAt"]),
-                        SelectedDuration = r["SelectedDurationMinutes"] != DBNull.Value
-                                           ? Convert.ToInt32(r["SelectedDurationMinutes"]) : 0,
+                        SelectedDuration = r["ActualDurationMinutes"] != DBNull.Value
+                                           ? Convert.ToInt32(r["ActualDurationMinutes"]) : 0,
                         SessionStatus    = r["Status"].ToString(),
                         CurrentBilling   = r["BillingAmount"] != DBNull.Value
                                            ? Convert.ToDecimal(r["BillingAmount"]) : 0m
