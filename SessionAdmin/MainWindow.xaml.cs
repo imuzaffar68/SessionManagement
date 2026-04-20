@@ -377,6 +377,9 @@ namespace SessionAdmin
                     btnNavLogs.IsChecked = true;
                     lblPageTitle.Text = "Session Logs";
                     lblPageSubtitle.Text = " — Activity History";
+                    // Auto-load with current date range so the page is never stale on navigate.
+                    if (dpLogFrom.SelectedDate != null && dpLogTo.SelectedDate != null)
+                        btnLoadLogs_Click(btnLoadLogs, null);
                     break;
 
                 case "reports":
@@ -384,6 +387,9 @@ namespace SessionAdmin
                     btnNavReports.IsChecked = true;
                     lblPageTitle.Text = "Reports";
                     lblPageSubtitle.Text = " — Analytics";
+                    // Clear stale results so the page starts clean each visit.
+                    pnlSessionUsage.Visibility = Visibility.Collapsed;
+                    pnlTextReport.Visibility = Visibility.Collapsed;
                     break;
             }
         }
@@ -646,70 +652,88 @@ namespace SessionAdmin
 
         private async void btnTerminateSession_Click(object sender, RoutedEventArgs e)
         {
-            var session = (sender as Button)?.DataContext as ActiveSessionVM;
+            var btn = sender as Button;
+            var session = btn?.DataContext as ActiveSessionVM;
             if (session == null) return;
 
             if (!AppDialog.Confirm($"Terminate session {session.SessionId} for '{session.Username}'?", "Confirm Termination")) return;
 
-            bool ok = false;
-            Exception err = null;
-            var svc = _svc;
-            (ok, err) = await Task.Run(() =>
+            if (btn != null) btn.IsEnabled = false;
+            try
             {
-                try   { return (svc.EndSession(session.SessionId, "Admin"), (Exception)null); }
-                catch (Exception ex) { return (false, ex); }
-            });
+                bool ok = false;
+                Exception err = null;
+                var svc = _svc;
+                (ok, err) = await Task.Run(() =>
+                {
+                    try   { return (svc.EndSession(session.SessionId, "Admin"), (Exception)null); }
+                    catch (Exception ex) { return (false, ex); }
+                });
 
-            if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
 
-            if (ok)
-            {
-                _sessions.Remove(session);
-                lblActiveCount.Text = $"{_sessions.Count} sessions";
-                ShowToast($"Session {session.SessionId} for '{session.Username}' terminated.");
+                if (ok)
+                {
+                    _sessions.Remove(session);
+                    lblActiveCount.Text = $"{_sessions.Count} sessions";
+                    ShowToast($"Session {session.SessionId} for '{session.Username}' terminated.");
+                }
+                else
+                    ShowToast("Failed to terminate session.", "error");
             }
-            else
-                ShowToast("Failed to terminate session.", "error");
+            finally
+            {
+                if (btn != null) btn.IsEnabled = true;
+            }
         }
 
         private async void btnViewImage_Click(object sender, RoutedEventArgs e)
         {
-            var session = ((Button)sender).DataContext as ActiveSessionVM;
+            var btn = (Button)sender;
+            var session = btn.DataContext as ActiveSessionVM;
             if (session == null) return;
 
-            string b64 = null;
-            Exception err = null;
-            var svc = _svc;
-            (b64, err) = await Task.Run(() =>
-            {
-                try   { return (svc.DownloadLoginImage(session.SessionId), (Exception)null); }
-                catch (Exception ex) { return ((string)null, ex); }
-            });
-
-            if (err != null) { ShowToast($"Error loading image: {err.Message}", "error"); return; }
-
-            if (string.IsNullOrEmpty(b64))
-            {
-                ShowToast("No login image available for this session.", "warning");
-                return;
-            }
-
+            btn.IsEnabled = false;
             try
             {
-                byte[] bytes = Convert.FromBase64String(b64);
-                using (var ms = new System.IO.MemoryStream(bytes))
+                string b64 = null;
+                Exception err = null;
+                var svc = _svc;
+                (b64, err) = await Task.Run(() =>
                 {
-                    var bmp = new BitmapImage();
-                    bmp.BeginInit();
-                    bmp.StreamSource = ms;
-                    bmp.CacheOption = BitmapCacheOption.OnLoad;
-                    bmp.EndInit();
-                    imgSessionPhoto.Source = bmp;
+                    try   { return (svc.DownloadLoginImage(session.SessionId), (Exception)null); }
+                    catch (Exception ex) { return ((string)null, ex); }
+                });
+
+                if (err != null) { ShowToast($"Error loading image: {err.Message}", "error"); return; }
+
+                if (string.IsNullOrEmpty(b64))
+                {
+                    ShowToast("No login image available for this session.", "warning");
+                    return;
                 }
-                lblImageTitle.Text = $"Session {session.SessionId} — {session.Username}";
-                ImageViewerPanel.Visibility = Visibility.Visible;
+
+                try
+                {
+                    byte[] bytes = Convert.FromBase64String(b64);
+                    using (var ms = new System.IO.MemoryStream(bytes))
+                    {
+                        var bmp = new BitmapImage();
+                        bmp.BeginInit();
+                        bmp.StreamSource = ms;
+                        bmp.CacheOption = BitmapCacheOption.OnLoad;
+                        bmp.EndInit();
+                        imgSessionPhoto.Source = bmp;
+                    }
+                    lblImageTitle.Text = $"Session {session.SessionId} — {session.Username}";
+                    ImageViewerPanel.Visibility = Visibility.Visible;
+                }
+                catch (Exception ex) { ShowToast($"Error decoding image: {ex.Message}", "error"); }
             }
-            catch (Exception ex) { ShowToast($"Error decoding image: {ex.Message}", "error"); }
+            finally
+            {
+                btn.IsEnabled = true;
+            }
         }
 
         private void btnCloseImage_Click(object sender, RoutedEventArgs e)
@@ -755,32 +779,40 @@ namespace SessionAdmin
             }
         }
 
-        private void btnEnableClient_Click(object sender, RoutedEventArgs e)
+        private async void btnEnableClient_Click(object sender, RoutedEventArgs e)
         {
-            var client = (sender as Button)?.DataContext as ClientVM;
+            var btn = sender as Button;
+            var client = btn?.DataContext as ClientVM;
             if (client == null) return;
+            if (btn != null) btn.IsEnabled = false;
             try
             {
-                if (_svc.UpdateClientMachineIsActive(client.ClientId, true))
-                { LoadClients(); ShowToast($"Client '{client.ClientId}' enabled."); }
-                else
-                    ShowToast($"Failed to enable client '{client.ClientId}'.", "error");
+                bool ok = false; Exception err = null;
+                var svc = _svc; var id = client.ClientId;
+                (ok, err) = await Task.Run(() => { try { return (svc.UpdateClientMachineIsActive(id, true), (Exception)null); } catch (Exception ex) { return (false, ex); } });
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
+                if (ok) { LoadClients(); ShowToast($"Client '{id}' enabled."); }
+                else ShowToast($"Failed to enable client '{id}'.", "error");
             }
-            catch (Exception ex) { ShowToast($"Error: {ex.Message}", "error"); }
+            finally { if (btn != null) btn.IsEnabled = true; }
         }
 
-        private void btnDisableClient_Click(object sender, RoutedEventArgs e)
+        private async void btnDisableClient_Click(object sender, RoutedEventArgs e)
         {
-            var client = (sender as Button)?.DataContext as ClientVM;
+            var btn = sender as Button;
+            var client = btn?.DataContext as ClientVM;
             if (client == null) return;
+            if (btn != null) btn.IsEnabled = false;
             try
             {
-                if (_svc.UpdateClientMachineIsActive(client.ClientId, false))
-                { LoadClients(); ShowToast($"Client '{client.ClientId}' disabled.", "warning"); }
-                else
-                    ShowToast($"Failed to disable client '{client.ClientId}'.", "error");
+                bool ok = false; Exception err = null;
+                var svc = _svc; var id = client.ClientId;
+                (ok, err) = await Task.Run(() => { try { return (svc.UpdateClientMachineIsActive(id, false), (Exception)null); } catch (Exception ex) { return (false, ex); } });
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
+                if (ok) { LoadClients(); ShowToast($"Client '{id}' disabled.", "warning"); }
+                else ShowToast($"Failed to disable client '{id}'.", "error");
             }
-            catch (Exception ex) { ShowToast($"Error: {ex.Message}", "error"); }
+            finally { if (btn != null) btn.IsEnabled = true; }
         }
 
         /// <summary>
@@ -843,34 +875,43 @@ namespace SessionAdmin
 
         private async void btnAcknowledgeAlert_Click(object sender, RoutedEventArgs e)
         {
-            var alert = (sender as Button)?.DataContext as AlertVM;
+            var btn = sender as Button;
+            var alert = btn?.DataContext as AlertVM;
             if (alert == null) return;
             if (!AppDialog.Confirm(
                     $"Acknowledge alert #{alert.AlertId}?\n\nType: {alert.AlertType}\nClient: {alert.ClientId}",
                     "Confirm Acknowledge")) return;
 
-            bool ok = false;
-            Exception err = null;
-            var svc = _svc;
-            int alertId = alert.AlertId;
-            int adminId = _adminUserId;
-            (ok, err) = await Task.Run(() =>
+            if (btn != null) btn.IsEnabled = false;
+            try
             {
-                try   { return (svc.AcknowledgeAlert(alertId, adminId), (Exception)null); }
-                catch (Exception ex) { return (false, ex); }
-            });
+                bool ok = false;
+                Exception err = null;
+                var svc = _svc;
+                int alertId = alert.AlertId;
+                int adminId = _adminUserId;
+                (ok, err) = await Task.Run(() =>
+                {
+                    try   { return (svc.AcknowledgeAlert(alertId, adminId), (Exception)null); }
+                    catch (Exception ex) { return (false, ex); }
+                });
 
-            if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
 
-            if (ok)
-            {
-                _alerts.Remove(alert);
-                lblAlertCount.Text = $"{_alerts.Count} unresolved";
-                kpiAlerts.Text = _alerts.Count.ToString();
-                ShowToast($"Alert #{alertId} acknowledged.");
+                if (ok)
+                {
+                    _alerts.Remove(alert);
+                    lblAlertCount.Text = $"{_alerts.Count} unresolved";
+                    kpiAlerts.Text = _alerts.Count.ToString();
+                    ShowToast($"Alert #{alertId} acknowledged.");
+                }
+                else
+                    ShowToast("Failed to acknowledge alert.", "error");
             }
-            else
-                ShowToast("Failed to acknowledge alert.", "error");
+            finally
+            {
+                if (btn != null) btn.IsEnabled = true;
+            }
         }
 
         #endregion
@@ -1111,7 +1152,25 @@ namespace SessionAdmin
             }
         }
 
-        private void btnRefreshUsers_Click(object sender, RoutedEventArgs e) => LoadClientUsers();
+        private async void btnRefreshUsers_Click(object sender, RoutedEventArgs e)
+        {
+            btnRefreshUsers.IsEnabled = false;
+            var saved = btnRefreshUsers.Content;
+            btnRefreshUsers.Content = "⏳";
+            try
+            {
+                UserInfo[] list = null; Exception err = null;
+                var svc = _svc;
+                (list, err) = await Task.Run(() => { try { return (svc.GetAllClientUsers(), (Exception)null); } catch (Exception ex) { return (null, ex); } });
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
+                _users.Clear();
+                foreach (var u in list)
+                    _users.Add(new UserVM { UserId = u.UserId, Username = u.Username, FullName = u.FullName, Phone = u.Phone, Address = u.Address, Status = u.Status, CreatedAt = u.CreatedAt.ToString("MM/dd/yyyy hh:mm tt"), LastLogin = u.LastLoginAt?.ToString("MM/dd/yyyy hh:mm tt") ?? "Never", ProfilePictureBase64 = u.ProfilePictureBase64 });
+                lblUserCount.Text = _users.Count.ToString();
+                ShowToast($"{_users.Count} user(s) loaded.");
+            }
+            finally { btnRefreshUsers.IsEnabled = true; btnRefreshUsers.Content = saved; }
+        }
 
         private void btnAddNewUser_Click(object sender, RoutedEventArgs e)
         {
@@ -1164,40 +1223,50 @@ namespace SessionAdmin
             win.ShowDialog();
         }
 
-        private void btnDeleteUserInline_Click(object sender, RoutedEventArgs e)
+        private async void btnDeleteUserInline_Click(object sender, RoutedEventArgs e)
         {
-            var selected = (sender as Button)?.DataContext as UserVM;
+            var btn = sender as Button;
+            var selected = btn?.DataContext as UserVM;
             if (selected == null) { ShowToast("Unable to get user data.", "error"); return; }
 
             if (!AppDialog.Confirm($"Permanently delete '{selected.Username}'? This cannot be undone.")) return;
 
+            if (btn != null) btn.IsEnabled = false;
             try
             {
-                var resp = _svc.DeleteClientUser(selected.UserId, _adminUserId);
+                UserDeleteResponse resp = null; Exception err = null;
+                var svc = _svc; int uid = selected.UserId; int aid = _adminUserId;
+                (resp, err) = await Task.Run(() => { try { return (svc.DeleteClientUser(uid, aid), (Exception)null); } catch (Exception ex) { return (null, ex); } });
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
                 if (!resp.Success) { ShowToast(resp.ErrorMessage ?? "Delete failed.", "error"); return; }
                 ShowToast($"User '{selected.Username}' deleted.");
                 LoadClientUsers();
             }
-            catch (Exception ex) { ShowToast($"Error: {ex.Message}", "error"); }
+            finally { if (btn != null) btn.IsEnabled = true; }
         }
 
-        private void btnToggleStatusInline_Click(object sender, RoutedEventArgs e)
+        private async void btnToggleStatusInline_Click(object sender, RoutedEventArgs e)
         {
-            var selected = (sender as Button)?.DataContext as UserVM;
+            var btn = sender as Button;
+            var selected = btn?.DataContext as UserVM;
             if (selected == null) { ShowToast("Unable to get user data.", "error"); return; }
 
             string newStatus = selected.Status == "Active" ? "Disabled" : "Active";
             if (!AppDialog.Confirm($"Change '{selected.Username}' status from {selected.Status} to {newStatus}?")) return;
 
+            if (btn != null) btn.IsEnabled = false;
             try
             {
-                var resp = _svc.ToggleUserStatus(selected.UserId, _adminUserId);
+                UserStatusToggleResponse resp = null; Exception err = null;
+                var svc = _svc; int uid = selected.UserId; int aid = _adminUserId;
+                (resp, err) = await Task.Run(() => { try { return (svc.ToggleUserStatus(uid, aid), (Exception)null); } catch (Exception ex) { return (null, ex); } });
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
                 if (!resp.Success) { ShowToast(resp.ErrorMessage ?? "Toggle failed.", "error"); return; }
                 string toastType = resp.NewStatus == "Active" ? "success" : "warning";
                 ShowToast($"'{selected.Username}' is now {resp.NewStatus}.", toastType);
                 LoadClientUsers();
             }
-            catch (Exception ex) { ShowToast($"Error: {ex.Message}", "error"); }
+            finally { if (btn != null) btn.IsEnabled = true; }
         }
 
         #endregion
@@ -1237,7 +1306,25 @@ namespace SessionAdmin
             }
         }
 
-        private void btnRefreshBillingRates_Click(object sender, RoutedEventArgs e) => LoadBillingRates();
+        private async void btnRefreshBillingRates_Click(object sender, RoutedEventArgs e)
+        {
+            btnRefreshBillingRates.IsEnabled = false;
+            var saved = btnRefreshBillingRates.Content;
+            btnRefreshBillingRates.Content = "⏳";
+            try
+            {
+                BillingRateInfo[] rates = null; Exception err = null;
+                var svc = _svc;
+                (rates, err) = await Task.Run(() => { try { return (svc.GetAllBillingRates(), (Exception)null); } catch (Exception ex) { return (null, ex); } });
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
+                _billingRates.Clear();
+                foreach (var rate in rates)
+                    _billingRates.Add(new BillingRateVM { BillingRateId = rate.BillingRateId, Name = rate.Name, RatePerMinute = rate.RatePerMinute, Currency = rate.Currency, EffectiveFrom = rate.EffectiveFrom, EffectiveTo = rate.EffectiveTo, IsActive = rate.IsActive ? 1 : 0, IsDefault = rate.IsDefault ? 1 : 0, CreatedAt = rate.CreatedAt, Notes = rate.Notes });
+                lblBillingRateCount.Text = _billingRates.Count.ToString();
+                ShowToast($"{_billingRates.Count} rate(s) loaded.");
+            }
+            finally { btnRefreshBillingRates.IsEnabled = true; btnRefreshBillingRates.Content = saved; }
+        }
 
         private void btnAddNewRate_Click(object sender, RoutedEventArgs e)
         {
@@ -1275,36 +1362,46 @@ namespace SessionAdmin
             if (win.ShowDialog() == true) LoadBillingRates();
         }
 
-        private void btnSetDefaultBillingRate_Click(object sender, RoutedEventArgs e)
+        private async void btnSetDefaultBillingRate_Click(object sender, RoutedEventArgs e)
         {
-            var rate = (sender as Button)?.DataContext as BillingRateVM;
+            var btn = sender as Button;
+            var rate = btn?.DataContext as BillingRateVM;
             if (rate == null) return;
 
             if (!AppDialog.Confirm($"Set '{rate.Name}' as the default rate?")) return;
 
+            if (btn != null) btn.IsEnabled = false;
             try
             {
-                bool success = _svc.SetDefaultBillingRate(rate.BillingRateId);
-                if (success) { ShowToast($"'{rate.Name}' is now the default rate."); LoadBillingRates(); }
+                bool ok = false; Exception err = null;
+                var svc = _svc; int rid = rate.BillingRateId;
+                (ok, err) = await Task.Run(() => { try { return (svc.SetDefaultBillingRate(rid), (Exception)null); } catch (Exception ex) { return (false, ex); } });
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
+                if (ok) { ShowToast($"'{rate.Name}' is now the default rate."); LoadBillingRates(); }
                 else ShowToast("Failed to set default rate.", "error");
             }
-            catch (Exception ex) { ShowToast($"Error: {ex.Message}", "error"); }
+            finally { if (btn != null) btn.IsEnabled = true; }
         }
 
-        private void btnDeleteBillingRate_Click(object sender, RoutedEventArgs e)
+        private async void btnDeleteBillingRate_Click(object sender, RoutedEventArgs e)
         {
-            var rate = (sender as Button)?.DataContext as BillingRateVM;
+            var btn = sender as Button;
+            var rate = btn?.DataContext as BillingRateVM;
             if (rate == null) return;
 
             if (!AppDialog.Confirm($"Delete rate '{rate.Name}'? This cannot be undone.", "Confirm Deletion")) return;
 
+            if (btn != null) btn.IsEnabled = false;
             try
             {
-                bool success = _svc.DeleteBillingRate(rate.BillingRateId);
-                if (success) { ShowToast($"Rate '{rate.Name}' deleted."); LoadBillingRates(); }
+                bool ok = false; Exception err = null;
+                var svc = _svc; int rid = rate.BillingRateId;
+                (ok, err) = await Task.Run(() => { try { return (svc.DeleteBillingRate(rid), (Exception)null); } catch (Exception ex) { return (false, ex); } });
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
+                if (ok) { ShowToast($"Rate '{rate.Name}' deleted."); LoadBillingRates(); }
                 else ShowToast("Cannot delete: at least one rate and one default must exist.", "error");
             }
-            catch (Exception ex) { ShowToast($"Error: {ex.Message}", "error"); }
+            finally { if (btn != null) btn.IsEnabled = true; }
         }
 
         private void LoadBillingRecords()
@@ -1340,25 +1437,50 @@ namespace SessionAdmin
             }
         }
 
-        private void btnRefreshPayments_Click(object sender, RoutedEventArgs e) => LoadBillingRecords();
+        private async void btnRefreshPayments_Click(object sender, RoutedEventArgs e)
+        {
+            btnRefreshPayments.IsEnabled = false;
+            var saved = btnRefreshPayments.Content;
+            btnRefreshPayments.Content = "⏳";
+            try
+            {
+                bool unpaidOnly = chkUnpaidOnly.IsChecked == true;
+                BillingRecordInfo[] records = null; Exception err = null;
+                var svc = _svc;
+                (records, err) = await Task.Run(() => { try { return (svc.GetBillingRecords(unpaidOnly), (Exception)null); } catch (Exception ex) { return (null, ex); } });
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
+                _billingRecords.Clear();
+                foreach (var r in records)
+                    _billingRecords.Add(new BillingRecordVM { BillingRecordId = r.BillingRecordId, SessionId = r.SessionId, Username = r.Username, MachineCode = r.MachineCode, BillableMinutes = r.BillableMinutes, Amount = r.Amount, Currency = r.Currency, CalculatedAt = r.CalculatedAt, IsPaid = r.IsPaid, PaidAt = r.PaidAt });
+                int unpaidCount = _billingRecords.Count(x => !x.IsPaid);
+                lblUnpaidCount.Text = unpaidCount.ToString();
+                ShowToast($"{_billingRecords.Count} payment record(s) loaded.");
+            }
+            finally { btnRefreshPayments.IsEnabled = true; btnRefreshPayments.Content = saved; }
+        }
 
         private void chkUnpaidOnly_Changed(object sender, RoutedEventArgs e) => LoadBillingRecords();
 
-        private void btnMarkPaidInline_Click(object sender, RoutedEventArgs e)
+        private async void btnMarkPaidInline_Click(object sender, RoutedEventArgs e)
         {
-            var record = (sender as Button)?.DataContext as BillingRecordVM;
+            var btn = sender as Button;
+            var record = btn?.DataContext as BillingRecordVM;
             if (record == null) return;
             if (!AppDialog.Confirm(
                     $"Mark session #{record.SessionId} as paid?\n\nUser: {record.Username}\nAmount: {record.AmountDisplay}",
                     "Confirm Payment")) return;
 
+            if (btn != null) btn.IsEnabled = false;
             try
             {
-                bool ok = _svc.MarkBillingRecordPaid(record.BillingRecordId, _adminUserId);
+                bool ok = false; Exception err = null;
+                var svc = _svc; int rid = record.BillingRecordId; int aid = _adminUserId;
+                (ok, err) = await Task.Run(() => { try { return (svc.MarkBillingRecordPaid(rid, aid), (Exception)null); } catch (Exception ex) { return (false, ex); } });
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
                 if (ok) { ShowToast($"Session #{record.SessionId} marked as paid."); LoadBillingRecords(); }
                 else ShowToast("Could not mark as paid. Record may not exist or is already paid.", "error");
             }
-            catch (Exception ex) { ShowToast($"Error: {ex.Message}", "error"); }
+            finally { if (btn != null) btn.IsEnabled = true; }
         }
 
         #endregion
