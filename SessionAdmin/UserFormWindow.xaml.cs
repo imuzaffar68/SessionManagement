@@ -19,31 +19,40 @@ namespace SessionAdmin
         private bool _passwordVisible;
         private bool _isEditMode;
 
+        // onSave: receives this window, returns null on success or an error message string.
+        // onToast: called with a success message after successful save (before Close).
+        private readonly Func<UserFormWindow, string> _onSave;
+        private readonly Action<string>               _onToast;
+
         // Add mode
-        public UserFormWindow()
+        public UserFormWindow(Func<UserFormWindow, string> onSave, Action<string> onToast = null)
         {
             InitializeComponent();
-            lblFormTitle.Text = "Add Client User";
+            _onSave  = onSave;
+            _onToast = onToast;
+            lblFormTitle.Text    = "Add Client User";
             lblFormSubtitle.Text = "Register a new client account";
-            btnSubmit.Content = "+ Add User";
+            btnSubmit.Content    = "+ Add User";
             Loaded += (_, __) => HookPasswordPlaceholder(txtPassword);
         }
 
         // Edit mode
-        public UserFormWindow(UserVM user)
+        public UserFormWindow(UserVM user, Func<UserFormWindow, string> onSave, Action<string> onToast = null)
         {
             InitializeComponent();
+            _onSave     = onSave;
+            _onToast    = onToast;
             _isEditMode = true;
-            lblFormTitle.Text = "Edit Client User";
+            lblFormTitle.Text    = "Edit Client User";
             lblFormSubtitle.Text = $"Editing: {user.Username}";
-            btnSubmit.Content = "↑ Save Changes";
+            btnSubmit.Content    = "↑ Save Changes";
 
             // Show read-only username, hide editable textbox
-            txtUsername.Visibility = Visibility.Collapsed;
+            txtUsername.Visibility        = Visibility.Collapsed;
             pnlUsernameReadonly.Visibility = Visibility.Visible;
-            lblUsernameReadonly.Text = user.Username;
+            lblUsernameReadonly.Text       = user.Username;
 
-            // Hide password section
+            // Hide password section and its inline error in edit mode
             pnlPasswordSection.Visibility = Visibility.Collapsed;
 
             // Pre-fill editable fields
@@ -113,29 +122,61 @@ namespace SessionAdmin
 
         private void btnSubmit_Click(object sender, RoutedEventArgs e)
         {
+            // Clear previous inline and banner errors before re-validating
+            ClearErrors();
+
+            bool valid = true;
+
             if (!_isEditMode)
             {
-                string user = txtUsername.Text.Trim();
+                if (string.IsNullOrWhiteSpace(txtUsername.Text))
+                { SetFieldError(errUsername, "Username is required."); valid = false; }
+
                 string pass = _passwordVisible ? txtPasswordPlain.Text : txtPassword.Password;
-
-                if (string.IsNullOrWhiteSpace(user))
-                { ShowError("Username is required."); return; }
                 if (string.IsNullOrEmpty(pass))
-                { ShowError("Password is required."); return; }
-
-                Username = user;
-                Password = pass;
+                { SetFieldError(errPassword, "Password is required."); valid = false; }
+                else
+                    Password = pass;
             }
 
             if (string.IsNullOrWhiteSpace(txtFullName.Text))
-            { ShowError("Full name is required."); return; }
+            { SetFieldError(errFullName, "Full name is required."); valid = false; }
 
+            if (!valid) return;
+
+            // Collect all output values
+            if (!_isEditMode) Username = txtUsername.Text.Trim();
             FullName = txtFullName.Text.Trim();
-            Phone = txtPhone.Text.Trim();
-            Address = txtAddress.Text.Trim();
+            Phone    = txtPhone.Text.Trim();
+            Address  = txtAddress.Text.Trim();
 
+            // Call the save delegate — null return means success
+            try
+            {
+                string error = _onSave?.Invoke(this);
+                if (error != null) { ShowError(error); return; }
+            }
+            catch (Exception ex) { ShowError($"Server error: {ex.Message}"); return; }
+
+            _onToast?.Invoke(_isEditMode
+                ? $"User '{Username}' updated successfully."
+                : $"User '{Username}' registered successfully.");
             DialogResult = true;
             Close();
+        }
+
+        private void ClearErrors()
+        {
+            lblErrorBorder.Visibility = Visibility.Collapsed;
+            errUsername.Visibility    = Visibility.Collapsed;
+            errFullName.Visibility    = Visibility.Collapsed;
+            errPassword.Visibility    = Visibility.Collapsed;
+        }
+
+        private static void SetFieldError(TextBlock lbl, string message)
+        {
+            lbl.Text       = message;
+            lbl.Visibility = Visibility.Visible;
         }
 
         private void TitleBar_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)

@@ -445,24 +445,67 @@ namespace SessionManagement.WCF
         //  UC-11  —  CLIENT MACHINE MANAGEMENT
         // ═══════════════════════════════════════════════════════════
 
+        /// <summary>
+        /// Registers a new machine or refreshes its network identity on reconnect.
+        /// <para>
+        /// clientCode is auto-derived by the client as "CL-" + MAC address
+        /// (ResolveClientCode() in SessionClient\MainWindow.xaml.cs).
+        /// machineName and location come from App.config keys ClientMachineName /
+        /// ClientLocation, which are written by the Inno Setup installer wizard.
+        /// On subsequent reconnects the values are re-sent, but the SP only writes
+        /// them on first INSERT — admin renames via UpdateClientMachineInfo persist.
+        /// </para>
+        /// </summary>
         public bool RegisterClient(string clientCode, string machineName,
-            string ipAddress, string macAddress)
+            string ipAddress, string macAddress, string location)
         {
             if (!IsValidString(clientCode, 50) || !IsValidString(machineName))
                 return false;
 
             try
             {
+                // Check before upsert so we can broadcast only on genuine first-time registration
+                bool isNew = _db.GetClientMachineIdByCode(clientCode) == 0;
+
                 int id = _db.RegisterOrUpdateClient(clientCode, machineName,
-                    ipAddress, macAddress);
+                    ipAddress, macAddress, location);
                 _db.WriteSystemLog(null, null, id, null,
                     "System", "ClientRegistered",
                     $"Client {clientCode} ({machineName}) registered/updated", "Server");
+
+                // Notify all connected admins only when a brand-new machine appears
+                if (isNew && id > 0)
+                    Broadcast(cb => cb.OnServerMessage(
+                        $"CLIENT_REGISTERED:{clientCode} ({machineName})"));
+
                 return id > 0;
             }
             catch (Exception ex)
             {
                 _db.LogSystemEvent(null, null, null, "ClientRegisterErr", ex.Message, "Error");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Admin-only: rename a machine or change its physical location from
+        /// SessionAdmin without touching the client PC.
+        /// Updates MachineName and Location in tblClientMachine — the only path
+        /// that may do so after first registration (sp_RegisterClient UPDATE path
+        /// deliberately skips these columns so this change survives client reboots).
+        /// </summary>
+        public bool UpdateClientMachineInfo(string clientCode, string machineName, string location)
+        {
+            if (!IsValidString(clientCode, 50) || !IsValidString(machineName))
+                return false;
+
+            try
+            {
+                return _db.UpdateClientMachineInfo(clientCode, machineName, location);
+            }
+            catch (Exception ex)
+            {
+                _db.LogSystemEvent(null, null, null, "UpdateClientMachineInfoErr", ex.Message, "Error");
                 return false;
             }
         }
@@ -507,18 +550,21 @@ namespace SessionManagement.WCF
                 {
                     list.Add(new ClientInfo
                     {
-                        ClientId      = Convert.ToInt32(r["ClientMachineId"]),
-                        ClientCode    = r["ClientCode"].ToString(),
-                        MachineName   = r["MachineName"].ToString(),
-                        IpAddress     = r["IPAddress"].ToString(),
-                        MacAddress    = r["MACAddress"]?.ToString(),
-                        Location      = r["Location"]?.ToString(),
-                        IsActive      = (bool)r["IsActive"],
-                        Status        = r["Status"].ToString(),
-                        LastActiveTime= r["LastSeenAt"] != DBNull.Value
-                                        ? Convert.ToDateTime(r["LastSeenAt"])
-                                        : (DateTime?)null,
-                        CurrentUser   = r["CurrentUsername"]?.ToString()
+                        ClientId         = Convert.ToInt32(r["ClientMachineId"]),
+                        ClientCode       = r["ClientCode"].ToString(),
+                        MachineName      = r["MachineName"].ToString(),
+                        IpAddress        = r["IPAddress"].ToString(),
+                        MacAddress       = r["MACAddress"]?.ToString(),
+                        Location         = r["Location"]?.ToString(),
+                        IsActive         = (bool)r["IsActive"],
+                        Status           = r["Status"].ToString(),
+                        LastActiveTime   = r["LastSeenAt"] != DBNull.Value
+                                           ? Convert.ToDateTime(r["LastSeenAt"])
+                                           : (DateTime?)null,
+                        CurrentUser      = r["CurrentUsername"]?.ToString(),
+                        MissedHeartbeats = r["MissedHeartbeats"] != DBNull.Value
+                                           ? Convert.ToInt32(r["MissedHeartbeats"])
+                                           : 0
                     });
                 }
                 return list.ToArray();

@@ -684,11 +684,18 @@ namespace SessionManagement.Data
         }
 
         /// <summary>
-        /// sp_RegisterClient: upserts the machine row and returns its ClientMachineId.
-        /// Called at client startup so the machine appears in the admin dashboard immediately.
+        /// sp_RegisterClient: registers a new machine (INSERT) or refreshes its
+        /// network identity on reconnect (UPDATE — IPAddress/MACAddress/LastSeenAt only).
+        /// MachineName and Location are written once on first INSERT and are never
+        /// overwritten by subsequent reconnects; admin edits survive reboots.
+        /// <para>
+        /// INNO SETUP: the installer must write ClientCode, ClientMachineName, and
+        /// ClientLocation to SessionClient\App.config before the app first runs.
+        /// Those values are forwarded here as clientCode/machineName/location.
+        /// </para>
         /// </summary>
         public int RegisterOrUpdateClient(string clientCode, string machineName,
-            string ipAddress, string macAddress = null)
+            string ipAddress, string macAddress = null, string location = null)
         {
             try
             {
@@ -696,16 +703,43 @@ namespace SessionManagement.Data
                 using (var cmd = new SqlCommand("sp_RegisterClient", c)
                 { CommandType = CommandType.StoredProcedure })
                 {
-                    cmd.Parameters.AddWithValue("@ClientCode", clientCode);
+                    cmd.Parameters.AddWithValue("@ClientCode",  clientCode);
                     cmd.Parameters.AddWithValue("@MachineName", machineName);
-                    cmd.Parameters.AddWithValue("@IPAddress", ipAddress);
-                    cmd.Parameters.AddWithValue("@MACAddress", (object)macAddress ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@IPAddress",   ipAddress);
+                    cmd.Parameters.AddWithValue("@MACAddress",  (object)macAddress ?? DBNull.Value);
+                    // Location is NULL on reconnect — SP ignores it for existing rows
+                    cmd.Parameters.AddWithValue("@Location",    (object)location   ?? DBNull.Value);
                     c.Open();
-                    cmd.ExecuteScalar();   // returns 1/0 success flag
+                    cmd.ExecuteScalar();
                 }
                 return GetClientMachineIdByCode(clientCode);
             }
             catch (Exception ex) { LogError("RegisterOrUpdateClient", ex); return 0; }
+        }
+
+        /// <summary>
+        /// sp_UpdateClientMachineInfo: admin-only rename/relocate.
+        /// This is the ONLY path that may change MachineName or Location on an
+        /// existing row; sp_RegisterClient deliberately skips them on reconnect.
+        /// Called from SessionAdmin via ISessionService.UpdateClientMachineInfo().
+        /// </summary>
+        public bool UpdateClientMachineInfo(string clientCode, string machineName, string location)
+        {
+            try
+            {
+                using (var c = Conn())
+                using (var cmd = new SqlCommand("sp_UpdateClientMachineInfo", c)
+                { CommandType = CommandType.StoredProcedure })
+                {
+                    cmd.Parameters.AddWithValue("@ClientCode",  clientCode);
+                    cmd.Parameters.AddWithValue("@MachineName", machineName);
+                    cmd.Parameters.AddWithValue("@Location",    (object)location ?? DBNull.Value);
+                    c.Open();
+                    var result = cmd.ExecuteScalar();
+                    return result != null && Convert.ToInt32(result) == 1;
+                }
+            }
+            catch (Exception ex) { LogError("UpdateClientMachineInfo", ex); return false; }
         }
 
         /// <summary>Update IsActive status on a client machine row.</summary>
@@ -865,6 +899,7 @@ namespace SessionManagement.Data
                 SELECT c.ClientMachineId, c.ClientCode, c.MachineName,
                        c.IPAddress, c.MACAddress, c.Location,
                        c.Status, c.LastSeenAt, c.IsActive,
+                       c.MissedHeartbeats,
                        u.Fullname +' (' +u.Username+')' AS CurrentUsername
                 FROM   dbo.tblClientMachine c
                 LEFT JOIN dbo.tblSession s

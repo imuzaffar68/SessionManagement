@@ -108,7 +108,9 @@
                                Foreground="#475569" Margin="0,0,0,6"/>
                     <!-- Add mode: editable TextBox -->
                     <TextBox x:Name="txtUsername" Style="{StaticResource ModernInput}"
-                             Height="40" Margin="0,0,0,14" Tag="e.g. john_doe"/>
+                             Height="40" Margin="0,0,0,4" Tag="e.g. john_doe"/>
+                    <TextBlock x:Name="errUsername" Foreground="#F87171" FontSize="11"
+                               Margin="2,0,0,10" Visibility="Collapsed" TextWrapping="Wrap"/>
                     <!-- Edit mode: read-only label styled like input -->
                     <Border x:Name="pnlUsernameReadonly" Background="#13161F" CornerRadius="8"
                             BorderBrush="#1E2433" BorderThickness="1"
@@ -122,13 +124,15 @@
                     <TextBlock Text="FULL NAME *" FontSize="10" FontWeight="SemiBold"
                                Foreground="#475569" Margin="0,0,0,6"/>
                     <TextBox x:Name="txtFullName" Style="{StaticResource ModernInput}"
-                             Height="40" Margin="0,0,0,14" Tag="e.g. John Doe"/>
+                             Height="40" Margin="0,0,0,4" Tag="e.g. John Doe"/>
+                    <TextBlock x:Name="errFullName" Foreground="#F87171" FontSize="11"
+                               Margin="2,0,0,10" Visibility="Collapsed" TextWrapping="Wrap"/>
 
                     <!-- PASSWORD — hidden in edit mode -->
                     <StackPanel x:Name="pnlPasswordSection">
                         <TextBlock Text="PASSWORD *" FontSize="10" FontWeight="SemiBold"
                                    Foreground="#475569" Margin="0,0,0,6"/>
-                        <Grid Margin="0,0,0,14">
+                        <Grid Margin="0,0,0,4">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="44"/>
@@ -149,6 +153,8 @@
                                     Height="40" FontSize="11" Padding="0"
                                     Click="btnGenerate_Click"/>
                         </Grid>
+                        <TextBlock x:Name="errPassword" Foreground="#F87171" FontSize="11"
+                                   Margin="2,0,0,10" Visibility="Collapsed" TextWrapping="Wrap"/>
                     </StackPanel>
 
                     <!-- PHONE -->

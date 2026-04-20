@@ -54,10 +54,29 @@ namespace SessionManagement.WCF
 
         // ── UC-11  Client Machines ────────────────────────────────
 
-        /// <summary>Called at client startup; upserts tblClientMachine.</summary>
+        /// <summary>
+        /// Called at client startup; registers a new machine (first connect) or
+        /// refreshes its network identity (reconnect).
+        /// <para>
+        /// clientCode is auto-derived by ResolveClientCode() in SessionClient as
+        /// "CL-" + MAC address — it is never set by the installer.
+        /// machineName and location come from App.config keys ClientMachineName /
+        /// ClientLocation, which are written by the Inno Setup installer wizard.
+        /// MachineName and Location are only stored on first INSERT; subsequent
+        /// reconnects preserve any admin renames done via UpdateClientMachineInfo.
+        /// </para>
+        /// </summary>
         [OperationContract]
         bool RegisterClient(string clientCode, string machineName,
-                            string ipAddress, string macAddress);
+                            string ipAddress, string macAddress, string location);
+
+        /// <summary>
+        /// Admin renames or relocates a machine from SessionAdmin (Edit button).
+        /// This is the only path that overwrites MachineName / Location after
+        /// first registration — client reconnects deliberately skip those columns.
+        /// </summary>
+        [OperationContract]
+        bool UpdateClientMachineInfo(string clientCode, string machineName, string location);
 
         [OperationContract]
         bool UpdateClientStatus(string clientCode, string status);
@@ -266,16 +285,17 @@ namespace SessionManagement.WCF
     [DataContract]
     public class ClientInfo
     {
-        [DataMember] public int       ClientId       { get; set; }
-        [DataMember] public string    ClientCode     { get; set; }
-        [DataMember] public string    MachineName    { get; set; }
-        [DataMember] public string    IpAddress      { get; set; }
-        [DataMember] public string    MacAddress     { get; set; }
-        [DataMember] public string    Location { get; set; }
-        [DataMember] public bool      IsActive { get; set; }
-        [DataMember] public string    Status         { get; set; }
-        [DataMember] public DateTime? LastActiveTime { get; set; }
-        [DataMember] public string    CurrentUser    { get; set; }
+        [DataMember] public int       ClientId          { get; set; }
+        [DataMember] public string    ClientCode        { get; set; }
+        [DataMember] public string    MachineName       { get; set; }
+        [DataMember] public string    IpAddress         { get; set; }
+        [DataMember] public string    MacAddress        { get; set; }
+        [DataMember] public string    Location          { get; set; }
+        [DataMember] public bool      IsActive          { get; set; }
+        [DataMember] public string    Status            { get; set; }
+        [DataMember] public DateTime? LastActiveTime    { get; set; }
+        [DataMember] public string    CurrentUser       { get; set; }
+        [DataMember] public int       MissedHeartbeats  { get; set; }
     }
 
     [DataContract]

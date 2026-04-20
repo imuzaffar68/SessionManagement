@@ -16,23 +16,34 @@ namespace SessionAdmin
         public bool IsDefault { get; private set; }
         public string Notes { get; private set; }
 
+        // onSave: receives this window, returns null on success or an error message.
+        private readonly Func<BillingRateFormWindow, string> _onSave;
+        private readonly Action<string>                      _onToast;
+
         // Add mode
-        public BillingRateFormWindow()
+        public BillingRateFormWindow(Func<BillingRateFormWindow, string> onSave,
+                                     Action<string> onToast = null)
         {
             InitializeComponent();
-            lblFormTitle.Text = "Add Billing Rate";
+            _onSave  = onSave;
+            _onToast = onToast;
+            lblFormTitle.Text    = "Add Billing Rate";
             lblFormSubtitle.Text = "Configure a new billing rate";
-            btnSubmit.Content = "+ Add Rate";
+            btnSubmit.Content    = "+ Add Rate";
             chkIsActive.IsChecked = true;
         }
 
         // Edit mode
-        public BillingRateFormWindow(BillingRateVM rate)
+        public BillingRateFormWindow(BillingRateVM rate,
+                                     Func<BillingRateFormWindow, string> onSave,
+                                     Action<string> onToast = null)
         {
             InitializeComponent();
-            lblFormTitle.Text = "Edit Billing Rate";
+            _onSave  = onSave;
+            _onToast = onToast;
+            lblFormTitle.Text    = "Edit Billing Rate";
             lblFormSubtitle.Text = $"Editing: {rate.Name}";
-            btnSubmit.Content = "↑ Update Rate";
+            btnSubmit.Content    = "↑ Update Rate";
 
             txtRateName.Text = rate.Name;
             txtRatePerMinute.Text = rate.RatePerMinute.ToString();
@@ -40,36 +51,56 @@ namespace SessionAdmin
                 .FirstOrDefault(x => x.Content?.ToString() == rate.Currency)
                 ?? cboCurrency.Items[0];
             dpEffectiveFrom.SelectedDate = rate.EffectiveFrom;
-            dpEffectiveTo.SelectedDate = rate.EffectiveTo;
-            chkIsActive.IsChecked = rate.IsActive == 1;
-            chkIsDefault.IsChecked = rate.IsDefault == 1;
-            txtNotes.Text = rate.Notes ?? "";
+            dpEffectiveTo.SelectedDate   = rate.EffectiveTo;
+            chkIsActive.IsChecked        = rate.IsActive  == 1;
+            chkIsDefault.IsChecked       = rate.IsDefault == 1;
+            txtNotes.Text                = rate.Notes ?? "";
         }
 
         private void btnSubmit_Click(object sender, RoutedEventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(txtRateName.Text))
-            { ShowError("Rate name is required."); return; }
+            // Clear all inline and banner errors
+            lblErrorBorder.Visibility  = Visibility.Collapsed;
+            errRateName.Visibility     = Visibility.Collapsed;
+            errRatePerMinute.Visibility = Visibility.Collapsed;
+            errEffectiveFrom.Visibility = Visibility.Collapsed;
 
-            if (!decimal.TryParse(txtRatePerMinute.Text, out decimal rate) || rate < 0)
-            { ShowError("Rate must be a valid positive number."); return; }
+            bool valid = true;
+
+            if (string.IsNullOrWhiteSpace(txtRateName.Text))
+            { errRateName.Text = "Rate name is required."; errRateName.Visibility = Visibility.Visible; valid = false; }
+
+            decimal rateVal = 0;
+            if (!decimal.TryParse(txtRatePerMinute.Text, out rateVal) || rateVal < 0)
+            { errRatePerMinute.Text = "Enter a valid positive number."; errRatePerMinute.Visibility = Visibility.Visible; valid = false; }
 
             if (!dpEffectiveFrom.SelectedDate.HasValue)
-            { ShowError("Effective From date is required."); return; }
+            { errEffectiveFrom.Text = "Effective From date is required."; errEffectiveFrom.Visibility = Visibility.Visible; valid = false; }
 
-            if (dpEffectiveTo.SelectedDate.HasValue &&
+            if (dpEffectiveTo.SelectedDate.HasValue && dpEffectiveFrom.SelectedDate.HasValue &&
                 dpEffectiveTo.SelectedDate.Value < dpEffectiveFrom.SelectedDate.Value)
-            { ShowError("Effective To must be on or after Effective From."); return; }
+            { ShowError("Effective To must be on or after Effective From."); valid = false; }
 
+            if (!valid) return;
+
+            // Collect output values
             RateName      = txtRateName.Text.Trim();
-            RatePerMinute = rate;
+            RatePerMinute = rateVal;
             Currency      = (cboCurrency.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "PKR";
             EffectiveFrom = dpEffectiveFrom.SelectedDate;
             EffectiveTo   = dpEffectiveTo.SelectedDate;
-            IsActive      = chkIsActive.IsChecked ?? true;
+            IsActive      = chkIsActive.IsChecked  ?? true;
             IsDefault     = chkIsDefault.IsChecked ?? false;
             Notes         = txtNotes.Text.Trim();
 
+            try
+            {
+                string error = _onSave?.Invoke(this);
+                if (error != null) { ShowError(error); return; }
+            }
+            catch (Exception ex) { ShowError($"Server error: {ex.Message}"); return; }
+
+            _onToast?.Invoke($"Billing rate '{RateName}' saved successfully.");
             DialogResult = true;
             Close();
         }

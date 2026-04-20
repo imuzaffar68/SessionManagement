@@ -33,7 +33,9 @@ IF OBJECT_ID('dbo.sp_CalculateSessionBilling', 'P') IS NOT NULL DROP PROCEDURE d
 GO
 IF OBJECT_ID('dbo.sp_FinalizeSessionBilling', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_FinalizeSessionBilling;
 GO
-IF OBJECT_ID('dbo.sp_RegisterClient', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_RegisterClient;
+IF OBJECT_ID('dbo.sp_RegisterClient',          'P') IS NOT NULL DROP PROCEDURE dbo.sp_RegisterClient;
+GO
+IF OBJECT_ID('dbo.sp_UpdateClientMachineInfo', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_UpdateClientMachineInfo;
 GO
 IF OBJECT_ID('dbo.sp_RegisterClientUser', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_RegisterClientUser;
 GO
@@ -808,12 +810,41 @@ END;
 GO
 
 
+-- ============================================================
 -- sp_RegisterClient
+-- Called by every client machine at startup via RegisterClient().
+--
+-- BEHAVIOUR (intentional split — do NOT merge back into one UPDATE):
+--   INSERT path  → new machine; all columns including MachineName and
+--                  Location are written from the installer-configured
+--                  App.config values (ClientMachineName, ClientLocation).
+--   UPDATE path  → existing machine reconnecting; ONLY network-identity
+--                  columns (IPAddress, MACAddress, LastSeenAt) are
+--                  refreshed.  MachineName and Location are intentionally
+--                  left untouched so that any rename/relocation performed
+--                  by an admin via sp_UpdateClientMachineInfo survives
+--                  client reboots.
+--
+-- INNO SETUP NOTE:
+--   The installer must write TWO keys to SessionClient\App.config:
+--     ClientMachineName — friendly display name  (e.g. "Computer 01")
+--     ClientLocation    — physical seat / row    (e.g. "Row A – Seat 1")
+--   ClientCode is NOT set by the installer.  It is auto-derived at runtime
+--   by ResolveClientCode() in SessionClient\MainWindow.xaml.cs as:
+--       "CL-" + MAC address  (e.g. "CL-A1B2C3D4E5F6")
+--   This guarantees a globally unique, hardware-stable code per machine
+--   with zero manual configuration.  The sentinel value "CL001" in
+--   App.config triggers the auto-derivation logic.
+-- ============================================================
 CREATE PROCEDURE dbo.sp_RegisterClient
-    @ClientCode NVARCHAR(50),
-    @MachineName NVARCHAR(50),
-    @IPAddress NVARCHAR(45),
-    @MACAddress NVARCHAR(50) = NULL
+    @ClientCode  NVARCHAR(50),
+    @MachineName NVARCHAR(100),
+    @IPAddress   NVARCHAR(45),
+    @MACAddress  NVARCHAR(50)  = NULL,
+    -- Location: physical seat/row set once at install time via App.config key
+    -- "ClientLocation".  Only written on first INSERT; admin edits via
+    -- sp_UpdateClientMachineInfo are preserved on subsequent reconnects.
+    @Location    NVARCHAR(100) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -821,29 +852,31 @@ BEGIN
     DECLARE @MachineId INT;
 
     BEGIN TRY
-        -- IPAddress is informational only — uniqueness is not enforced.
-        -- ClientCode (derived from MAC) is the true unique identifier per machine.
+        -- ClientCode (set by installer, derived from seat/PC identity) is the
+        -- true unique identifier per machine.  IPAddress is informational only.
 
         IF EXISTS (SELECT 1 FROM dbo.tblClientMachine WHERE ClientCode = @ClientCode)
         BEGIN
+            -- Reconnect path: refresh network identity only.
+            -- MachineName and Location are NOT updated here — admin renames
+            -- done via sp_UpdateClientMachineInfo must survive client reboots.
             UPDATE dbo.tblClientMachine
-            SET MachineName = @MachineName,
-                IPAddress = @IPAddress,
-                MACAddress = ISNULL(@MACAddress, MACAddress),
-                Status = 'Idle',
-                LastSeenAt = GETDATE()
-            WHERE ClientCode = @ClientCode;
+            SET    IPAddress  = @IPAddress,
+                   MACAddress = ISNULL(@MACAddress, MACAddress),
+                   LastSeenAt = GETDATE()
+            WHERE  ClientCode = @ClientCode;
 
             SELECT @MachineId = ClientMachineId
-            FROM dbo.tblClientMachine
-            WHERE ClientCode = @ClientCode;
+            FROM   dbo.tblClientMachine
+            WHERE  ClientCode = @ClientCode;
         END
         ELSE
         BEGIN
+            -- First-connect path: full insert with installer-supplied values.
             INSERT INTO dbo.tblClientMachine
-                (ClientCode, MachineName, IPAddress, MACAddress, Status, IsActive)
+                (ClientCode, MachineName, IPAddress, MACAddress, Location, Status, IsActive)
             VALUES
-                (@ClientCode, @MachineName, @IPAddress, @MACAddress, 'Idle', 1);
+                (@ClientCode, @MachineName, @IPAddress, @MACAddress, @Location, 'Idle', 1);
 
             SET @MachineId = SCOPE_IDENTITY();
         END;
@@ -858,12 +891,61 @@ BEGIN
         SELECT @MachineId AS ClientMachineId;
     END TRY
     BEGIN CATCH
-        INSERT INTO dbo.tblSystemLog
-            (Category, Type, Message, Source)
-        VALUES
-            ('System', 'Error', 'sp_RegisterClient: ' + ERROR_MESSAGE(), 'Server');
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'Error', 'sp_RegisterClient: ' + ERROR_MESSAGE(), 'Server');
 
         SELECT 0 AS ClientMachineId;
+    END CATCH
+END;
+GO
+
+-- ============================================================
+-- sp_UpdateClientMachineInfo
+-- Called by the admin from SessionAdmin (Edit button in Clients tab)
+-- to rename a machine or update its physical location without
+-- touching the client PC.
+--
+-- Unlike sp_RegisterClient, this is the ONLY procedure that may
+-- update MachineName and Location on an existing row.  Client
+-- reconnects deliberately skip these columns so admin edits persist.
+-- ============================================================
+CREATE OR ALTER PROCEDURE dbo.sp_UpdateClientMachineInfo
+    @ClientCode  NVARCHAR(50),
+    @MachineName NVARCHAR(100),
+    @Location    NVARCHAR(100) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        IF NOT EXISTS (SELECT 1 FROM dbo.tblClientMachine WHERE ClientCode = @ClientCode)
+        BEGIN
+            SELECT 0 AS Result;  -- machine not found
+            RETURN;
+        END;
+
+        UPDATE dbo.tblClientMachine
+        SET    MachineName = @MachineName,
+               Location   = @Location
+        WHERE  ClientCode  = @ClientCode;
+
+        -- Audit trail so the admin change is visible in System Logs
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'MachineInfoUpdated',
+                'Admin updated machine info for ' + @ClientCode +
+                ': Name="' + @MachineName + '"' +
+                CASE WHEN @Location IS NOT NULL
+                     THEN ', Location="' + @Location + '"'
+                     ELSE '' END,
+                'Server');
+
+        SELECT 1 AS Result;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'Error', 'sp_UpdateClientMachineInfo: ' + ERROR_MESSAGE(), 'Server');
+
+        SELECT 0 AS Result;
     END CATCH
 END;
 GO

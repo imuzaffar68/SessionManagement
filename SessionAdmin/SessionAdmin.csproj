@@ -104,6 +104,9 @@
     </ApplicationDefinition>
     <!-- AppDialogWindow moved to SessionManagement.Shared/UI/AppDialogWindow.cs -->
     <None Include="AppDialogWindow.xaml.cs" />
+    <Compile Include="EditMachineWindow.xaml.cs">
+      <DependentUpon>EditMachineWindow.xaml</DependentUpon>
+    </Compile>
     <Compile Include="BillingRateFormWindow.xaml.cs">
       <DependentUpon>BillingRateFormWindow.xaml</DependentUpon>
     </Compile>
@@ -115,6 +118,9 @@
     </Compile>
     <Compile Include="SessionServiceClient.cs" />
     <None Include="AppDialogWindow.xaml" />
+    <Page Include="EditMachineWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
     <Page Include="BillingRateFormWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
     </Page>

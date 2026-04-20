@@ -254,13 +254,19 @@ namespace SessionClient
         {
             try
             {
-                string machine = ConfigurationManager.AppSettings["ClientMachineName"]
-                                 ?? Environment.MachineName;
+                // ClientMachineName and ClientLocation are set by the Inno Setup installer
+                // wizard; they are written to App.config before the app first runs.
+                // On reconnect the values are re-sent but the server SP only writes them
+                // on first INSERT — admin renames via UpdateClientMachineInfo() survive reboots.
+                string machine  = ConfigurationManager.AppSettings["ClientMachineName"]
+                                  ?? Environment.MachineName;
+                string location = ConfigurationManager.AppSettings["ClientLocation"] ?? "";
+
                 // Terminate orphan session BEFORE RegisterClient() — RegisterClient() stamps
                 // LastSeenAt = GETDATE(), which would overwrite the pre-crash timestamp
                 // that TerminateOrphanSession() uses to calculate billable elapsed time.
                 _svc.TerminateOrphanSession(_clientCode);
-                _svc.RegisterClient(_clientCode, machine, GetLocalIp(), GetMac());
+                _svc.RegisterClient(_clientCode, machine, GetLocalIp(), GetMac(), location);
                 _svc.SubscribeForNotifications(_clientCode);
                 _svc.UpdateClientStatus(_clientCode, "Idle");
             }
@@ -458,8 +464,11 @@ namespace SessionClient
                 bool pendingEnd   = _pendingSessionEnd;
                 int  pendingId    = _pendingSessionId;
                 var  pendingType  = _pendingSessionEndType;
-                string machine    = ConfigurationManager.AppSettings["ClientMachineName"]
-                                    ?? Environment.MachineName;
+                string machine   = ConfigurationManager.AppSettings["ClientMachineName"]
+                                   ?? Environment.MachineName;
+                // Location re-sent on reconnect; SP ignores it for existing rows
+                // so any admin rename done via UpdateClientMachineInfo() is preserved.
+                string location  = ConfigurationManager.AppSettings["ClientLocation"] ?? "";
 
                 Task.Run(async () =>
                 {
@@ -471,7 +480,7 @@ namespace SessionClient
                     // Step 1 — Re-register (RC-4: subscribe before session validation).
                     try
                     {
-                        svc.RegisterClient(code, machine, ip, mac);
+                        svc.RegisterClient(code, machine, ip, mac, location);
                         svc.SubscribeForNotifications(code);
                         svc.UpdateClientStatus(code, sessActive ? "Active" : "Idle");
                     }

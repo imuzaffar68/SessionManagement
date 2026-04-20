@@ -257,12 +257,26 @@ namespace SessionManagement.Client
         // ─────────────────────────────────────────────────────────
 
         public bool RegisterClient(string clientCode, string machineName,
-            string ipAddress, string macAddress)
+            string ipAddress, string macAddress, string location)
         {
             if (!EnsureConnection()) return false;
             try
-            { return _proxy.RegisterClient(clientCode, machineName, ipAddress, macAddress); }
+            { return _proxy.RegisterClient(clientCode, machineName, ipAddress, macAddress, location); }
             catch (Exception ex) { Log($"RegisterClient: {ex.Message}"); return false; }
+        }
+
+        /// <summary>
+        /// Admin-only: rename a machine or update its physical location from SessionAdmin.
+        /// Calls sp_UpdateClientMachineInfo via the WCF service; the change persists
+        /// across client reboots because sp_RegisterClient UPDATE path skips these columns.
+        /// </summary>
+        public bool UpdateClientMachineInfo(string clientCode, string machineName, string location)
+        {
+            if (!EnsureConnection()) throw new InvalidOperationException("Not connected to server.");
+            // Re-throw so the caller (btnEditMachine_Click) can show the real error message.
+            // Common failures: server not restarted after code update (ActionNotSupportedException),
+            // or sp_UpdateClientMachineInfo not yet deployed to the database.
+            return _proxy.UpdateClientMachineInfo(clientCode, machineName, location);
         }
 
         public bool UpdateClientStatus(string clientCode, string status)

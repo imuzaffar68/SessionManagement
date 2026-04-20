@@ -99,6 +99,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="UI\AppDialogWindow.cs" />
+    <Compile Include="UI\ScrollBehavior.cs" />
     <Compile Include="UI\ToastHelper.cs" />
     <Compile Include="Data\DatabaseHelper.cs" />
     <Compile Include="Media\WebcamHelper.cs" />

@@ -1,6 +1,7 @@
 <Window x:Class="SessionAdmin.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:SessionManagement.UI;assembly=SessionManagement.Shared"
         Title="NetCafé Admin — Session Management"
         Height="820" Width="1380"
         MinHeight="700" MinWidth="1100"
@@ -553,27 +554,132 @@
                                                 <ItemsControl x:Name="kanbanActiveSessions">
                                                     <ItemsControl.ItemTemplate>
                                                         <DataTemplate>
-                                                            <Border Background="#1E2433" CornerRadius="8"
-                                                                    Padding="12,10" Margin="0,0,0,8">
+                                                            <Border Background="#171C2B" CornerRadius="10"
+                                                                    Margin="0,0,0,10"
+                                                                    BorderBrush="#2D3748" BorderThickness="1">
                                                                 <StackPanel>
-                                                                    <StackPanel Orientation="Horizontal"
-                                                                                Margin="0,0,0,4">
-                                                                        <TextBlock Text="{Binding Username}"
-                                                                                   FontSize="13" FontWeight="SemiBold"
-                                                                                   Foreground="#F1F5F9"/>
-                                                                    </StackPanel>
-                                                                    <TextBlock Text="{Binding ClientId}"
-                                                                               FontSize="11" Foreground="#64748B"/>
-                                                                    <StackPanel Orientation="Horizontal"
-                                                                                Margin="0,6,0,0">
-                                                                        <Border Style="{StaticResource BadgeGreen}" Padding="6,2">
-                                                                            <TextBlock Text="{Binding RemainingTime}"
-                                                                                       FontSize="10" Foreground="#34D399"/>
+
+                                                                    <!-- ── Photo + Info ── -->
+                                                                    <Grid Margin="14,14,14,12">
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="72"/>
+                                                                            <ColumnDefinition Width="*"/>
+                                                                        </Grid.ColumnDefinitions>
+
+                                                                        <!-- Session photo -->
+                                                                        <Border Grid.Column="0"
+                                                                                Width="68" Height="68"
+                                                                                CornerRadius="8"
+                                                                                Background="#0F1117"
+                                                                                BorderBrush="#374151" BorderThickness="1"
+                                                                                Margin="0,0,12,0"
+                                                                                VerticalAlignment="Top">
+                                                                            <Grid>
+                                                                                <TextBlock Text="👤" FontSize="26"
+                                                                                           HorizontalAlignment="Center"
+                                                                                           VerticalAlignment="Center"
+                                                                                           Opacity="0.25"/>
+                                                                                <Image Source="{Binding PhotoSource}"
+                                                                                       Stretch="UniformToFill"
+                                                                                       RenderOptions.BitmapScalingMode="HighQuality"/>
+                                                                            </Grid>
                                                                         </Border>
-                                                                        <TextBlock Text="{Binding CurrentBilling}"
-                                                                                   FontSize="11" Foreground="#FBBF24"
-                                                                                   Margin="8,0,0,0" VerticalAlignment="Center"/>
-                                                                    </StackPanel>
+
+                                                                        <!-- Details -->
+                                                                        <StackPanel Grid.Column="1"
+                                                                                    VerticalAlignment="Center">
+                                                                            <TextBlock Text="{Binding FullName}"
+                                                                                       FontSize="13" FontWeight="Bold"
+                                                                                       Foreground="#F1F5F9"
+                                                                                       TextTrimming="CharacterEllipsis"/>
+                                                                            <Border CornerRadius="10"
+                                                                                    Background="#064E3B"
+                                                                                    Padding="8,2"
+                                                                                    HorizontalAlignment="Left"
+                                                                                    Margin="0,5,0,6">
+                                                                                <StackPanel Orientation="Horizontal">
+                                                                                    <Ellipse Width="6" Height="6"
+                                                                                             Fill="#34D399"
+                                                                                             VerticalAlignment="Center"
+                                                                                             Margin="0,0,5,0"/>
+                                                                                    <TextBlock Text="ACTIVE"
+                                                                                               FontSize="10"
+                                                                                               Foreground="#34D399"
+                                                                                               FontWeight="SemiBold"/>
+                                                                                </StackPanel>
+                                                                            </Border>
+                                                                            <TextBlock Text="{Binding Username}"
+                                                                                       FontSize="11"
+                                                                                       Foreground="#94A3B8"/>
+                                                                            <TextBlock Text="{Binding ClientId}"
+                                                                                       FontSize="10"
+                                                                                       Foreground="#64748B"
+                                                                                       Margin="0,2,0,0"
+                                                                                       TextTrimming="CharacterEllipsis"/>
+                                                                            <TextBlock Text="{Binding StartTime}"
+                                                                                       FontSize="10"
+                                                                                       Foreground="#64748B"
+                                                                                       Margin="0,2,0,0"
+                                                                                       TextTrimming="CharacterEllipsis"/>
+                                                                            <TextBlock Text="{Binding Duration}"
+                                                                                       FontSize="11"
+                                                                                       FontWeight="SemiBold"
+                                                                                       Foreground="#CBD5E1"
+                                                                                       Margin="0,3,0,0"/>
+                                                                        </StackPanel>
+                                                                    </Grid>
+
+                                                                    <!-- ── Separator ── -->
+                                                                    <Border Height="1" Background="#1E2D3D"
+                                                                            Margin="14,0"/>
+
+                                                                    <!-- ── Footer: remaining / billing / terminate ── -->
+                                                                    <Grid Margin="14,10,14,12">
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="*"/>
+                                                                            <ColumnDefinition Width="Auto"/>
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <StackPanel Grid.Column="0"
+                                                                                    VerticalAlignment="Center">
+                                                                            <TextBlock Text="{Binding RemainingTime}"
+                                                                                       FontSize="13" FontWeight="Bold"
+                                                                                       Foreground="#34D399"/>
+                                                                            <TextBlock Text="{Binding CurrentBilling}"
+                                                                                       FontSize="11"
+                                                                                       Foreground="#FBBF24"
+                                                                                       Margin="0,2,0,0"/>
+                                                                        </StackPanel>
+                                                                        <Button Grid.Column="1"
+                                                                                Content="⬛ Terminate"
+                                                                                Background="#7F1D1D"
+                                                                                Foreground="#FCA5A5"
+                                                                                BorderThickness="0"
+                                                                                Padding="10,6"
+                                                                                FontSize="11"
+                                                                                FontFamily="Segoe UI"
+                                                                                FontWeight="SemiBold"
+                                                                                Cursor="Hand"
+                                                                                VerticalAlignment="Center"
+                                                                                Click="btnTerminateSession_Click">
+                                                                            <Button.Template>
+                                                                                <ControlTemplate TargetType="Button">
+                                                                                    <Border x:Name="r"
+                                                                                            Background="{TemplateBinding Background}"
+                                                                                            CornerRadius="6"
+                                                                                            Padding="{TemplateBinding Padding}">
+                                                                                        <ContentPresenter HorizontalAlignment="Center"
+                                                                                                          VerticalAlignment="Center"/>
+                                                                                    </Border>
+                                                                                    <ControlTemplate.Triggers>
+                                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                                            <Setter TargetName="r" Property="Background" Value="#991B1B"/>
+                                                                                        </Trigger>
+                                                                                    </ControlTemplate.Triggers>
+                                                                                </ControlTemplate>
+                                                                            </Button.Template>
+                                                                        </Button>
+                                                                    </Grid>
+
                                                                 </StackPanel>
                                                             </Border>
                                                         </DataTemplate>
@@ -674,16 +780,16 @@
                             <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,16">
                                 <Button Content="↺ Refresh" Style="{StaticResource BtnGhost}"
                                         Height="36" Padding="16,0" Click="btnRefreshSessions_Click"/>
-                                <Button Content="🖼 View Image" Style="{StaticResource BtnPurple}"
-                                        Height="36" Padding="16,0" Margin="8,0,0,0"
-                                        Click="btnViewImage_Click"/>
                                 <TextBlock x:Name="lblActiveCount" Text="0 sessions"
                                            FontSize="12" Foreground="#475569"
                                            VerticalAlignment="Center" Margin="16,0,0,0"/>
                             </StackPanel>
 
                             <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
+                                <Grid>
                                 <DataGrid x:Name="dgActiveSessions" AutoGenerateColumns="False"
+                                          ScrollViewer.ScrollChanged="DgScrollChanged"
+                                          ui:ScrollBehavior.EnableHorizontalScroll="True"
                                           IsReadOnly="True" CanUserAddRows="False"
                                           SelectionMode="Single" Margin="0"
                                           ScrollViewer.HorizontalScrollBarVisibility="Auto"
@@ -708,34 +814,65 @@
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
-                                        <DataGridTemplateColumn Header="ACTIONS" Width="130" MinWidth="130">
+                                        <DataGridTemplateColumn Header="ACTIONS" Width="220" MinWidth="220">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <Button Content="⬛ Terminate"
-                                                            Background="#7F1D1D" Foreground="#FCA5A5"
-                                                            BorderThickness="0" Padding="10,5"
-                                                            FontSize="11" FontFamily="Segoe UI"
-                                                            Cursor="Hand" Margin="6,4"
-                                                            Click="btnTerminateSession_Click">
-                                                        <Button.Template>
-                                                            <ControlTemplate TargetType="Button">
-                                                                <Border x:Name="r" Background="{TemplateBinding Background}"
-                                                                        CornerRadius="6" Padding="{TemplateBinding Padding}">
-                                                                    <ContentPresenter HorizontalAlignment="Center"/>
-                                                                </Border>
-                                                                <ControlTemplate.Triggers>
-                                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                                        <Setter TargetName="r" Property="Background" Value="#991B1B"/>
-                                                                    </Trigger>
-                                                                </ControlTemplate.Triggers>
-                                                            </ControlTemplate>
-                                                        </Button.Template>
-                                                    </Button>
+                                                    <StackPanel Orientation="Horizontal" Margin="6,4">
+                                                        <Button Content="🖼 View"
+                                                                Background="#4C1D95" Foreground="#C4B5FD"
+                                                                BorderThickness="0" Padding="9,5"
+                                                                FontSize="11" FontFamily="Segoe UI"
+                                                                Cursor="Hand" Margin="0,0,6,0"
+                                                                Click="btnViewImage_Click">
+                                                            <Button.Template>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border x:Name="r" Background="{TemplateBinding Background}"
+                                                                            CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                        <ContentPresenter HorizontalAlignment="Center"/>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="r" Property="Background" Value="#5B21B6"/>
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Button.Template>
+                                                        </Button>
+                                                        <Button Content="⬛ Terminate"
+                                                                Background="#7F1D1D" Foreground="#FCA5A5"
+                                                                BorderThickness="0" Padding="10,5"
+                                                                FontSize="11" FontFamily="Segoe UI"
+                                                                Cursor="Hand"
+                                                                Click="btnTerminateSession_Click">
+                                                            <Button.Template>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border x:Name="r" Background="{TemplateBinding Background}"
+                                                                            CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                        <ContentPresenter HorizontalAlignment="Center"/>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="r" Property="Background" Value="#991B1B"/>
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Button.Template>
+                                                        </Button>
+                                                    </StackPanel>
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
                                     </DataGrid.Columns>
                                 </DataGrid>
+                                <StackPanel Orientation="Horizontal"
+                                            HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                            Margin="0,0,20,20" Panel.ZIndex="1" Visibility="Collapsed">
+                                    <Button Content="◀" Style="{StaticResource BtnHScroll}"
+                                            Click="BtnScrollLeft_Click"/>
+                                    <Button Content="▶" Style="{StaticResource BtnHScroll}"
+                                            Margin="4,0,0,0" Click="BtnScrollRight_Click"/>
+                                </StackPanel>
+                                </Grid>
                             </Border>
                         </Grid>
 
@@ -752,7 +889,10 @@
                             </StackPanel>
 
                             <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
+                                <Grid>
                                 <DataGrid x:Name="dgClients" AutoGenerateColumns="False"
+                                          ScrollViewer.ScrollChanged="DgScrollChanged"
+                                          ui:ScrollBehavior.EnableHorizontalScroll="True"
                                           IsReadOnly="True" CanUserAddRows="False"
                                           ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                           ScrollViewer.VerticalScrollBarVisibility="Auto">
@@ -766,10 +906,34 @@
                                         <DataGridTextColumn Header="MACHINE STATUS" Binding="{Binding ClientMachineStatus}" Width="120" MinWidth="120"/>
                                         <DataGridTextColumn Header="CURRENT USER" Binding="{Binding CurrentUser}" Width="140" MinWidth="140"/>
                                         <DataGridTextColumn Header="LAST SEEN" Binding="{Binding LastActive}" Width="160" MinWidth="160"/>
-                                        <DataGridTemplateColumn Header="ACTIONS" Width="170" MinWidth="170">
+                                        <DataGridTextColumn Header="MISSED HB" Binding="{Binding MissedHeartbeats}" Width="90" MinWidth="90"/>
+                                        <DataGridTemplateColumn Header="ACTIONS" Width="260" MinWidth="260">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <StackPanel Orientation="Horizontal" Margin="8,4">
+                                                        <!-- Edit: admin renames machine or updates location without touching the client PC.
+                                                             Writes to tblClientMachine via sp_UpdateClientMachineInfo; client reconnects
+                                                             preserve the change because sp_RegisterClient UPDATE path skips MachineName/Location. -->
+                                                        <Button Content="✎ Edit"
+                                                                Background="#1E3A5F" Foreground="#93C5FD"
+                                                                BorderThickness="0" Padding="8,5"
+                                                                FontSize="11" FontFamily="Segoe UI"
+                                                                Cursor="Hand" Margin="0,0,4,0"
+                                                                Click="btnEditMachine_Click">
+                                                            <Button.Template>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border x:Name="r" Background="{TemplateBinding Background}"
+                                                                            CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                        <ContentPresenter HorizontalAlignment="Center"/>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="r" Property="Background" Value="#1D4ED8"/>
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Button.Template>
+                                                        </Button>
                                                         <Button Content="✓ Enable"
                                                                 Background="#064E3B" Foreground="#34D399"
                                                                 BorderThickness="0" Padding="8,5"
@@ -837,6 +1001,15 @@
                                         </DataGridTemplateColumn>
                                     </DataGrid.Columns>
                                 </DataGrid>
+                                <StackPanel Orientation="Horizontal"
+                                            HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                            Margin="0,0,20,20" Panel.ZIndex="1" Visibility="Collapsed">
+                                    <Button Content="◀" Style="{StaticResource BtnHScroll}"
+                                            Click="BtnScrollLeft_Click"/>
+                                    <Button Content="▶" Style="{StaticResource BtnHScroll}"
+                                            Margin="4,0,0,0" Click="BtnScrollRight_Click"/>
+                                </StackPanel>
+                                </Grid>
                             </Border>
                         </Grid>
 
@@ -873,7 +1046,10 @@
 
                             <!-- Users Table -->
                             <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
+                                <Grid>
                                 <DataGrid x:Name="dgUsers" AutoGenerateColumns="False"
+                                          ScrollViewer.ScrollChanged="DgScrollChanged"
+                                          ui:ScrollBehavior.EnableHorizontalScroll="True"
                                           IsReadOnly="True" CanUserAddRows="False"
                                           SelectionMode="Single"
                                           ScrollViewer.HorizontalScrollBarVisibility="Auto"
@@ -1007,6 +1183,15 @@
                                         </DataGridTemplateColumn>
                                     </DataGrid.Columns>
                                 </DataGrid>
+                                <StackPanel Orientation="Horizontal"
+                                            HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                            Margin="0,0,20,20" Panel.ZIndex="1" Visibility="Collapsed">
+                                    <Button Content="◀" Style="{StaticResource BtnHScroll}"
+                                            Click="BtnScrollLeft_Click"/>
+                                    <Button Content="▶" Style="{StaticResource BtnHScroll}"
+                                            Margin="4,0,0,0" Click="BtnScrollRight_Click"/>
+                                </StackPanel>
+                                </Grid>
                             </Border>
 
                             <!-- User Action Messages -->
@@ -1055,7 +1240,10 @@
 
                             <!-- Rates Table -->
                             <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0" Margin="0,0,0,0">
+                                <Grid>
                                 <DataGrid x:Name="dgBillingRates" AutoGenerateColumns="False"
+                                          ScrollViewer.ScrollChanged="DgScrollChanged"
+                                          ui:ScrollBehavior.EnableHorizontalScroll="True"
                                           IsReadOnly="True" CanUserAddRows="False"
                                           SelectionMode="Single"
                                           ScrollViewer.HorizontalScrollBarVisibility="Auto"
@@ -1065,8 +1253,8 @@
                                         <DataGridTextColumn Header="NAME" Binding="{Binding Name}" Width="140" MinWidth="140"/>
                                         <DataGridTextColumn Header="RATE/MIN" Binding="{Binding RatePerMinute}" Width="90" MinWidth="90"/>
                                         <DataGridTextColumn Header="CURRENCY" Binding="{Binding Currency}" Width="80" MinWidth="80"/>
-                                        <DataGridTextColumn Header="EFF. FROM" Binding="{Binding EffectiveFrom}" Width="155" MinWidth="155"/>
-                                        <DataGridTextColumn Header="EFF. TO" Binding="{Binding EffectiveTo}" Width="155" MinWidth="155"/>
+                                        <DataGridTextColumn Header="EFF. FROM" Binding="{Binding EffectiveFrom, StringFormat='MM/dd/yyyy'}" Width="100" MinWidth="100"/>
+                                        <DataGridTextColumn Header="EFF. TO"   Binding="{Binding EffectiveTo,   StringFormat='MM/dd/yyyy'}" Width="100" MinWidth="100"/>
                                         <DataGridTextColumn Header="ACTIVE" Binding="{Binding IsActive}" Width="70" MinWidth="70"/>
                                         <DataGridTextColumn Header="DEFAULT" Binding="{Binding IsDefault}" Width="75" MinWidth="75"/>
                                         <DataGridTextColumn Header="CREATED" Binding="{Binding CreatedAt}" Width="155" MinWidth="155"/>
@@ -1157,6 +1345,15 @@
                                         </DataGridTemplateColumn>
                                     </DataGrid.Columns>
                                 </DataGrid>
+                                <StackPanel Orientation="Horizontal"
+                                            HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                            Margin="0,0,20,20" Panel.ZIndex="1" Visibility="Collapsed">
+                                    <Button Content="◀" Style="{StaticResource BtnHScroll}"
+                                            Click="BtnScrollLeft_Click"/>
+                                    <Button Content="▶" Style="{StaticResource BtnHScroll}"
+                                            Margin="4,0,0,0" Click="BtnScrollRight_Click"/>
+                                </StackPanel>
+                                </Grid>
                             </Border>
 
                             <!-- Payments Section Header -->
@@ -1185,7 +1382,10 @@
 
                             <!-- Payments Table -->
                             <Border Grid.Row="3" Style="{StaticResource Card}" Padding="0">
+                                <Grid>
                                 <DataGrid x:Name="dgBillingRecords" AutoGenerateColumns="False"
+                                          ScrollViewer.ScrollChanged="DgScrollChanged"
+                                          ui:ScrollBehavior.EnableHorizontalScroll="True"
                                           IsReadOnly="True" CanUserAddRows="False"
                                           SelectionMode="Single"
                                           ScrollViewer.HorizontalScrollBarVisibility="Auto"
@@ -1240,6 +1440,15 @@
                                         </DataGridTemplateColumn>
                                     </DataGrid.Columns>
                                 </DataGrid>
+                                <StackPanel Orientation="Horizontal"
+                                            HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                            Margin="0,0,20,20" Panel.ZIndex="1" Visibility="Collapsed">
+                                    <Button Content="◀" Style="{StaticResource BtnHScroll}"
+                                            Click="BtnScrollLeft_Click"/>
+                                    <Button Content="▶" Style="{StaticResource BtnHScroll}"
+                                            Margin="4,0,0,0" Click="BtnScrollRight_Click"/>
+                                </StackPanel>
+                                </Grid>
                             </Border>
 
                             <!-- Billing Action Messages -->
@@ -1273,7 +1482,10 @@
                                         Click="btnRefreshSessions_Click"/>
                             </StackPanel>
                             <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
+                                <Grid>
                                 <DataGrid x:Name="dgAlerts" AutoGenerateColumns="False" IsReadOnly="True"
+                                          ScrollViewer.ScrollChanged="DgScrollChanged"
+                                          ui:ScrollBehavior.EnableHorizontalScroll="True"
                                           ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                           ScrollViewer.VerticalScrollBarVisibility="Auto">
                                     <DataGrid.Columns>
@@ -1318,6 +1530,15 @@
                                         </DataGridTemplateColumn>
                                     </DataGrid.Columns>
                                 </DataGrid>
+                                <StackPanel Orientation="Horizontal"
+                                            HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                            Margin="0,0,20,20" Panel.ZIndex="1" Visibility="Collapsed">
+                                    <Button Content="◀" Style="{StaticResource BtnHScroll}"
+                                            Click="BtnScrollLeft_Click"/>
+                                    <Button Content="▶" Style="{StaticResource BtnHScroll}"
+                                            Margin="4,0,0,0" Click="BtnScrollRight_Click"/>
+                                </StackPanel>
+                                </Grid>
                             </Border>
                         </Grid>
 
@@ -1361,7 +1582,10 @@
                                 </StackPanel>
                             </Border>
                             <Border Grid.Row="1" Style="{StaticResource Card}" Padding="0">
+                                <Grid>
                                 <DataGrid x:Name="dgLogs" AutoGenerateColumns="False" IsReadOnly="True"
+                                          ScrollViewer.ScrollChanged="DgScrollChanged"
+                                          ui:ScrollBehavior.EnableHorizontalScroll="True"
                                           ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                           ScrollViewer.VerticalScrollBarVisibility="Auto">
                                     <DataGrid.Columns>
@@ -1382,6 +1606,15 @@
                                         </DataGridTemplateColumn>
                                     </DataGrid.Columns>
                                 </DataGrid>
+                                <StackPanel Orientation="Horizontal"
+                                            HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                            Margin="0,0,20,20" Panel.ZIndex="1" Visibility="Collapsed">
+                                    <Button Content="◀" Style="{StaticResource BtnHScroll}"
+                                            Click="BtnScrollLeft_Click"/>
+                                    <Button Content="▶" Style="{StaticResource BtnHScroll}"
+                                            Margin="4,0,0,0" Click="BtnScrollRight_Click"/>
+                                </StackPanel>
+                                </Grid>
                             </Border>
                         </Grid>
 
@@ -1489,7 +1722,7 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
-                    <TextBlock Text="⚠" FontSize="16" Foreground="#FBBF24"
+                    <TextBlock x:Name="lblToastIcon" Text="⚠" FontSize="16" Foreground="#FBBF24"
                                VerticalAlignment="Center" Margin="0,0,8,0"/>
                     <TextBlock x:Name="lblToastMessage"
                                FontSize="12" FontFamily="Segoe UI"
@@ -1503,8 +1736,8 @@
                         Click="btnDismissToast_Click">
                     <Button.Template>
                         <ControlTemplate TargetType="Button">
-                            <TextBlock Text="✕" Foreground="#A16207" FontSize="12"
-                                       VerticalAlignment="Center"/>
+                            <TextBlock x:Name="lblToastDismiss" Text="✕" Foreground="#A16207"
+                                       FontSize="12" VerticalAlignment="Center"/>
                         </ControlTemplate>
                     </Button.Template>
                 </Button>
@@ -1512,6 +1745,31 @@
         </Border>
 
         </Grid><!-- /main area Grid -->
+
+        <!-- ══════════════════════════════════════════════════════════
+             CONNECTING OVERLAY — shown while btnConnect async connect
+             is in progress. Last child of root Grid so it renders above
+             all panels including the sidebar and content area.
+        ══════════════════════════════════════════════════════════ -->
+        <Grid x:Name="ConnectingOverlay" Visibility="Collapsed" Background="#B2000000">
+            <Border Background="#0F1117" BorderBrush="#2D3748" BorderThickness="1"
+                    CornerRadius="14" Width="300" Height="120"
+                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Border.Effect>
+                    <DropShadowEffect Color="Black" BlurRadius="32" ShadowDepth="0" Opacity="0.8"/>
+                </Border.Effect>
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24,16">
+                    <TextBlock Text="Reconnecting to server…"
+                               FontFamily="Segoe UI" FontSize="14" FontWeight="SemiBold"
+                               Foreground="#F1F5F9" HorizontalAlignment="Center"
+                               Margin="0,0,0,12"/>
+                    <ProgressBar IsIndeterminate="True" Height="4"
+                                 Background="#1E2433" Foreground="#4F8EF7"
+                                 BorderThickness="0"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
     </Grid><!-- /outer rows Grid -->
     </Border><!-- /outer border -->
 </Window>

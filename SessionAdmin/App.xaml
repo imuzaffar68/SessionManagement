@@ -330,6 +330,9 @@
             ═══════════════════════════════════════════════════════════════════ -->
 
             <!-- Primary (blue) -->
+            <!-- HoverLayer overlay approach: ControlTemplate.Triggers target the translucent
+                 overlay instead of Root, so every derived style (Danger/Success/Ghost/Amber/Purple)
+                 gets correct hover without the template overriding their Background. -->
             <Style x:Key="BtnPrimary" TargetType="Button">
                 <Setter Property="Background"    Value="#4F8EF7"/>
                 <Setter Property="Foreground"    Value="White"/>
@@ -344,17 +347,21 @@
                         <ControlTemplate TargetType="Button">
                             <Border x:Name="Root" Background="{TemplateBinding Background}"
                                     CornerRadius="8" Padding="{TemplateBinding Padding}">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <!-- Translucent overlay — lightens on hover, darkens on press,
+                                     works for any button colour without hardcoding. -->
+                                <Border x:Name="HoverLayer" Background="Transparent" CornerRadius="8">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter TargetName="Root" Property="Background" Value="#6EA6FF"/>
+                                    <Setter TargetName="HoverLayer" Property="Background" Value="#20FFFFFF"/>
                                 </Trigger>
                                 <Trigger Property="IsPressed" Value="True">
-                                    <Setter TargetName="Root" Property="Background" Value="#3A7AE0"/>
+                                    <Setter TargetName="HoverLayer" Property="Background" Value="#28000000"/>
                                 </Trigger>
                                 <Trigger Property="IsEnabled" Value="False">
-                                    <Setter TargetName="Root" Property="Opacity" Value="0.5"/>
+                                    <Setter TargetName="Root" Property="Opacity" Value="0.45"/>
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
@@ -365,52 +372,62 @@
             <!-- Danger (red) -->
             <Style x:Key="BtnDanger" TargetType="Button" BasedOn="{StaticResource BtnPrimary}">
                 <Setter Property="Background" Value="#DC2626"/>
-                <Style.Triggers>
-                    <Trigger Property="IsMouseOver" Value="True">
-                        <Setter Property="Background" Value="#EF4444"/>
-                    </Trigger>
-                </Style.Triggers>
             </Style>
 
             <!-- Success (green) -->
             <Style x:Key="BtnSuccess" TargetType="Button" BasedOn="{StaticResource BtnPrimary}">
                 <Setter Property="Background" Value="#059669"/>
-                <Style.Triggers>
-                    <Trigger Property="IsMouseOver" Value="True">
-                        <Setter Property="Background" Value="#10B981"/>
-                    </Trigger>
-                </Style.Triggers>
             </Style>
 
             <!-- Ghost (dark neutral) -->
             <Style x:Key="BtnGhost" TargetType="Button" BasedOn="{StaticResource BtnPrimary}">
                 <Setter Property="Background" Value="#1E2433"/>
                 <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
-                <Style.Triggers>
-                    <Trigger Property="IsMouseOver" Value="True">
-                        <Setter Property="Background" Value="#252D42"/>
-                    </Trigger>
-                </Style.Triggers>
             </Style>
 
             <!-- Amber (warning) -->
             <Style x:Key="BtnAmber" TargetType="Button" BasedOn="{StaticResource BtnPrimary}">
                 <Setter Property="Background" Value="#B45309"/>
-                <Style.Triggers>
-                    <Trigger Property="IsMouseOver" Value="True">
-                        <Setter Property="Background" Value="#D97706"/>
-                    </Trigger>
-                </Style.Triggers>
             </Style>
 
             <!-- Purple -->
             <Style x:Key="BtnPurple" TargetType="Button" BasedOn="{StaticResource BtnPrimary}">
                 <Setter Property="Background" Value="#7C3AED"/>
-                <Style.Triggers>
-                    <Trigger Property="IsMouseOver" Value="True">
-                        <Setter Property="Background" Value="#8B5CF6"/>
-                    </Trigger>
-                </Style.Triggers>
+            </Style>
+
+            <!-- Small square arrow button for DataGrid horizontal scroll -->
+            <Style x:Key="BtnHScroll" TargetType="Button">
+                <Setter Property="Width"           Value="26"/>
+                <Setter Property="Height"          Value="26"/>
+                <Setter Property="Background"      Value="#1E2433"/>
+                <Setter Property="Foreground"      Value="#64748B"/>
+                <Setter Property="BorderBrush"     Value="#2D3748"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="FontFamily"      Value="Segoe UI"/>
+                <Setter Property="FontSize"        Value="12"/>
+                <Setter Property="Cursor"          Value="Hand"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Root"
+                                    Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="6">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Root" Property="Background" Value="#2D3748"/>
+                                    <Setter Property="Foreground" Value="#94A3B8"/>
+                                </Trigger>
+                                <Trigger Property="IsPressed" Value="True">
+                                    <Setter TargetName="Root" Property="Background" Value="#374151"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
 
             <!-- ═══════════════════════════════════════════════════════════════
@@ -701,6 +718,38 @@
                         <Setter Property="Foreground"   Value="{StaticResource TextPrimary}"/>
                     </Trigger>
                 </Style.Triggers>
+            </Style>
+
+            <!-- ═══════════════════════════════════════════════════════════════
+                 TOOLTIP — dark theme, matches card palette
+            ═══════════════════════════════════════════════════════════════════ -->
+            <Style TargetType="ToolTip">
+                <Setter Property="Background"     Value="#1E2433"/>
+                <Setter Property="Foreground"     Value="#F1F5F9"/>
+                <Setter Property="BorderBrush"    Value="#2D3748"/>
+                <Setter Property="BorderThickness" Value="1"/>
+                <Setter Property="FontFamily"     Value="Segoe UI"/>
+                <Setter Property="FontSize"       Value="12"/>
+                <Setter Property="Padding"        Value="10,6"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ToolTip">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="6"
+                                    Padding="{TemplateBinding Padding}">
+                                <Border.Effect>
+                                    <DropShadowEffect Color="Black" Opacity="0.4"
+                                                      BlurRadius="8" ShadowDepth="2"/>
+                                </Border.Effect>
+                                <ContentPresenter TextBlock.Foreground="{TemplateBinding Foreground}"
+                                                  TextBlock.FontFamily="{TemplateBinding FontFamily}"
+                                                  TextBlock.FontSize="{TemplateBinding FontSize}"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
             </Style>
 
             <!-- ═══════════════════════════════════════════════════════════════
