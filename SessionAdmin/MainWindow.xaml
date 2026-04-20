@@ -427,7 +427,10 @@
                         <!-- All pages stacked, visibility toggled -->
 
                         <!-- ═══ OVERVIEW / KANBAN PAGE ═══ -->
-                        <Grid x:Name="PageDashboard" Margin="24">
+                        <ScrollViewer x:Name="PageDashboard" Margin="0"
+                                      VerticalScrollBarVisibility="Auto"
+                                      HorizontalScrollBarVisibility="Disabled">
+                        <Grid Margin="24">
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
@@ -767,6 +770,7 @@
                                 </StackPanel>
                             </Border>
                         </Grid>
+                        </ScrollViewer>
 
                         <!-- ═══ ACTIVE SESSIONS PAGE ═══ -->
                         <Grid x:Name="PageSessions" Margin="24" Visibility="Collapsed">
@@ -1710,6 +1714,8 @@
                                         </StackPanel>
                                         <DataGrid x:Name="dgReportSessions" Grid.Row="1"
                                                   AutoGenerateColumns="False" IsReadOnly="True"
+                                                  ScrollViewer.ScrollChanged="DgScrollChanged"
+                                                  ui:ScrollBehavior.EnableHorizontalScroll="True"
                                                   ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                                   ScrollViewer.VerticalScrollBarVisibility="Auto">
                                             <DataGrid.Columns>
@@ -1723,6 +1729,14 @@
                                                 <DataGridTextColumn Header="STATUS"      Binding="{Binding Status}"     Width="110" MinWidth="110"/>
                                             </DataGrid.Columns>
                                         </DataGrid>
+                                        <StackPanel Orientation="Horizontal"
+                                                    HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                    Margin="0,0,20,20" Panel.ZIndex="1" Visibility="Collapsed">
+                                            <Button Content="◀" Style="{StaticResource BtnHScroll}"
+                                                    Click="BtnScrollLeft_Click"/>
+                                            <Button Content="▶" Style="{StaticResource BtnHScroll}"
+                                                    Margin="4,0,0,0" Click="BtnScrollRight_Click"/>
+                                        </StackPanel>
                                     </Grid>
 
                                     <!-- ── Billing Summary / Security Alerts: text output ── -->
@@ -1741,7 +1755,7 @@
                         </Grid>
 
                     </Grid>
-                </ScrollViewer>
+                </Grid>
             </Grid>
         </Grid>
 
