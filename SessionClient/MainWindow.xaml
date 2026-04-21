@@ -71,6 +71,53 @@
                 </Grid>
             </Border>
 
+            <!-- Custom title bar — shown only in non-kiosk mode (HeaderBar replaces it in kiosk) -->
+            <Border x:Name="NonKioskTitleBar" Height="38" VerticalAlignment="Top"
+                    Background="#0D0F17" BorderBrush="#1E2433" BorderThickness="0,0,0,1"
+                    Visibility="Collapsed"
+                    MouseLeftButtonDown="ClientTitleBar_MouseDown"
+                    Cursor="SizeAll">
+                <Grid Margin="12,0">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <Border Width="20" Height="20" CornerRadius="6" Margin="0,0,8,0">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#4F8EF7" Offset="0"/>
+                                    <GradientStop Color="#7C3AED" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <TextBlock Text="⚡" FontSize="11" HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
+                        </Border>
+                        <TextBlock Text="NetCafé" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="#94A3B8" VerticalAlignment="Center"/>
+                        <TextBlock Text=" — Sign In" FontSize="12" Foreground="#475569"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                    <Button Content="✕" HorizontalAlignment="Right"
+                            Width="32" Height="28"
+                            Foreground="#475569" Background="Transparent"
+                            BorderThickness="0" FontSize="14" Cursor="Hand"
+                            Click="btnClientClose_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="r" Background="{TemplateBinding Background}"
+                                        CornerRadius="4">
+                                    <ContentPresenter HorizontalAlignment="Center"
+                                                      VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="r" Property="Background" Value="#7F1D1D"/>
+                                        <Setter Property="Foreground" Value="#F87171"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                </Grid>
+            </Border>
+
             <!-- Login Card -->
             <Border Width="460" VerticalAlignment="Center" HorizontalAlignment="Center"
                     Background="#171B26" BorderBrush="#2D3748" BorderThickness="1"
@@ -148,6 +195,23 @@
                                HorizontalAlignment="Center" Margin="0,16,0,0"
                                FontFamily="Segoe UI"
                                Text="Connecting to server…" Visibility="Collapsed"/>
+
+                    <!-- Connection indicator — visible only in non-kiosk mode (HeaderBar is hidden there) -->
+                    <Border x:Name="pnlLoginConnStatus" Margin="0,12,0,0" Visibility="Collapsed"
+                            Background="#0F1117" CornerRadius="8" Padding="12,8">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                            <Ellipse x:Name="ellipseLoginConnDot" Width="8" Height="8"
+                                     Fill="OrangeRed" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                            <TextBlock x:Name="lblLoginConnText" Text="Connecting…"
+                                       FontSize="11" Foreground="#64748B" FontFamily="Segoe UI"
+                                       VerticalAlignment="Center"/>
+                            <Button x:Name="btnLoginReconnect" Content="↺ Reconnect"
+                                    Height="24" Width="90" Margin="10,0,0,0" FontSize="11"
+                                    Visibility="Collapsed"
+                                    Style="{StaticResource ClientBtnGhost}" Padding="0,0"
+                                    Click="btnConnect_Click"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
             </Border>
         </Grid>

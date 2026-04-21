@@ -317,23 +317,37 @@ namespace SessionClient
                 WindowState = WindowState.Maximized;
                 ResizeMode = ResizeMode.NoResize;
                 InstallKeyboardHook();
-                HeaderBar.Visibility = Visibility.Visible;
+                HeaderBar.Visibility       = Visibility.Visible;
+                NonKioskTitleBar.Visibility = Visibility.Collapsed;
                 lblMachineCode.Text = "Machine: " + _clientCode;
+                pnlLoginConnStatus.Visibility = Visibility.Collapsed;
             }
             else
             {
                 Topmost = false;
-                WindowStyle = WindowStyle.SingleBorderWindow;
+                WindowStyle = WindowStyle.None;
                 WindowState = WindowState.Normal;
-                Width = 560; Height = 700;
-                Left = (SystemParameters.WorkArea.Width  - 560) / 2;
-                Top  = (SystemParameters.WorkArea.Height - 700) / 2;
                 ResizeMode = ResizeMode.NoResize;
-                Title = "NetCafé — Sign In";
-                HeaderBar.Visibility = Visibility.Collapsed;
+                Width = 560; Height = 720;
+                Left = (SystemParameters.WorkArea.Width  - 560) / 2;
+                Top  = (SystemParameters.WorkArea.Height - 720) / 2;
+                HeaderBar.Visibility        = Visibility.Collapsed;
+                NonKioskTitleBar.Visibility = Visibility.Visible;
+                pnlLoginConnStatus.Visibility = Visibility.Visible;
                 ApplyDarkTitleBar();
             }
             ShowInTaskbar = true;
+        }
+
+        private void ClientTitleBar_MouseDown(object sender, MouseButtonEventArgs e)
+        {
+            if (e.LeftButton == MouseButtonState.Pressed)
+                DragMove();
+        }
+
+        private void btnClientClose_Click(object sender, RoutedEventArgs e)
+        {
+            Close();
         }
 
         private void ApplyDarkTitleBar()
@@ -405,11 +419,22 @@ namespace SessionClient
                 });
             }
 
-            ellipseConnectionStatus.Fill = connected
-                ? System.Windows.Media.Brushes.LimeGreen
-                : System.Windows.Media.Brushes.OrangeRed;
-            lblConnectionStatus.Text = connected ? "Connected" : "Disconnected";
-            btnConnect.Visibility    = connected ? Visibility.Collapsed : Visibility.Visible;
+            var dot   = connected ? System.Windows.Media.Brushes.LimeGreen : System.Windows.Media.Brushes.OrangeRed;
+            var label = connected ? "Connected" : "Disconnected";
+            var retry = connected ? Visibility.Collapsed : Visibility.Visible;
+
+            // Kiosk header bar indicator
+            ellipseConnectionStatus.Fill = dot;
+            lblConnectionStatus.Text     = label;
+            btnConnect.Visibility        = retry;
+
+            // Non-kiosk login card indicator
+            if (!_kioskMode)
+            {
+                ellipseLoginConnDot.Fill       = dot;
+                lblLoginConnText.Text          = label;
+                btnLoginReconnect.Visibility   = retry;
+            }
 
             // Update the session-panel header indicator to reflect real server state.
             if (_sessionActive)
@@ -1609,9 +1634,9 @@ namespace SessionClient
             }
             else
             {
-                // Kiosk: silently block close on the login screen — no dialog.
-                e.Cancel = true;
-                return;
+                // Kiosk: silently block close on the login/idle screen — no dialog.
+                // Non-kiosk: allow close via the custom title bar ✕ button.
+                if (_kioskMode) { e.Cancel = true; return; }
             }
 
             Microsoft.Win32.SystemEvents.SessionEnding -= OnSystemSessionEnding;
