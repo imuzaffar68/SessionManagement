@@ -226,26 +226,51 @@ namespace SessionManagement.WCF
             {
                 int machineId = _db.GetClientMachineIdByCode(clientCode);
                 if (machineId == 0)
+                {
+                    _db.WriteSystemLog(null, userId, null, null,
+                        "Session", "SessionStartFailed",
+                        $"StartSession rejected: machine '{clientCode}' not registered", "Server");
                     return new SessionStartResponse
                     { Success = false, ErrorMessage = "Client machine not registered." };
+                }
 
                 // Check if machine is active (blocked machines cannot start sessions)
                 if (!_db.IsClientMachineActive(machineId))
+                {
+                    _db.WriteSystemLog(null, userId, machineId, null,
+                        "Session", "SessionStartFailed",
+                        $"StartSession rejected: machine '{clientCode}' is disabled", "Server");
                     return new SessionStartResponse
                     { Success = false, ErrorMessage = "This machine is not available for use. Please contact your administrator." };
+                }
 
                 // SEQ-02 step 2: INSERT tblSession via sp_StartSession.
                 // SP returns: positive = new SessionId, -1 = user conflict, -2 = machine conflict, 0 = error.
                 int sessionId = _db.StartSession(userId, machineId, durationMinutes);
                 if (sessionId == -1)
+                {
+                    _db.WriteSystemLog(null, userId, machineId, null,
+                        "Session", "SessionStartFailed",
+                        $"StartSession rejected: user {userId} already has an active session", "Server");
                     return new SessionStartResponse
                     { Success = false, ErrorMessage = "You already have an active session on another machine." };
+                }
                 if (sessionId == -2)
+                {
+                    _db.WriteSystemLog(null, userId, machineId, null,
+                        "Session", "SessionStartFailed",
+                        $"StartSession rejected: machine '{clientCode}' already has an active session", "Server");
                     return new SessionStartResponse
                     { Success = false, ErrorMessage = "This machine already has an active session." };
+                }
                 if (sessionId <= 0)
+                {
+                    _db.WriteSystemLog(null, userId, machineId, null,
+                        "Session", "SessionStartFailed",
+                        $"StartSession failed: sp_StartSession returned {sessionId} for machine '{clientCode}'", "Server");
                     return new SessionStartResponse
                     { Success = false, ErrorMessage = "Failed to create session record." };
+                }
 
                 // SEQ-02 step 3: mark machine Active
                 _db.UpdateClientMachineStatus(machineId, "Active");
@@ -309,10 +334,7 @@ namespace SessionManagement.WCF
                 // step 3: machine back to Idle
                 _db.UpdateClientMachineStatus(machineId, "Idle");
 
-                // step 4: Session log
-                _db.WriteSystemLog(sessionId, userId, machineId, null,
-                    "Session", "SessionEnded",
-                    $"Session {sessionId} ended — reason: {reason}", "Server");
+                // step 4: Session log written by sp_EndSession (atomic with the transaction)
 
                 // SEQ-14 step 5: push termination to the client machine (WCF callback).
                 // If the client has no live subscription (e.g. mid-reconnect after a server
@@ -469,9 +491,7 @@ namespace SessionManagement.WCF
 
                 int id = _db.RegisterOrUpdateClient(clientCode, machineName,
                     ipAddress, macAddress, location);
-                _db.WriteSystemLog(null, null, id, null,
-                    "System", "ClientRegistered",
-                    $"Client {clientCode} ({machineName}) registered/updated", "Server");
+                // Log written by sp_RegisterClient (atomic with the transaction)
 
                 // Notify all connected admins only when a brand-new machine appears
                 if (isNew && id > 0)
@@ -531,7 +551,13 @@ namespace SessionManagement.WCF
             {
                 int id = _db.GetClientMachineIdByCode(clientCode);
                 if (id == 0) return false;
-                return _db.UpdateClientMachineIsActive(id, isActive);
+                bool ok = _db.UpdateClientMachineIsActive(id, isActive);
+                if (ok)
+                    _db.WriteSystemLog(null, null, id, null,
+                        "System", isActive ? "MachineEnabled" : "MachineDisabled",
+                        $"Machine '{clientCode}' {(isActive ? "enabled" : "disabled")} by admin",
+                        "Server");
+                return ok;
             }
             catch (Exception ex)
             {
@@ -761,6 +787,7 @@ namespace SessionManagement.WCF
             {
                 var cb = OperationContext.Current
                              .GetCallbackChannel<ISessionServiceCallback>();
+                bool isNewSubscription = !_subs.ContainsKey(clientCode);
                 _subs[clientCode] = cb;
 
                 // RC-4: replay any termination that fired while this client had no
@@ -782,9 +809,10 @@ namespace SessionManagement.WCF
                         "Server");
                 }
 
-                _db.WriteSystemLog(null, null, null, null,
-                    "System", "ClientSubscribed",
-                    $"Client {clientCode} subscribed for notifications", "Server");
+                if (isNewSubscription)
+                    _db.WriteSystemLog(null, null, null, null,
+                        "System", "ClientSubscribed",
+                        $"Client {clientCode} subscribed for notifications", "Server");
             }
             catch (Exception ex)
             {

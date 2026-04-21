@@ -47,7 +47,11 @@
       "Bash(\"/c/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/MSBuild.exe\" SessionManagement.sln /p:Configuration=Debug /nologo /v:minimal)",
       "Bash(\"/c/Program Files/Microsoft Visual Studio/18/Insiders/MSBuild/Current/Bin/MSBuild.exe\" SessionManagement.sln /p:Configuration=Debug /nologo /v:minimal)",
       "Bash(cd \"C:\\\\\\\\Users\\\\\\\\Muzaffar Iqbal\\\\\\\\source\\\\\\\\repos\\\\\\\\imuzaffar68\\\\\\\\SessionManagement\")",
-      "Bash(Iqbal\\\\source\\\\repos\\\\imuzaffar68\\\\SessionManagement\\\\SessionManagement.sln' /p:Configuration=Debug /nologo /v:minimal 2>&1\")"
+      "Bash(Iqbal\\\\source\\\\repos\\\\imuzaffar68\\\\SessionManagement\\\\SessionManagement.sln' /p:Configuration=Debug /nologo /v:minimal 2>&1\")",
+      "Bash(python *)",
+      "Bash(where python3.exe)",
+      "Bash(where python.exe)",
+      "Bash(where py.exe)"
     ]
   }
 }
