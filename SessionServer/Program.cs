@@ -1,5 +1,7 @@
 using System;
 using System.Configuration;
+using System.IO;
+using System.Runtime.InteropServices;
 using System.ServiceModel;
 using System.ServiceModel.Description;
 using SessionManagement.WCF;
@@ -12,9 +14,21 @@ using static SessionManagement.WCF.ServiceConstants;
 /// </summary>
 class Program
 {
+    [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll")] static extern IntPtr LoadImage(IntPtr h, string name, uint type, int cx, int cy, uint load);
+    [DllImport("kernel32.dll")] static extern IntPtr GetConsoleWindow();
+
     static void Main(string[] args)
     {
         Console.Title = "Session Management Server";
+        string iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app.ico");
+        if (File.Exists(iconPath))
+        {
+            IntPtr hwnd  = GetConsoleWindow();
+            IntPtr hIcon = LoadImage(IntPtr.Zero, iconPath, 1, 0, 0, 0x10);
+            SendMessage(hwnd, 0x0080, (IntPtr)1, hIcon);
+            SendMessage(hwnd, 0x0080, (IntPtr)0, hIcon);
+        }
         Console.ForegroundColor = ConsoleColor.Cyan;
         Console.WriteLine("============================================================");
         Console.WriteLine("  Intelligent Client-Server Session Management System");

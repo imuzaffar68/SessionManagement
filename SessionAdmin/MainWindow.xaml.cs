@@ -71,6 +71,7 @@ namespace SessionAdmin
         public MainWindow(SessionServiceClient svc = null)
         {
             InitializeComponent();
+            Icon = BitmapFrame.Create(new Uri("pack://application:,,,/app.ico", UriKind.Absolute));
             Loaded += (_, __) => ToggleMaximize();
 
             if (svc != null)

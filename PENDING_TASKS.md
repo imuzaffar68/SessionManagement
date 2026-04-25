@@ -76,30 +76,28 @@ the settings `Window`.
 
 ## 3. Kiosk Keyboard Hook Extension
 
-**Status:** Not started  
-**Effort:** Low (~20 lines, C# only)
+**Status:** ✅ ALREADY DONE — close this task  
+**Effort:** Zero
 
-### What to do
-Extend the existing low-level keyboard hook in `SessionClient/MainWindow.xaml.cs`
-to block the shortcuts listed below. The hook already blocks `Alt+F4`; these
-additions follow the same pattern. All blocks are **active only when
-`EnableKioskMode=true`**.
+### Finding (from code review)
+After reading `SessionClient/MainWindow.xaml.cs:147–166`, all listed shortcuts
+are already blocked:
 
-### Shortcuts to block
-| Shortcut | Opens | Risk |
-|---|---|---|
-| `Win` key | Start menu | Access to all apps |
-| `Win + R` | Run dialog | Launch any executable |
-| `Win + E` | File Explorer | Browse and edit files |
-| `Win + D` | Show Desktop | Escape the kiosk window |
-| `Ctrl + Shift + Esc` | Task Manager | Kill the client process |
+```csharp
+if (vk == VK_LWIN || vk == VK_RWIN) return (IntPtr)1;  // blocks Win key
+// → Win+R, Win+E, Win+D are all blocked because Win key itself is swallowed
+if (ctrl && shift && vk == VK_ESCAPE) return (IntPtr)1; // Ctrl+Shift+Esc blocked
+if (alt  && vk == VK_F4)             return (IntPtr)1;  // Alt+F4 blocked
+if (alt  && vk == VK_TAB)            return (IntPtr)1;  // Alt+Tab blocked
+```
 
-### Notes
-- `Ctrl+Alt+Delete` cannot be intercepted by a user-mode hook — block it via
-  Group Policy (`DisableLockWorkstation` + `DisableTaskMgr` registry keys) or
-  accept it as a known gap for the current project scope.
-- The secret admin shortcut (`Ctrl+Alt+Shift+S` from Task 2) must be
-  **whitelisted** in this hook so it still fires in kiosk mode.
+The hook only activates during `!_sessionActive` (login/idle screen). During an
+active session the hook passes everything through — **this is intentional**: the
+paying user gets full computer access. This is correct cyber café behavior.
+
+### Note on Ctrl+Alt+Delete
+Cannot be intercepted by a user-mode hook. Accepted as a known gap.
+Mitigation: Standard User account (Task 4) reduces the damage even if pressed.
 
 ---
 
@@ -306,15 +304,419 @@ end;
 
 ---
 
+---
+
+## 6. B-1 — Currency Display Hardcoded as PKR
+
+**Status:** Not started  
+**Effort:** Low (2–3 lines, C# only)  
+**Priority:** Medium — functional bug visible to users
+
+### Problem
+`App.config` has `BillingCurrency=USD` but the UI hardcodes `"PKR"` in two places:
+
+- `SessionClient/MainWindow.xaml.cs:1177` → `lblSummaryAmount.Text = $"PKR {amount:F2}"`
+- `SessionClient/MainWindow.xaml.cs:1054` → `lblCurrentBilling.Text = $"${amount:F2}"`
+
+The config key `BillingCurrency` is never read for display purposes.
+
+### Fix
+Read the currency symbol from config at startup and use it in both labels:
+```csharp
+string _currency = ConfigurationManager.AppSettings["BillingCurrency"] ?? "PKR";
+// then:
+lblSummaryAmount.Text   = $"{_currency} {amount:F2}";
+lblCurrentBilling.Text  = $"{_currency} {amount:F2}";
+```
+
+Also update `App.config` default value from `USD` to `PKR` to match the project's
+actual target market (Pakistan).
+
+---
+
+## 7. B-2 — MinSessionDuration Default Mismatch
+
+**Status:** Not started  
+**Effort:** Trivial (1 line)  
+**Priority:** Low
+
+### Problem
+`SessionClient/MainWindow.xaml.cs:1486` defaults `mn = 15` in code:
+```csharp
+int mn = 15, mx = 480;
+```
+But `App.config` has `MinSessionDuration=1`. If the config key is ever missing,
+the minimum silently jumps from 1 to 15 minutes.
+
+### Fix
+Change the in-code default to match config:
+```csharp
+int mn = 1, mx = 480;
+```
+
+---
+
+## 8. B-3 — ValidateSession Is a Stub (Dead Code)
+
+**Status:** Not started  
+**Effort:** Low  
+**Priority:** Low
+
+### Problem
+`SessionManagement.Shared/WCF/SessionService.cs:211`:
+```csharp
+public bool ValidateSession(string sessionToken)
+    => !string.IsNullOrWhiteSpace(sessionToken);
+```
+This accepts any non-empty string as valid. The session token returned by
+`AuthenticateUser` is generated but never stored server-side, so real validation
+is impossible. The client code does not call `ValidateSession` at all — the token
+is ignored after login.
+
+### Fix options (choose one)
+1. **Remove it** — delete `ValidateSession` from the interface and implementation.
+   Cleanest option since the LAN-only threat model does not require token auth.
+2. **Implement it properly** — store tokens in a `ConcurrentDictionary<string, int>`
+   (token → userId) and validate on each sensitive call. Significant effort.
+
+**Recommended:** Option 1 — remove. Add a comment to the interface explaining
+that WCF channel security + BCrypt password auth is sufficient for a LAN system.
+
+---
+
+## 9. B-4 — Server Broadcast Messages Are Invisible
+
+**Status:** Not started  
+**Effort:** Low (XAML label + 2 lines C#)  
+**Priority:** Low
+
+### Problem
+`OnServerMessage` in both `SessionClient/MainWindow.xaml.cs` and
+`SessionAdmin/MainWindow.xaml.cs` only calls `Debug.WriteLine`. Any message the
+server broadcasts via `Broadcast(cb => cb.OnServerMessage(...))` — including the
+repeated-login-failure alert — is invisible to the end user and the admin.
+
+### Fix — SessionAdmin
+Wire `OnServerMessage` to a status bar or toast notification:
+```csharp
+private void OnServerMessage(object sender, ServerMessageEventArgs e)
+{
+    Dispatcher.BeginInvoke(new Action(() =>
+        ToastHelper.Show(ToastHelper.AdminAppId, "Server Notice", e.Message)));
+}
+```
+
+### Fix — SessionClient
+Same pattern — show as a toast so the user sees admin messages even when
+the session panel is visible.
+
+---
+
+## 10. D-1 — SQL Script Drops All Data (Production Risk)
+
+**Status:** Not started  
+**Effort:** Medium (SQL script change)  
+**Priority:** Medium
+
+### Problem
+`SessionManagement.sql` drops and recreates every table unconditionally:
+```sql
+IF OBJECT_ID('dbo.tblUser', 'U') IS NOT NULL DROP TABLE dbo.tblUser;
+```
+Running the script on a live café database destroys all session history,
+billing records, and user accounts.
+
+### Fix
+Add a data-presence guard before each DROP so re-running the script on an
+existing database is safe:
+```sql
+-- Only drop if empty (first-time setup)
+IF OBJECT_ID('dbo.tblSession', 'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM dbo.tblSession)
+   DROP TABLE dbo.tblSession;
+```
+Or better: split into two scripts:
+- `SessionManagement_Setup.sql` — initial creation (safe to run once)
+- `SessionManagement_Reset.sql` — drops everything (dev/test only, clearly named)
+
+---
+
+## 11. D-2 — No Startup Config Validation
+
+**Status:** Not started  
+**Effort:** Low (~15 lines, C# in Program.cs)  
+**Priority:** Medium
+
+### Problem
+`SessionServer/Program.cs` does not validate the connection string at startup.
+If `App.config` has a wrong SQL Server instance name the server starts, prints
+"SessionService is running", and then crashes on the first client connection
+attempt with an unhelpful `SqlException`.
+
+### Fix
+Add a DB connectivity test in `Program.cs` before `ServiceHost.Open()`:
+```csharp
+var db = new DatabaseHelper();
+if (!db.TestConnection())
+{
+    Console.WriteLine("ERROR: Cannot connect to database. Check App.config connection string.");
+    Console.WriteLine("Press Enter to exit.");
+    Console.ReadLine();
+    return;
+}
+```
+`DatabaseHelper.TestConnection()` already exists — just needs to be called.
+
+---
+
+## 12. D-3 — Server Kept Alive by Console.ReadLine() (Fragile)
+
+**Status:** Not started  
+**Effort:** Trivial (1 line change)  
+**Priority:** Medium
+
+### Problem
+`SessionServer/Program.cs` uses `Console.ReadLine()` to keep the process alive.
+Two failure modes:
+1. Someone accidentally presses Enter in the console → entire café goes offline.
+2. Running as a Windows Service or scheduled task → console is not attached,
+   `ReadLine()` returns `null` immediately → server exits silently.
+
+### Fix
+Replace `Console.ReadLine()` with an infinite sleep that still allows Ctrl+C:
+```csharp
+Console.WriteLine("SessionService is running. Press Ctrl+C to stop.");
+var exit = new System.Threading.ManualResetEventSlim(false);
+Console.CancelKeyPress += (s, e) => { e.Cancel = true; exit.Set(); };
+exit.Wait();
+```
+This blocks until Ctrl+C is pressed — immune to accidental Enter, and works
+correctly when no console is attached (the process simply waits).
+
+---
+
+## 13. D-4 — Session Images Accumulate Without Cleanup
+
+**Status:** Not started  
+**Effort:** Low  
+**Priority:** Low
+
+### Problem
+Login images are saved to `%PROGRAMDATA%\SessionManagement\Images` and never
+deleted. A café running for months with webcam enabled will gradually fill the
+server's disk.
+
+### Fix
+Add a cleanup sweep in `SessionService` constructor (or as a daily timer) that
+deletes image files older than N days:
+```csharp
+// Delete images older than 90 days
+foreach (var f in Directory.GetFiles(_imgPath, "*.jpg"))
+    if (File.GetCreationTime(f) < DateTime.Now.AddDays(-90))
+        File.Delete(f);
+```
+Make the retention period configurable via `App.config`:
+```xml
+<add key="ImageRetentionDays" value="90"/>
+```
+
+---
+
+## 14. D-5 — tblSystemLog Grows Unbounded
+
+**Status:** Not started  
+**Effort:** Low (one SQL stored procedure)  
+**Priority:** Low
+
+### Problem
+`tblSystemLog` is written on every auth, session start/end, and security event.
+There is no archiving or purge job. The table will grow indefinitely.
+
+### Fix
+Add a stored procedure `sp_PurgeOldLogs` and call it on server startup:
+```sql
+CREATE PROCEDURE dbo.sp_PurgeOldLogs @RetentionDays INT = 180
+AS
+BEGIN
+    DELETE FROM dbo.tblSystemLog
+    WHERE LoggedAt < DATEADD(DAY, -@RetentionDays, GETDATE());
+END
+```
+Call from `SessionService` constructor after DB startup log:
+```csharp
+_db.PurgeOldLogs(retentionDays: 180);
+```
+
+---
+
 ## Summary
 
-| # | Task | Type | Effort | Dependency |
-|---|---|---|---|---|
-| 1 | Inno Setup ServerAddress page | Installer script | Low | Superseded by Task 5 |
-| 2 | Hidden admin settings dialog | C# + XAML | Medium | None |
-| 3 | Keyboard hook extension | C# | Low | None |
-| 4 | Standard User account docs | Deployment guide | Zero | None |
-| 5 | Hybrid Inno Setup installer | Inno Setup `.iss` | High | Build in Release first |
+| # | Task | Type | Priority | Effort | Status |
+|---|---|---|---|---|---|
+| 1 | Inno Setup ServerAddress page | Installer | — | Low | Superseded by Task 5 |
+| 2 | Hidden admin settings dialog | C# + XAML | Low | Medium | Not started |
+| 3 | Keyboard hook extension | C# | — | — | ✅ Already done |
+| 4 | Standard User account docs | Deployment | Low | Zero | Not started |
+| 5 | Hybrid Inno Setup installer | Inno Setup | Low | High | Not started |
+| 6 | B-1 Currency hardcoded PKR | C# bug fix | Medium | Low | Not started |
+| 7 | B-2 MinSessionDuration default | C# bug fix | Low | Trivial | Not started |
+| 8 | B-3 ValidateSession stub | C# cleanup | Low | Low | Not started |
+| 9 | B-4 Server broadcast invisible | C# + XAML | Low | Low | Not started |
+| 10 | D-1 SQL script drops live data | SQL | Medium | Medium | Not started |
+| 11 | D-2 No startup config validation | C# | Medium | Low | Not started |
+| 12 | D-3 Console.ReadLine() fragile | C# | Medium | Trivial | Not started |
+| 13 | D-4 Image files accumulate | C# | Low | Low | Not started |
+| 14 | D-5 tblSystemLog unbounded | SQL | Low | Low | Not started |
 
-Start with Task 3 (keyboard hook) — pure C#, no external tools needed.  
-Task 5 (installer) is last — do it after the app is feature-complete and builds clean in Release.
+---
+
+## 15. Code Regions — DatabaseHelper / SessionService / IllegalActivityDetectionService
+
+**Status:** Not started  
+**Effort:** Low (mechanical, no logic change)  
+**Priority:** Low — IDE quality / maintainability
+
+### Problem
+`SessionClient/MainWindow.xaml.cs` and `SessionAdmin/MainWindow.xaml.cs` use
+proper C# `#region` / `#endregion` directives — sections collapse in Visual
+Studio. The three files below use `═══════` comment separators only:
+
+| File | Current structure | Missing |
+|---|---|---|
+| `SessionManagement.Shared/Data/DatabaseHelper.cs` | `// ═══ UC-01 ═══` comments | `#region` |
+| `SessionManagement.Shared/WCF/SessionService.cs` | `// ═══ UC-01 ═══` comments | `#region` |
+| `SessionManagement.Shared/Security/IllegalActivityDetectionService.cs` | `// ═════` comments | `#region` |
+
+### Fix
+Replace each `// ═══ SECTION ═══` block header with:
+```csharp
+#region UC-01 / UC-09 — Authentication
+// ... code ...
+#endregion
+```
+No logic changes — purely structural.
+
+---
+
+## 16. DatabaseHelper — Split / Inefficient DB Calls
+
+**Status:** Not started  
+**Effort:** Medium (SQL + C# changes)  
+**Priority:** Medium — correctness and performance
+
+### Problem A — `RegisterOrUpdateClient` makes 2 round-trips
+
+`DatabaseHelper.cs:697–718`: calls `sp_RegisterClient` SP then immediately calls
+`GetClientMachineIdByCode` in a second DB round-trip to return the machine ID.
+
+```csharp
+cmd.ExecuteScalar();                          // round-trip 1: register
+return GetClientMachineIdByCode(clientCode);  // round-trip 2: fetch the ID
+```
+
+**Fix:** Add `@ClientMachineId INT OUTPUT` to `sp_RegisterClient` and return it
+directly. One round-trip instead of two:
+```csharp
+var outParam = new SqlParameter("@ClientMachineId", SqlDbType.Int)
+    { Direction = ParameterDirection.Output };
+cmd.Parameters.Add(outParam);
+cmd.ExecuteNonQuery();
+return outParam.Value != DBNull.Value ? Convert.ToInt32(outParam.Value) : 0;
+```
+
+### Problem B — `AutoExpireOverdueSessionsWithIds` loops N individual UPDATEs
+
+`DatabaseHelper.cs:250–288`: SELECTs all overdue session IDs, then runs a
+separate `UPDATE` for each one in a `foreach` loop — N database round-trips.
+
+**Fix:** Replace with a single `UPDATE ... OUTPUT INSERTED.SessionId`:
+```sql
+UPDATE dbo.tblSession
+SET    Status = 'Expired', EndedAt = GETDATE(),
+       ActualDurationMinutes = SelectedDurationMinutes,
+       TerminationReason = 'AutoExpiry'
+OUTPUT INSERTED.SessionId
+WHERE  Status = 'Active' AND ExpectedEndAt < GETDATE()
+```
+Read the `OUTPUT` rows into a list — one round-trip returns both the updated
+count and the IDs.
+
+### Problem C — `MarkStaleClientsOffline` has no transaction between stepA and stepB
+
+`DatabaseHelper.cs:839–876`: Two commands (increment `MissedHeartbeats`, then
+mark `Offline`) run on the same connection but without a `BEGIN TRANSACTION`.
+If the process crashes between them, heartbeat counters are incremented but
+machines are never marked offline — they accumulate stale counters indefinitely.
+
+**Fix:** Wrap both commands in an explicit transaction:
+```csharp
+c.Open();
+using (var tx = c.BeginTransaction())
+{
+    // stepA — increment miss counters
+    using (var cmdA = new SqlCommand(stepA, c, tx)) { ... }
+    // stepB — mark offline + return rows
+    using (var cmdB = new SqlCommand(stepB, c, tx)) { ... }
+    tx.Commit();
+}
+```
+
+---
+
+## 17. XAML File Organization — SessionAdmin Dialogs
+
+**Status:** Decision made — no action needed  
+**Effort:** N/A
+
+### Decision: Keep files flat (do not create subfolders)
+
+**SessionClient** — 4 windows (MainWindow, SplashWindow, FloatingTimerWindow,
+App). Flat is appropriate at this scale.
+
+**SessionAdmin** — 9 windows. The 6 dialog windows
+(`AppDialogWindow`, `BillingRateFormWindow`, `EditMachineWindow`,
+`EditUserWindow`, `ResetPasswordWindow`, `UserFormWindow`) could logically go
+into a `Views\Dialogs\` subfolder. However:
+
+- Moving XAML files in WPF requires updating **every** `x:Class` attribute and
+  the `.csproj` `<Compile>` / `<Page>` entries.
+- The default WPF namespace (`namespace SessionAdmin`) would need to become
+  `namespace SessionAdmin.Dialogs` — a breaking change that cascades into every
+  `new EditMachineWindow()` call site in `MainWindow.xaml.cs`.
+- For a 9-file project the flat layout is still manageable in Solution Explorer.
+
+**Conclusion:** The complexity and risk of moving files outweigh the benefit.
+Leave flat. Revisit only if the file count grows significantly (15+).
+
+---
+
+## Summary
+
+| # | Task | Type | Priority | Effort | Status |
+|---|---|---|---|---|---|
+| 1 | Inno Setup ServerAddress page | Installer | — | Low | Superseded by Task 5 |
+| 2 | Hidden admin settings dialog | C# + XAML | Low | Medium | Not started |
+| 3 | Keyboard hook extension | C# | — | — | ✅ Already done |
+| 4 | Standard User account docs | Deployment | Low | Zero | Not started |
+| 5 | Hybrid Inno Setup installer | Inno Setup | Low | High | Not started |
+| 6 | B-1 Currency hardcoded PKR | C# bug fix | Medium | Low | Not started |
+| 7 | B-2 MinSessionDuration default | C# bug fix | Low | Trivial | Not started |
+| 8 | B-3 ValidateSession stub | C# cleanup | Low | Low | Not started |
+| 9 | B-4 Server broadcast invisible | C# + XAML | Low | Low | Not started |
+| 10 | D-1 SQL script drops live data | SQL | Medium | Medium | Not started |
+| 11 | D-2 No startup config validation | C# | Medium | Low | Not started |
+| 12 | D-3 Console.ReadLine() fragile | C# | Medium | Trivial | Not started |
+| 13 | D-4 Image files accumulate | C# | Low | Low | Not started |
+| 14 | D-5 tblSystemLog unbounded | SQL | Low | Low | Not started |
+| 15 | Regions in shared files | C# style | Low | Low | Not started |
+| 16 | DatabaseHelper split DB calls | C# + SQL | Medium | Medium | Not started |
+| 17 | XAML folder organization | Architecture | — | — | ✅ Decision: keep flat |
+
+### Recommended order
+1. **Task 12** — D-3 server keep-alive (1 line, prevents accidental shutdown)
+2. **Task 11** — D-2 config validation (clear error on misconfigured DB)
+3. **Task 6** — B-1 currency fix (visible to users)
+4. **Task 16** — DatabaseHelper split DB calls (correctness)
+5. **Task 10** — D-1 SQL script safety (prevents data loss on reinstall)
+6. **Tasks 7–9, 13–15** — low priority cleanup
+7. **Tasks 2, 4, 5** — deployment / installer work (do last, after app is stable)

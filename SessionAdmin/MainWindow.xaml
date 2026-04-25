@@ -2,11 +2,13 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="clr-namespace:SessionManagement.UI;assembly=SessionManagement.Shared"
+        Icon="app.ico"
         Title="NetCafé Admin — Session Management"
         Height="820" Width="1380"
         MinHeight="700" MinWidth="1100"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
+        ShowInTaskbar="True"
         Background="#0F1117">
 
     <Border Background="#0F1117" BorderBrush="#2D3748" BorderThickness="1">
@@ -24,7 +26,7 @@
                 Cursor="SizeAll">
             <Grid Margin="12,0">
                 <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                    <Image Source="/SessionAdmin;component/web-apps.ico"
+                    <Image Source="/SessionAdmin;component/app.ico"
                            Width="16" Height="16" Margin="0,0,8,0"
                            VerticalAlignment="Center"
                            RenderOptions.BitmapScalingMode="HighQuality"/>
