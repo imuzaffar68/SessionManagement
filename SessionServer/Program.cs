@@ -117,10 +117,12 @@ class Program
                 Console.WriteLine($"[WCF] Service listening on: {baseAddress}");
                 Console.ResetColor();
                 Console.WriteLine();
-                Console.WriteLine("  Server is running.  Press Enter to stop.");
+                Console.WriteLine("  Server is running.  Press Ctrl+C to stop.");
                 Console.WriteLine();
 
-                Console.ReadLine();
+                var exit = new System.Threading.ManualResetEventSlim(false);
+                Console.CancelKeyPress += (s, e) => { e.Cancel = true; exit.Set(); };
+                exit.Wait();
 
                 host.Close();
                 Console.WriteLine("[WCF] Service stopped gracefully.");

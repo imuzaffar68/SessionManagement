@@ -558,13 +558,13 @@ _db.PurgeOldLogs(retentionDays: 180);
 | 3 | Keyboard hook extension | C# | — | — | ✅ Already done |
 | 4 | Standard User account docs | Deployment | Low | Zero | Not started |
 | 5 | Hybrid Inno Setup installer | Inno Setup | Low | High | Not started |
-| 6 | B-1 Currency hardcoded PKR | C# bug fix | Medium | Low | Not started |
-| 7 | B-2 MinSessionDuration default | C# bug fix | Low | Trivial | Not started |
+| 6 | B-1 Currency hardcoded PKR | C# bug fix | Medium | Low | ✅ Done |
+| 7 | B-2 MinSessionDuration default | C# bug fix | Low | Trivial | ✅ Done |
 | 8 | B-3 ValidateSession stub | C# cleanup | Low | Low | Not started |
 | 9 | B-4 Server broadcast invisible | C# + XAML | Low | Low | Not started |
 | 10 | D-1 SQL script drops live data | SQL | Medium | Medium | Not started |
-| 11 | D-2 No startup config validation | C# | Medium | Low | Not started |
-| 12 | D-3 Console.ReadLine() fragile | C# | Medium | Trivial | Not started |
+| 11 | D-2 No startup config validation | C# | Medium | Low | ✅ Done |
+| 12 | D-3 Console.ReadLine() fragile | C# | Medium | Trivial | ✅ Done |
 | 13 | D-4 Image files accumulate | C# | Low | Low | Not started |
 | 14 | D-5 tblSystemLog unbounded | SQL | Low | Low | Not started |
 
@@ -699,13 +699,13 @@ Leave flat. Revisit only if the file count grows significantly (15+).
 | 3 | Keyboard hook extension | C# | — | — | ✅ Already done |
 | 4 | Standard User account docs | Deployment | Low | Zero | Not started |
 | 5 | Hybrid Inno Setup installer | Inno Setup | Low | High | Not started |
-| 6 | B-1 Currency hardcoded PKR | C# bug fix | Medium | Low | Not started |
-| 7 | B-2 MinSessionDuration default | C# bug fix | Low | Trivial | Not started |
+| 6 | B-1 Currency hardcoded PKR | C# bug fix | Medium | Low | ✅ Done |
+| 7 | B-2 MinSessionDuration default | C# bug fix | Low | Trivial | ✅ Done |
 | 8 | B-3 ValidateSession stub | C# cleanup | Low | Low | Not started |
 | 9 | B-4 Server broadcast invisible | C# + XAML | Low | Low | Not started |
 | 10 | D-1 SQL script drops live data | SQL | Medium | Medium | Not started |
-| 11 | D-2 No startup config validation | C# | Medium | Low | Not started |
-| 12 | D-3 Console.ReadLine() fragile | C# | Medium | Trivial | Not started |
+| 11 | D-2 No startup config validation | C# | Medium | Low | ✅ Done |
+| 12 | D-3 Console.ReadLine() fragile | C# | Medium | Trivial | ✅ Done |
 | 13 | D-4 Image files accumulate | C# | Low | Low | Not started |
 | 14 | D-5 tblSystemLog unbounded | SQL | Low | Low | Not started |
 | 15 | Regions in shared files | C# style | Low | Low | Not started |

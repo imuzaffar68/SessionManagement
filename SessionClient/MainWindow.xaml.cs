@@ -39,6 +39,7 @@ namespace SessionClient
         private string _clientCode;
 
         private decimal _billingRate;
+        private string _currency;
         private SessionServiceClient _svc;
         private WebcamHelper _cam;
         private IllegalActivityDetectionService _detector;
@@ -194,6 +195,7 @@ namespace SessionClient
 
             if (!bool.TryParse(ConfigurationManager.AppSettings["EnableKioskMode"], out _kioskMode))
                 _kioskMode = true; // default ON — safe for unattended kiosk deployment
+            _currency = ConfigurationManager.AppSettings["BillingCurrency"] ?? "PKR";
             _keyboardProc = KeyboardHookCallback;
 
             _timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
@@ -1051,7 +1053,7 @@ namespace SessionClient
 
             double elapsed = (_total - _remaining).TotalMinutes;
             decimal amount = (decimal)elapsed * _billingRate;
-            lblCurrentBilling.Text = $"${amount:F2}";
+            lblCurrentBilling.Text = $"{_currency} {amount:F2}";
 
             double pct = _total.TotalSeconds > 0
                 ? _remaining.TotalSeconds / _total.TotalSeconds * 100.0 : 0.0;
@@ -1174,7 +1176,7 @@ namespace SessionClient
             lblSummaryUser.Text     = _fullname ?? _username ?? "—";
             lblSummaryMachine.Text  = _clientCode;
             lblSummaryDuration.Text = elapsedMinutes + " min";
-            lblSummaryAmount.Text   = $"PKR {amount:F2}";
+            lblSummaryAmount.Text   = $"{_currency} {amount:F2}";
             lblSummaryReason.Text   = reason;
             lblSummarySubtitle.Text = subtitle;
 
@@ -1344,7 +1346,7 @@ namespace SessionClient
             lblTimeRemaining.Text = "00:00:00";
             lblTimeRemaining.Foreground = new SolidColorBrush(
                 System.Windows.Media.Color.FromRgb(0x4F, 0x8E, 0xF7));
-            lblCurrentBilling.Text = "$0.00";
+            lblCurrentBilling.Text = $"{_currency} 0.00";
             progressBar.Value = 100;
             lblWarning.Visibility = Visibility.Collapsed;
             lblLoginStatus.Text = "Session ended — please sign in again.";
@@ -1400,7 +1402,7 @@ namespace SessionClient
                 });
                 sp.Children.Add(new System.Windows.Controls.TextBlock
                 {
-                    Text                = $"~PKR {cost:F0}",
+                    Text                = $"~{_currency} {cost:F0}",
                     FontSize            = 10,
                     FontFamily          = new System.Windows.Media.FontFamily("Segoe UI"),
                     Foreground          = new System.Windows.Media.SolidColorBrush(
@@ -1421,7 +1423,7 @@ namespace SessionClient
             if (lblCostEstimate == null) return;
             if (_billingRate <= 0) { lblCostEstimate.Visibility = Visibility.Collapsed; return; }
             decimal cost = minutes * _billingRate;
-            lblCostEstimate.Text       = $"Estimated cost for {minutes} min:  PKR {cost:F2}";
+            lblCostEstimate.Text       = $"Estimated cost for {minutes} min:  {_currency} {cost:F2}";
             lblCostEstimate.Visibility = Visibility.Visible;
         }
 
@@ -1483,7 +1485,7 @@ namespace SessionClient
                     AppDialog.ShowWarning("Enter a valid number of minutes.", "Invalid Duration");
                     return false;
                 }
-                int mn = 15, mx = 480;
+                int mn = 1, mx = 480;
                 string mnS = ConfigurationManager.AppSettings["MinSessionDuration"];
                 string mxS = ConfigurationManager.AppSettings["MaxSessionDuration"];
                 if (!string.IsNullOrEmpty(mnS)) int.TryParse(mnS, out mn);
@@ -1629,7 +1631,7 @@ namespace SessionClient
                 EndSessionOnServer("Manual");
                 if (elapsed > 0)
                     AppDialog.ShowInfo(
-                        $"Session ended.\nDuration: {elapsed} min\nCharged: PKR {amount:F2}",
+                        $"Session ended.\nDuration: {elapsed} min\nCharged: {_currency} {amount:F2}",
                         "Session Summary");
             }
             else

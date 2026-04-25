@@ -52,7 +52,8 @@
       "Bash(where python3.exe)",
       "Bash(where python.exe)",
       "Bash(where py.exe)",
-      "Bash(ie4uinit.exe -show)"
+      "Bash(ie4uinit.exe -show)",
+      "Bash(grep *)"
     ]
   }
 }
