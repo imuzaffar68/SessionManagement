@@ -709,7 +709,7 @@ Leave flat. Revisit only if the file count grows significantly (15+).
 | 13 | D-4 Image files accumulate | C# | Low | Low | Not started |
 | 14 | D-5 tblSystemLog unbounded | SQL | Low | Low | Not started |
 | 15 | Regions in shared files | C# style | Low | Low | Not started |
-| 16 | DatabaseHelper split DB calls | C# + SQL | Medium | Medium | Not started |
+| 16 | DatabaseHelper split DB calls | C# + SQL | Medium | Medium | ✅ Done |
 | 17 | XAML folder organization | Architecture | — | — | ✅ Decision: keep flat |
 
 ### Recommended order

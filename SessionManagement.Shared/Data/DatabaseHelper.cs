@@ -249,42 +249,31 @@ namespace SessionManagement.Data
         /// </summary>
         public List<int> AutoExpireOverdueSessionsWithIds()
         {
-            const string selectSql = @"
-                SELECT SessionId FROM dbo.tblSession
-                WHERE Status = 'Active' AND ExpectedEndAt < GETDATE()";
-            const string updateSql = @"
+            // Single atomic statement: expires all overdue sessions and returns their IDs.
+            // OUTPUT clause replaces the previous SELECT + N-UPDATE loop.
+            const string sql = @"
                 UPDATE dbo.tblSession
                 SET    Status                 = 'Expired',
                        EndedAt               = GETDATE(),
                        ActualDurationMinutes = SelectedDurationMinutes,
                        TerminationReason     = 'AutoExpiry'
-                WHERE  SessionId = @SessionId";
+                OUTPUT INSERTED.SessionId
+                WHERE  Status = 'Active' AND ExpectedEndAt < GETDATE()";
+
             var expiredIds = new List<int>();
             try
             {
                 using (var c = Conn())
+                using (var cmd = new SqlCommand(sql, c))
                 {
                     c.Open();
-                    // Get all expired session IDs
-                    using (var selectCmd = new SqlCommand(selectSql, c))
-                    using (var reader = selectCmd.ExecuteReader())
-                    {
+                    using (var reader = cmd.ExecuteReader())
                         while (reader.Read())
                             expiredIds.Add(reader.GetInt32(0));
-                    }
-                    // Expire each session individually
-                    foreach (var sessionId in expiredIds)
-                    {
-                        using (var updateCmd = new SqlCommand(updateSql, c))
-                        {
-                            updateCmd.Parameters.AddWithValue("@SessionId", sessionId);
-                            updateCmd.ExecuteNonQuery();
-                        }
-                    }
                 }
                 return expiredIds;
             }
-            catch (Exception ex) { LogError("AutoExpireOverdueSessionsWithIds", ex); return new List<int>(); }
+            catch (Exception ex) { LogError("AutoExpireOverdueSessionsWithIds", ex); return expiredIds; }
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -710,9 +699,9 @@ namespace SessionManagement.Data
                     // Location is NULL on reconnect — SP ignores it for existing rows
                     cmd.Parameters.AddWithValue("@Location",    (object)location   ?? DBNull.Value);
                     c.Open();
-                    cmd.ExecuteScalar();
+                    var result = cmd.ExecuteScalar();   // sp_RegisterClient SELECTs the id — capture it
+                    return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
                 }
-                return GetClientMachineIdByCode(clientCode);
             }
             catch (Exception ex) { LogError("RegisterOrUpdateClient", ex); return 0; }
         }
@@ -858,17 +847,25 @@ namespace SessionManagement.Data
                 using (var c = Conn())
                 {
                     c.Open();
-                    using (var cmdA = new SqlCommand(stepA, c))
+                    using (var tx = c.BeginTransaction())
                     {
-                        cmdA.Parameters.AddWithValue("@Threshold", thresholdSeconds);
-                        cmdA.ExecuteNonQuery();
-                    }
-                    using (var cmdB = new SqlCommand(stepB, c))
-                    {
-                        cmdB.Parameters.AddWithValue("@GraceCount", graceCount);
-                        var dt = new DataTable();
-                        new SqlDataAdapter(cmdB).Fill(dt);
-                        return dt;
+                        try
+                        {
+                            using (var cmdA = new SqlCommand(stepA, c, tx))
+                            {
+                                cmdA.Parameters.AddWithValue("@Threshold", thresholdSeconds);
+                                cmdA.ExecuteNonQuery();
+                            }
+                            using (var cmdB = new SqlCommand(stepB, c, tx))
+                            {
+                                cmdB.Parameters.AddWithValue("@GraceCount", graceCount);
+                                var dt = new DataTable();
+                                new SqlDataAdapter(cmdB).Fill(dt);
+                                tx.Commit();
+                                return dt;
+                            }
+                        }
+                        catch { tx.Rollback(); throw; }
                     }
                 }
             }
