@@ -58,7 +58,9 @@
       "Bash(\"/c/Program Files/Microsoft Visual Studio/18/Insiders/MSBuild/Current/Bin/MSBuild.exe\" SessionManagement.slnx /t:Build /p:Configuration=Debug /p:Platform=\"Any CPU\" /v:minimal)",
       "Bash(\"/c/Program Files/Microsoft Visual Studio/18/Insiders/MSBuild/Current/Bin/MSBuild.exe\" SessionManagement.slnx \"/t:Build\" \"/p:Configuration=Debug\" \"/p:Platform=Any CPU\" \"/v:minimal\")",
       "PowerShell(Get-Process | Where-Object { $_.Name -in @\\(\"SessionAdmin\",\"SessionClient\",\"SessionServer\"\\) } | Select-Object Name, Id)",
-      "PowerShell(& \"C:\\\\Users\\\\Muzaffar Iqbal\\\\source\\\\repos\\\\imuzaffar68\\\\SessionManagement\\\\TokenLogicTests.exe\")"
+      "PowerShell(& \"C:\\\\Users\\\\Muzaffar Iqbal\\\\source\\\\repos\\\\imuzaffar68\\\\SessionManagement\\\\TokenLogicTests.exe\")",
+      "Bash(cat \"C:\\\\Users\\\\Muzaffar Iqbal\\\\source\\\\repos\\\\imuzaffar68\\\\SessionManagement\\\\SessionManagement.sql\")",
+      "Read(//tmp/**)"
     ]
   }
 }
