@@ -576,7 +576,7 @@ _db.PurgeOldLogs(retentionDays: 180);
 | 1 | Inno Setup ServerAddress page | Installer | — | Low | Superseded by Task 5 |
 | 2 | Hidden admin settings dialog (Ctrl+Alt+Shift+S/Q) | C# + XAML | Low | Medium | ✅ Done |
 | 3 | Keyboard hook extension | C# | — | — | ✅ Already done |
-| 4 | Standard User account docs | Deployment | Low | Zero | Not started |
+| 4 | Standard User account docs | Deployment | Low | Zero | ✅ Done |
 | 5 | Hybrid Inno Setup installer | Inno Setup | Low | High | Not started |
 | 6 | B-1 Currency hardcoded PKR | C# bug fix | Medium | Low | ✅ Done |
 | 7 | B-2 MinSessionDuration default | C# bug fix | Low | Trivial | ✅ Done |
@@ -717,7 +717,7 @@ Leave flat. Revisit only if the file count grows significantly (15+).
 | 1 | Inno Setup ServerAddress page | Installer | — | Low | Superseded by Task 5 |
 | 2 | Hidden admin settings dialog (Ctrl+Alt+Shift+S/Q) | C# + XAML | Low | Medium | ✅ Done |
 | 3 | Keyboard hook extension | C# | — | — | ✅ Already done |
-| 4 | Standard User account docs | Deployment | Low | Zero | Not started |
+| 4 | Standard User account docs | Deployment | Low | Zero | ✅ Done |
 | 5 | Hybrid Inno Setup installer | Inno Setup | Low | High | Not started |
 | 6 | B-1 Currency hardcoded PKR | C# bug fix | Medium | Low | ✅ Done |
 | 7 | B-2 MinSessionDuration default | C# bug fix | Low | Trivial | ✅ Done |

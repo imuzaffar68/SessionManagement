@@ -60,7 +60,10 @@
       "PowerShell(Get-Process | Where-Object { $_.Name -in @\\(\"SessionAdmin\",\"SessionClient\",\"SessionServer\"\\) } | Select-Object Name, Id)",
       "PowerShell(& \"C:\\\\Users\\\\Muzaffar Iqbal\\\\source\\\\repos\\\\imuzaffar68\\\\SessionManagement\\\\TokenLogicTests.exe\")",
       "Bash(cat \"C:\\\\Users\\\\Muzaffar Iqbal\\\\source\\\\repos\\\\imuzaffar68\\\\SessionManagement\\\\SessionManagement.sql\")",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(/mingw64/bin/pdftotext \"/c/Users/Muzaffar Iqbal/Downloads/Project Data/Design Document.pdf\" -)",
+      "Bash(/mingw64/bin/pdftotext \"/c/Users/Muzaffar Iqbal/Downloads/Project Data/SRS Document.pdf\" -)",
+      "Bash(/mingw64/bin/pdftotext \"/c/Users/Muzaffar Iqbal/Downloads/Project Data/Project Statement.pdf\" -)"
     ]
   }
 }
