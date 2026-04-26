@@ -667,6 +667,7 @@ namespace SessionClient
 
             if (resp.IsAuthenticated)
             {
+                _svc.SessionToken     = resp.SessionToken;
                 _failCount            = 0;
                 _fullname             = resp.FullName;
                 _username             = resp.Username;
@@ -906,7 +907,19 @@ namespace SessionClient
 
             if (!resp.Success)
             {
-                AppDialog.ShowError(resp.ErrorMessage ?? "Failed to start session.");
+                if (resp.ErrorMessage == "SESSION_TOKEN_EXPIRED")
+                {
+                    // Server restarted while user was on duration screen — token gone
+                    _svc.SessionToken = null;
+                    AppDialog.ShowWarning(
+                        "Your login session expired. Please sign in again.", "Session Expired");
+                    ShowPanel(LoginPanel);
+                    ResetLoginFields();
+                }
+                else
+                {
+                    AppDialog.ShowError(resp.ErrorMessage ?? "Failed to start session.");
+                }
                 return;
             }
 
@@ -1053,7 +1066,7 @@ namespace SessionClient
 
             double elapsed = (_total - _remaining).TotalMinutes;
             decimal amount = (decimal)elapsed * _billingRate;
-            lblCurrentBilling.Text = $"{_currency} {amount:F2}";
+            lblCurrentBilling.Text = FormatAmount(amount);
 
             double pct = _total.TotalSeconds > 0
                 ? _remaining.TotalSeconds / _total.TotalSeconds * 100.0 : 0.0;
@@ -1176,7 +1189,7 @@ namespace SessionClient
             lblSummaryUser.Text     = _fullname ?? _username ?? "—";
             lblSummaryMachine.Text  = _clientCode;
             lblSummaryDuration.Text = elapsedMinutes + " min";
-            lblSummaryAmount.Text   = $"{_currency} {amount:F2}";
+            lblSummaryAmount.Text   = FormatAmount(amount);
             lblSummaryReason.Text   = reason;
             lblSummarySubtitle.Text = subtitle;
 
@@ -1255,6 +1268,8 @@ namespace SessionClient
             {
                 if (!_sessionActive) return;  // already handled
 
+                if (_svc != null) _svc.SessionToken = null;
+
                 // OS toast so the user sees the alert regardless of window state
                 SessionManagement.UI.ToastHelper.Show(
                     SessionManagement.UI.ToastHelper.ClientAppId,
@@ -1318,6 +1333,7 @@ namespace SessionClient
             _sessionActive = false;
             LockScreen();
 
+            if (_svc != null) _svc.SessionToken = null;
             if (_svc?.IsChannelReady == true)
                 try { _svc.UpdateClientStatus(_clientCode, "Idle"); } catch { /* best-effort status reset on logout */ }
             _heartbeatTimer?.Start(); // resume heartbeat now that we are back to login (idle)
@@ -1346,7 +1362,7 @@ namespace SessionClient
             lblTimeRemaining.Text = "00:00:00";
             lblTimeRemaining.Foreground = new SolidColorBrush(
                 System.Windows.Media.Color.FromRgb(0x4F, 0x8E, 0xF7));
-            lblCurrentBilling.Text = $"{_currency} 0.00";
+            lblCurrentBilling.Text = FormatAmount(0m);
             progressBar.Value = 100;
             lblWarning.Visibility = Visibility.Collapsed;
             lblLoginStatus.Text = "Session ended — please sign in again.";
@@ -1402,7 +1418,7 @@ namespace SessionClient
                 });
                 sp.Children.Add(new System.Windows.Controls.TextBlock
                 {
-                    Text                = $"~{_currency} {cost:F0}",
+                    Text                = "~" + FormatAmount(cost, 0),
                     FontSize            = 10,
                     FontFamily          = new System.Windows.Media.FontFamily("Segoe UI"),
                     Foreground          = new System.Windows.Media.SolidColorBrush(
@@ -1423,7 +1439,7 @@ namespace SessionClient
             if (lblCostEstimate == null) return;
             if (_billingRate <= 0) { lblCostEstimate.Visibility = Visibility.Collapsed; return; }
             decimal cost = minutes * _billingRate;
-            lblCostEstimate.Text       = $"Estimated cost for {minutes} min:  {_currency} {cost:F2}";
+            lblCostEstimate.Text       = $"Estimated cost for {minutes} min:  {FormatAmount(cost)}";
             lblCostEstimate.Visibility = Visibility.Visible;
         }
 
@@ -1498,6 +1514,9 @@ namespace SessionClient
             }
             return true;
         }
+
+        private string FormatAmount(decimal amount, int decimals = 2)
+            => $"{_currency} {amount.ToString("F" + decimals)}";
 
         private static string GetLocalIp()
         {
@@ -1631,7 +1650,7 @@ namespace SessionClient
                 EndSessionOnServer("Manual");
                 if (elapsed > 0)
                     AppDialog.ShowInfo(
-                        $"Session ended.\nDuration: {elapsed} min\nCharged: {_currency} {amount:F2}",
+                        $"Session ended.\nDuration: {elapsed} min\nCharged: {FormatAmount(amount)}",
                         "Session Summary");
             }
             else

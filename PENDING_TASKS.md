@@ -560,7 +560,7 @@ _db.PurgeOldLogs(retentionDays: 180);
 | 5 | Hybrid Inno Setup installer | Inno Setup | Low | High | Not started |
 | 6 | B-1 Currency hardcoded PKR | C# bug fix | Medium | Low | ✅ Done |
 | 7 | B-2 MinSessionDuration default | C# bug fix | Low | Trivial | ✅ Done |
-| 8 | B-3 ValidateSession stub | C# cleanup | Low | Low | Not started |
+| 8 | B-3 ValidateSession stub | C# cleanup | Low | Low | ✅ Done |
 | 9 | B-4 Server broadcast invisible | C# + XAML | Low | Low | Not started |
 | 10 | D-1 SQL script drops live data | SQL | Medium | Medium | Not started |
 | 11 | D-2 No startup config validation | C# | Medium | Low | ✅ Done |
@@ -701,7 +701,7 @@ Leave flat. Revisit only if the file count grows significantly (15+).
 | 5 | Hybrid Inno Setup installer | Inno Setup | Low | High | Not started |
 | 6 | B-1 Currency hardcoded PKR | C# bug fix | Medium | Low | ✅ Done |
 | 7 | B-2 MinSessionDuration default | C# bug fix | Low | Trivial | ✅ Done |
-| 8 | B-3 ValidateSession stub | C# cleanup | Low | Low | Not started |
+| 8 | B-3 ValidateSession stub | C# cleanup | Low | Low | ✅ Done |
 | 9 | B-4 Server broadcast invisible | C# + XAML | Low | Low | Not started |
 | 10 | D-1 SQL script drops live data | SQL | Medium | Medium | Not started |
 | 11 | D-2 No startup config validation | C# | Medium | Low | ✅ Done |

@@ -25,7 +25,7 @@ namespace SessionManagement.WCF
 
         /// <summary>SEQ-02: Create session record; returns SessionId + server times.</summary>
         [OperationContract]
-        SessionStartResponse StartSession(int userId, string clientCode, int durationMinutes);
+        SessionStartResponse StartSession(int userId, string clientCode, int durationMinutes, string sessionToken);
 
         // ── UC-07 / UC-08 / UC-14  End Session ───────────────────
 

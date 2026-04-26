@@ -35,6 +35,12 @@ namespace SessionManagement.WCF
             _pendingTerminations = new ConcurrentDictionary<string, (int, string)>(
                 StringComparer.OrdinalIgnoreCase);
 
+        // ── One-shot auth tokens: token → userId ─────────────────────
+        // Stored on AuthenticateUser success, consumed atomically on StartSession.
+        // Instance field is correct here — singleton service means one instance per host.
+        private readonly ConcurrentDictionary<string, int> _tokenStore =
+            new ConcurrentDictionary<string, int>(StringComparer.Ordinal);
+
         // ── server-side session expiry (every 30 s) ───────────────
         private readonly Timer _sessionExpiryTimer;
 
@@ -188,6 +194,9 @@ namespace SessionManagement.WCF
 
                 string picPath = user["ProfilePicturePath"]?.ToString();
 
+                string token = AuthenticationHelper.GenerateSessionToken();
+                _tokenStore[token] = userId;   // overwrite if same user re-authenticates before starting a session
+
                 return new AuthenticationResponse
                 {
                     IsAuthenticated      = true,
@@ -195,7 +204,7 @@ namespace SessionManagement.WCF
                     Username             = user["Username"].ToString(),
                     FullName             = user["FullName"]?.ToString() ?? "",
                     UserType             = user["Role"].ToString(),
-                    SessionToken         = AuthenticationHelper.GenerateSessionToken(),
+                    SessionToken         = token,
                     ProfilePictureBase64 = LoadProfilePicture(picPath)
                 };
             }
@@ -208,7 +217,8 @@ namespace SessionManagement.WCF
         }
 
         public bool ValidateSession(string sessionToken)
-            => !string.IsNullOrWhiteSpace(sessionToken);
+            => !string.IsNullOrWhiteSpace(sessionToken)
+               && _tokenStore.ContainsKey(sessionToken);
 
         // ═══════════════════════════════════════════════════════════
         //  UC-02  —  START SESSION
@@ -216,11 +226,17 @@ namespace SessionManagement.WCF
         // ═══════════════════════════════════════════════════════════
 
         public SessionStartResponse StartSession(
-            int userId, string clientCode, int durationMinutes)
+            int userId, string clientCode, int durationMinutes, string sessionToken)
         {
             if (userId <= 0 || !IsValidString(clientCode, 50) || durationMinutes <= 0 || durationMinutes > 1440)
                 return new SessionStartResponse
                 { Success = false, ErrorMessage = "Invalid input." };
+
+            // Atomically validate + consume token — TryRemove prevents replay attacks
+            if (!_tokenStore.TryRemove(sessionToken ?? string.Empty, out int tokenUserId)
+                || tokenUserId != userId)
+                return new SessionStartResponse
+                { Success = false, ErrorMessage = "SESSION_TOKEN_EXPIRED" };
 
             try
             {

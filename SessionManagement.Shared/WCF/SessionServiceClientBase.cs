@@ -43,6 +43,13 @@ namespace SessionManagement.Client
         public bool IsConnected => _connected;
 
         /// <summary>
+        /// One-shot auth token received from AuthenticateUser.
+        /// Set by the caller immediately after successful login.
+        /// Passed transparently to StartSession and cleared on logout/session-end.
+        /// </summary>
+        public string SessionToken { get; set; }
+
+        /// <summary>
         /// True only when the underlying WCF channel is currently Open.
         /// Does NOT attempt reconnection — safe to call from the UI thread
         /// without any risk of blocking on a TCP timeout.
@@ -195,7 +202,7 @@ namespace SessionManagement.Client
             if (!EnsureConnection())
                 return new WCF.SessionStartResponse
                 { Success = false, ErrorMessage = "Not connected to server." };
-            try { return _proxy.StartSession(userId, clientCode, durationMinutes); }
+            try { return _proxy.StartSession(userId, clientCode, durationMinutes, SessionToken ?? string.Empty); }
             catch (Exception ex)
             {
                 Log($"StartSession: {ex.Message}");
