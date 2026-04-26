@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Input;
 using SessionManagement.Client;
 
 namespace SessionAdmin
@@ -61,5 +62,20 @@ namespace SessionAdmin
 
         private async void btnRetry_Click(object sender, RoutedEventArgs e)
             => await ConnectAsync();
+
+        private void btnClose_Click(object sender, RoutedEventArgs e)
+            => Application.Current.Shutdown();
+
+        private void OnKeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.S &&
+                Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift))
+            {
+                e.Handled = true;
+                var pin = new AdminPinWindow { Owner = this };
+                if (pin.ShowDialog() == true)
+                    new AdminSettingsWindow { Owner = this }.ShowDialog();
+            }
+        }
     }
 }

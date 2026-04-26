@@ -49,6 +49,9 @@ namespace SessionClient
         private int _failCount;
         private bool _manualLogout;
         private bool _sessionActive;
+        // Set to true by CloseWithAdminPin() so OnClosingHandler allows the close
+        // instead of silently cancelling it (kiosk mode blocks all normal close attempts).
+        private bool _adminCloseAuthorized;
 
         // Server power-cut recovery: retry EndSession when server comes back.
         private bool   _pendingSessionEnd;
@@ -155,6 +158,18 @@ namespace SessionClient
                 bool alt = (kbs.flags & 0x20) != 0;
                 bool ctrl = (GetAsyncKeyState(0x11) & 0x8000) != 0;
                 bool shift = (GetAsyncKeyState(0x10) & 0x8000) != 0;
+
+                // Admin shortcuts — whitelisted BEFORE any blocking checks
+                if (ctrl && alt && shift && vk == 0x53)  // Ctrl+Alt+Shift+S → settings
+                {
+                    Dispatcher.BeginInvoke(new Action(OpenAdminSettings));
+                    return (IntPtr)1;
+                }
+                if (ctrl && alt && shift && vk == 0x51)  // Ctrl+Alt+Shift+Q → close
+                {
+                    Dispatcher.BeginInvoke(new Action(CloseWithAdminPin));
+                    return (IntPtr)1;
+                }
 
                 if (alt && vk == VK_TAB) return (IntPtr)1;
                 if (alt && vk == VK_ESCAPE) return (IntPtr)1;
@@ -1527,6 +1542,42 @@ namespace SessionClient
             return true;
         }
 
+        /// <summary>
+        /// Opens the hidden IT-admin network settings dialog after PIN verification.
+        /// Triggered by Ctrl+Alt+Shift+S — whitelisted in the kiosk keyboard hook.
+        /// </summary>
+        private void OpenAdminSettings()
+        {
+            var pin = new AdminPinWindow { Owner = this };
+            if (pin.ShowDialog() == true)
+            {
+                bool wasTopmost = Topmost;
+                Topmost = false;   // let the settings dialog appear above kiosk window
+                try
+                {
+                    new AdminSettingsWindow { Owner = this }.ShowDialog();
+                }
+                finally
+                {
+                    Topmost = wasTopmost;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gracefully closes the kiosk app after PIN verification.
+        /// Triggered by Ctrl+Alt+Shift+Q — runs full OnClosingHandler cleanup.
+        /// </summary>
+        private void CloseWithAdminPin()
+        {
+            var pin = new AdminPinWindow { Owner = this };
+            if (pin.ShowDialog() == true)
+            {
+                _adminCloseAuthorized = true;
+                Close();
+            }
+        }
+
         private string FormatAmount(decimal amount, int decimals = 2)
             => $"{_currency} {amount.ToString("F" + decimals)}";
 
@@ -1618,6 +1669,22 @@ namespace SessionClient
 
         private void OnKeyDown(object sender, KeyEventArgs e)
         {
+            if (e.Key == Key.S &&
+                Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift))
+            {
+                e.Handled = true;
+                OpenAdminSettings();
+                return;
+            }
+
+            if (e.Key == Key.Q &&
+                Keyboard.Modifiers == (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Shift))
+            {
+                e.Handled = true;
+                CloseWithAdminPin();
+                return;
+            }
+
             if (!_sessionActive && e.Key == Key.F4 &&
                 Keyboard.Modifiers == ModifierKeys.Alt)
                 e.Handled = true;
@@ -1668,8 +1735,9 @@ namespace SessionClient
             else
             {
                 // Kiosk: silently block close on the login/idle screen — no dialog.
+                // Exception: admin-authorized close via Ctrl+Alt+Shift+Q + PIN.
                 // Non-kiosk: allow close via the custom title bar ✕ button.
-                if (_kioskMode) { e.Cancel = true; return; }
+                if (_kioskMode && !_adminCloseAuthorized) { e.Cancel = true; return; }
             }
 
             Microsoft.Win32.SystemEvents.SessionEnding -= OnSystemSessionEnding;

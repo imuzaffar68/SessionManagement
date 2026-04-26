@@ -109,6 +109,22 @@
     </Compile>
     <Compile Include="SessionServiceClient.cs" />
     <None Include="AppDialogWindow.xaml" />
+    <Page Include="AdminPinWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Compile Include="AdminPinWindow.xaml.cs">
+      <DependentUpon>AdminPinWindow.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Compile>
+    <Page Include="AdminSettingsWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Compile Include="AdminSettingsWindow.xaml.cs">
+      <DependentUpon>AdminSettingsWindow.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Compile>
     <Page Include="EditMachineWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
     </Page>

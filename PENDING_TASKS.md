@@ -38,39 +38,51 @@ SetIniValue(ExpandConstant('{app}\SessionClient.exe.config'),
 
 ## 2. Hidden Admin Settings Dialog (Ctrl+Alt+Shift+S)
 
-**Status:** Not started  
-**Effort:** Medium (~1–2 hours, C# + XAML)
+**Status:** ✅ Done  
+**Effort:** Medium
 
-### What to do
-Add a secret keyboard shortcut inside `SessionClient` that opens a restricted
-settings dialog — visible only to the IT person standing at the machine, never
-to end users. Useful when the server IP changes after deployment without
-reinstalling the app.
+### What was implemented
 
-### Shortcut
-`Ctrl + Alt + Shift + S`
-
-### Dialog contents (minimum)
-| Field | AppSettings key | Notes |
+#### Shortcuts — SessionClient
+| Shortcut | Location | Action |
 |---|---|---|
-| Server Address | `ServerAddress` | IP or hostname of SessionServer |
-| Server Port | `ServerPort` | Default 8001 |
+| `Ctrl+Alt+Shift+S` | Splash screen (connection failed) | PIN → network settings → Save & auto-restart |
+| `Ctrl+Alt+Shift+S` | MainWindow (kiosk login/idle/session) | Same — whitelisted before kiosk hook blocks |
+| `Ctrl+Alt+Shift+Q` | MainWindow (kiosk mode only) | PIN → graceful app close + billing cleanup |
 
-### Save mechanism
-Use `ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None)`
-to write back to `SessionClient.exe.config` at runtime.
+#### Shortcuts — SessionAdmin
+| Shortcut | Location | Action |
+|---|---|---|
+| `Ctrl+Alt+Shift+S` | Splash screen (connection failed) | PIN → network settings → Save & auto-restart |
+| ✕ button | Both splash screens | Visible close — no PIN (pre-login state, no session running) |
 
-> **Important:** This requires the app to be running as a user with write
-> permission to the install folder. Under a Standard User account with the app
-> installed in `Program Files`, a UAC prompt or a separate admin-launch flow
-> will be needed. Simplest workaround: install to a non-protected folder
-> (e.g. `C:\NetCafe\SessionClient`) and grant the kiosk user write access to
-> that folder only.
+#### Files created
+| File | Purpose |
+|---|---|
+| `SessionClient/AdminPinWindow.xaml/.cs` | PIN entry dialog — silent rejection on wrong PIN |
+| `SessionClient/AdminSettingsWindow.xaml/.cs` | ServerAddress + ServerPort editor — saves to .exe.config and auto-restarts |
+| `SessionAdmin/AdminPinWindow.xaml/.cs` | Same, SessionAdmin namespace |
+| `SessionAdmin/AdminSettingsWindow.xaml/.cs` | Same, SessionAdmin namespace |
 
-### Where to add the hook
-`SessionClient/MainWindow.xaml.cs` — in the existing `KeyDown` or low-level
-keyboard hook handler, check for the `Ctrl+Alt+Shift+S` combination and open
-the settings `Window`.
+#### Files modified
+| File | Change |
+|---|---|
+| `SessionClient/App.config` | Added `AdminSettingsPin=1234` |
+| `SessionAdmin/App.config` | Added `AdminSettingsPin=1234` |
+| `SessionClient/SplashWindow.xaml/.cs` | Added ✕ button + `Ctrl+Alt+Shift+S` handler |
+| `SessionAdmin/SplashWindow.xaml/.cs` | Added ✕ button + `Ctrl+Alt+Shift+S` handler |
+| `SessionClient/MainWindow.xaml.cs` | Added `OpenAdminSettings()`, `CloseWithAdminPin()`, `_adminCloseAuthorized` flag, both shortcuts in hook + OnKeyDown |
+| `SessionClient/SessionClient.csproj` | Registered new XAML windows |
+| `SessionAdmin/SessionAdmin.csproj` | Registered new XAML windows |
+
+#### Security design
+- PIN is stored in App.config (`AdminSettingsPin`). Standard User OS account prevents kiosk users from reading the file.
+- Wrong PIN: silent clear — no error message to prevent brute-force feedback.
+- `Ctrl+Alt+Shift+Q` only in SessionClient kiosk mode — SessionAdmin has a normal title bar close.
+- `Ctrl+Alt+Shift+S` NOT added to SessionAdmin MainWindow — admin can close normally and use splash screen for config.
+
+#### Deployment note
+Install to `C:\NetCafe\` (not `C:\Program Files\`) so the app can write its own config file without elevation. Change `AdminSettingsPin` from the default `1234` before deploying.
 
 ---
 
@@ -216,9 +228,17 @@ Name: "{group}\Session Client"; Filename: "{app}\SessionClient.exe"; Components:
 |---|---|---|
 | SQL Server instance name | `server_svc` selected | `SessionServer.exe.config` → `Data Source=` |
 | Admin password (first-run) | `server_svc` selected | DB via sqlcmd seed script |
+| **IT Admin PIN** | `server_svc` selected | `SessionAdmin.exe.config` → `AdminSettingsPin` |
 | Server IP address | `client_ui` selected | `SessionClient.exe.config` → `ServerAddress` |
 | Machine Name | `client_ui` selected | `SessionClient.exe.config` → `ClientMachineName` |
 | Location / Seat | `client_ui` selected | `SessionClient.exe.config` → `ClientLocation` |
+| **IT Admin PIN** | `client_ui` selected | `SessionClient.exe.config` → `AdminSettingsPin` |
+
+> **PIN note:** The installer should show one shared PIN input on the Server PC install
+> and pre-fill the same value when installing each Client PC (or ask again per machine).
+> Recommended: same PIN across all machines — IT admin remembers one code for the
+> whole café. The PINs are stored separately in each app's `.exe.config` so they CAN
+> differ if the café owner wants stricter separation.
 
 ### Post-install actions ([Run] section, conditional)
 
@@ -554,7 +574,7 @@ _db.PurgeOldLogs(retentionDays: 180);
 | # | Task | Type | Priority | Effort | Status |
 |---|---|---|---|---|---|
 | 1 | Inno Setup ServerAddress page | Installer | — | Low | Superseded by Task 5 |
-| 2 | Hidden admin settings dialog | C# + XAML | Low | Medium | Not started |
+| 2 | Hidden admin settings dialog (Ctrl+Alt+Shift+S/Q) | C# + XAML | Low | Medium | ✅ Done |
 | 3 | Keyboard hook extension | C# | — | — | ✅ Already done |
 | 4 | Standard User account docs | Deployment | Low | Zero | Not started |
 | 5 | Hybrid Inno Setup installer | Inno Setup | Low | High | Not started |
@@ -695,7 +715,7 @@ Leave flat. Revisit only if the file count grows significantly (15+).
 | # | Task | Type | Priority | Effort | Status |
 |---|---|---|---|---|---|
 | 1 | Inno Setup ServerAddress page | Installer | — | Low | Superseded by Task 5 |
-| 2 | Hidden admin settings dialog | C# + XAML | Low | Medium | Not started |
+| 2 | Hidden admin settings dialog (Ctrl+Alt+Shift+S/Q) | C# + XAML | Low | Medium | ✅ Done |
 | 3 | Keyboard hook extension | C# | — | — | ✅ Already done |
 | 4 | Standard User account docs | Deployment | Low | Zero | Not started |
 | 5 | Hybrid Inno Setup installer | Inno Setup | Low | High | Not started |
