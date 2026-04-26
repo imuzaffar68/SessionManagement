@@ -1319,6 +1319,18 @@ namespace SessionClient
         private void OnServerMessage(object sender, ServerMessageEventArgs e)
         {
             System.Diagnostics.Debug.WriteLine("[Server] " + e.Message);
+            if (string.IsNullOrWhiteSpace(e.Message)) return;
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                try
+                {
+                    SessionManagement.UI.ToastHelper.Show(
+                        SessionManagement.UI.ToastHelper.ClientAppId,
+                        "Notice",
+                        e.Message);
+                }
+                catch { /* best-effort toast — never crash on a server broadcast */ }
+            }));
         }
 
         #endregion

@@ -561,7 +561,7 @@ _db.PurgeOldLogs(retentionDays: 180);
 | 6 | B-1 Currency hardcoded PKR | C# bug fix | Medium | Low | ✅ Done |
 | 7 | B-2 MinSessionDuration default | C# bug fix | Low | Trivial | ✅ Done |
 | 8 | B-3 ValidateSession stub | C# cleanup | Low | Low | ✅ Done |
-| 9 | B-4 Server broadcast invisible | C# + XAML | Low | Low | Not started |
+| 9 | B-4 Server broadcast invisible | C# + XAML | Low | Low | ✅ Done |
 | 10 | D-1 SQL script drops live data | SQL | Medium | Medium | ✅ Done |
 | 11 | D-2 No startup config validation | C# | Medium | Low | ✅ Done |
 | 12 | D-3 Console.ReadLine() fragile | C# | Medium | Trivial | ✅ Done |
@@ -702,7 +702,7 @@ Leave flat. Revisit only if the file count grows significantly (15+).
 | 6 | B-1 Currency hardcoded PKR | C# bug fix | Medium | Low | ✅ Done |
 | 7 | B-2 MinSessionDuration default | C# bug fix | Low | Trivial | ✅ Done |
 | 8 | B-3 ValidateSession stub | C# cleanup | Low | Low | ✅ Done |
-| 9 | B-4 Server broadcast invisible | C# + XAML | Low | Low | Not started |
+| 9 | B-4 Server broadcast invisible | C# + XAML | Low | Low | ✅ Done |
 | 10 | D-1 SQL script drops live data | SQL | Medium | Medium | ✅ Done |
 | 11 | D-2 No startup config validation | C# | Medium | Low | ✅ Done |
 | 12 | D-3 Console.ReadLine() fragile | C# | Medium | Trivial | ✅ Done |
