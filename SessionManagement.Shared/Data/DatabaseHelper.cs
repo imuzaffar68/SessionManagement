@@ -1454,6 +1454,27 @@ namespace SessionManagement.Data
         //  PRIVATE HELPERS
         // ═══════════════════════════════════════════════════════════
 
+        /// <summary>
+        /// Deletes tblSystemLog rows older than <paramref name="retentionDays"/>.
+        /// Called once at server startup. Pass 0 to disable.
+        /// </summary>
+        public void PurgeOldLogs(int retentionDays = 180)
+        {
+            if (retentionDays <= 0) return;
+            try
+            {
+                using (var c = Conn())
+                using (var cmd = new SqlCommand("dbo.sp_PurgeOldLogs", c)
+                { CommandType = System.Data.CommandType.StoredProcedure })
+                {
+                    cmd.Parameters.AddWithValue("@RetentionDays", retentionDays);
+                    c.Open();
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            catch (Exception ex) { LogError("PurgeOldLogs", ex); }
+        }
+
         private static SqlParameter P(string name, object value)
             => new SqlParameter(name, value ?? DBNull.Value);
 

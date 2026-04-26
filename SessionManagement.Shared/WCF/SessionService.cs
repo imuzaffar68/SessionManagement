@@ -75,6 +75,11 @@ namespace SessionManagement.WCF
             _db.RefreshLastSeenForActiveMachines();
             PurgeOldImages();
 
+            int logDays = 180;
+            string logCfg = ConfigurationManager.AppSettings["LogRetentionDays"];
+            if (!string.IsNullOrEmpty(logCfg)) int.TryParse(logCfg, out logDays);
+            _db.PurgeOldLogs(logDays);
+
             _db.WriteSystemLog(null, null, null, null,
                 "System", "ServiceStart", "SessionService started", "Server");
         }

@@ -1238,6 +1238,31 @@ WHEN NOT MATCHED THEN
 PRINT 'Seed: Activity types merged (19 rows).';
 GO
 
+-- ── 5.20  sp_PurgeOldLogs ────────────────────────────────────────────────────
+CREATE OR ALTER PROCEDURE dbo.sp_PurgeOldLogs
+    @RetentionDays INT = 180
+AS
+BEGIN
+    SET NOCOUNT ON;
+    IF @RetentionDays <= 0 RETURN;   -- 0 = disabled
+
+    DECLARE @Cutoff  DATETIME = DATEADD(DAY, -@RetentionDays, GETDATE());
+    DECLARE @Deleted INT;
+
+    DELETE FROM dbo.tblSystemLog WHERE LogedAt < @Cutoff;
+    SET @Deleted = @@ROWCOUNT;
+
+    IF @Deleted > 0
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'LogPurge',
+                'Purged ' + CAST(@Deleted AS VARCHAR) +
+                ' log rows older than ' + CAST(@RetentionDays AS VARCHAR) + ' days',
+                'Server');
+END;
+GO
+PRINT 'SP dbo.sp_PurgeOldLogs created/updated.';
+GO
+
 -- ════════════════════════════════════════════════════════════
 --  SECTION 7 ─ VERIFICATION
 --  Run this block to confirm the setup is complete.
