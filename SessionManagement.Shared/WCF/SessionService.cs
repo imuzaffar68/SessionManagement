@@ -73,9 +73,55 @@ namespace SessionManagement.WCF
             // from before the crash.  Stamp them now so the first OfflineDetectionScan
             // (60 s from now) does not immediately kill every active client session.
             _db.RefreshLastSeenForActiveMachines();
+            PurgeOldImages();
 
             _db.WriteSystemLog(null, null, null, null,
                 "System", "ServiceStart", "SessionService started", "Server");
+        }
+
+        // ─────────────────────────────────────────────────────────
+        //  Image cleanup
+        // ─────────────────────────────────────────────────────────
+
+        private void PurgeOldImages()
+        {
+            try
+            {
+                int days = 90;
+                string cfg = ConfigurationManager.AppSettings["ImageRetentionDays"];
+                if (!string.IsNullOrEmpty(cfg)) int.TryParse(cfg, out days);
+                if (days <= 0) return;   // 0 = disabled
+
+                DateTime cutoff = DateTime.Now.AddDays(-days);
+                int deleted = 0;
+
+                foreach (string folder in new[] { _imgPath,
+                    Path.Combine(Path.GetDirectoryName(_imgPath), "ProfilePics") })
+                {
+                    if (!Directory.Exists(folder)) continue;
+                    foreach (string file in Directory.GetFiles(folder))
+                    {
+                        if (File.GetCreationTime(file) < cutoff)
+                        {
+                            try { File.Delete(file); deleted++; }
+                            catch (Exception ex)
+                            {
+                                System.Diagnostics.Debug.WriteLine(
+                                    $"[PurgeImages] Could not delete {file}: {ex.Message}");
+                            }
+                        }
+                    }
+                }
+
+                if (deleted > 0)
+                    _db.WriteSystemLog(null, null, null, null,
+                        "System", "ImagePurge",
+                        $"Purged {deleted} image file(s) older than {days} days", "Server");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[PurgeImages] {ex.Message}");
+            }
         }
 
         // ─────────────────────────────────────────────────────────
