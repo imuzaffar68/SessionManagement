@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Configuration;
 using System.Data;
 using System.Data.SqlClient;
@@ -33,10 +33,8 @@ namespace SessionManagement.Data
             }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-01 / UC-09  —  AUTHENTICATION
-        // ═══════════════════════════════════════════════════════════
 
+        #region UC-01 / UC-09  —  AUTHENTICATION
         /// <summary>
         /// SEQ-01 step 3: fetch user row by username so caller can BCrypt-verify.
         /// Returns null when user does not exist (any status).
@@ -156,10 +154,10 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("CountRecentFailedLogins", ex); return 0; }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-02  —  START SESSION
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-02  —  START SESSION
         /// <summary>
         /// SEQ-02: calls sp_StartSession → inserts tblSession (Status=Active) + logs.
         /// Returns new SessionId (0 on failure).
@@ -183,10 +181,10 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("StartSession", ex); return 0; }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-07 / UC-08 / UC-14  —  END SESSION
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-07 / UC-08 / UC-14  —  END SESSION
         /// <summary>
         /// Atomically: sp_EndSession → sp_CalculateSessionBilling → sp_FinalizeSessionBilling.
         /// NFR-14: all three in one transaction — partial writes not allowed.
@@ -276,10 +274,10 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("AutoExpireOverdueSessionsWithIds", ex); return expiredIds; }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-06 / UC-10  —  GET SESSION INFO / ACTIVE SESSIONS
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-06 / UC-10  —  GET SESSION INFO / ACTIVE SESSIONS
         /// <summary>
         /// Returns one session row with user + machine + timing columns.
         /// Used to build SessionInfo and to obtain ClientCode for WCF callbacks.
@@ -444,10 +442,10 @@ namespace SessionManagement.Data
             return terminated;
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-04 / UC-05 / UC-12  —  SESSION IMAGES
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-04 / UC-05 / UC-12  —  SESSION IMAGES
         /// <summary>
         /// UC-05: upsert tblSessionImage (one row per session).
         /// CaptureStatus: Captured | CameraUnavailable | Skipped | Failed
@@ -503,10 +501,10 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("GetSessionImagePath", ex); return null; }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-07 / UC-13  —  BILLING
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-07 / UC-13  —  BILLING
         /// <summary>Calls sp_CalculateSessionBilling; returns running amount.</summary>
         public decimal CalculateRunningBilling(int sessionId)
         {
@@ -633,10 +631,10 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("MarkBillingRecordPaid", ex); return 0; }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-11  —  CLIENT MACHINES
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-11  —  CLIENT MACHINES
         /// <summary>Returns ClientMachineId for a ClientCode, or 0 if not found.</summary>
         public int GetClientMachineIdByCode(string clientCode)
         {
@@ -916,10 +914,10 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("GetAllClientMachines", ex); return new DataTable(); }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-16 / UC-17  —  ALERTS
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-16 / UC-17  —  ALERTS
         /// <summary>
         /// Calls sp_LogSecurityAlert → inserts tblAlert + tblSystemLog.
         /// Returns the new AlertId on success, -1 on failure.
@@ -1021,10 +1019,10 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("AcknowledgeAlert", ex); return false; }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-15 / UC-18  —  LOGS & REPORTS
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-15 / UC-18  —  LOGS & REPORTS
         /// <summary>
         /// Write a structured row to tblSystemLog.
         /// Category MUST be: Auth | Session | Billing | Security | System
@@ -1134,10 +1132,10 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("GetSystemLogs", ex); return new DataTable(); }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-03  —  USER REGISTRATION (ADMIN)
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-03  —  USER REGISTRATION (ADMIN)
         /// <summary>
         /// SEQ-03: Admin registers a new ClientUser.
         /// Returns UserId if successful, 0 if username already exists or error.
@@ -1291,10 +1289,10 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("UpdateUserStatus", ex); return false; }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  BILLING RATE MANAGEMENT
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region BILLING RATE MANAGEMENT
         /// <summary>
         /// Get all billing rates from database.
         /// Returns array of BillingRateInfo DTOs.
@@ -1450,10 +1448,10 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("SetDefaultBillingRate", ex); return false; }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  PRIVATE HELPERS
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region PRIVATE HELPERS
         /// <summary>
         /// Deletes tblSystemLog rows older than <paramref name="retentionDays"/>.
         /// Called once at server startup. Pass 0 to disable.
@@ -1502,4 +1500,6 @@ namespace SessionManagement.Data
             }
         }
     }
+
+        #endregion
 }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Configuration;
 using System.ServiceModel;
 using System.ServiceModel.Description;
@@ -58,10 +58,8 @@ namespace SessionManagement.Client
         public bool IsChannelReady
             => _connected && (_proxy as IClientChannel)?.State == CommunicationState.Opened;
 
-        // ─────────────────────────────────────────────────────────
-        //  Connection management
-        // ─────────────────────────────────────────────────────────
 
+        #region Connection management
         public bool Connect()
         {
             if (_connected) return true;
@@ -166,10 +164,10 @@ namespace SessionManagement.Client
             }
         }
 
-        // ─────────────────────────────────────────────────────────
-        //  UC-01 / UC-09  —  Authentication
-        // ─────────────────────────────────────────────────────────
 
+        #endregion
+
+        #region UC-01 / UC-09  —  Authentication
         public WCF.AuthenticationResponse AuthenticateUser(
             string username, string password, string clientCode)
         {
@@ -192,10 +190,10 @@ namespace SessionManagement.Client
             catch (Exception ex) { Log($"ValidateSession: {ex.Message}"); return false; }
         }
 
-        // ─────────────────────────────────────────────────────────
-        //  UC-02  —  Start Session
-        // ─────────────────────────────────────────────────────────
 
+        #endregion
+
+        #region UC-02  —  Start Session
         public WCF.SessionStartResponse StartSession(
             int userId, string clientCode, int durationMinutes)
         {
@@ -211,10 +209,10 @@ namespace SessionManagement.Client
             }
         }
 
-        // ─────────────────────────────────────────────────────────
-        //  UC-07 / UC-08 / UC-14  —  End Session
-        // ─────────────────────────────────────────────────────────
 
+        #endregion
+
+        #region UC-07 / UC-08 / UC-14  —  End Session
         public bool EndSession(int sessionId, string terminationType)
         {
             if (!EnsureConnection()) return false;
@@ -222,10 +220,10 @@ namespace SessionManagement.Client
             catch (Exception ex) { Log($"EndSession: {ex.Message}"); return false; }
         }
 
-        // ─────────────────────────────────────────────────────────
-        //  UC-06 / UC-10  —  Session Info
-        // ─────────────────────────────────────────────────────────
 
+        #endregion
+
+        #region UC-06 / UC-10  —  Session Info
         public WCF.SessionInfo GetSessionInfo(int sessionId)
         {
             if (!EnsureConnection()) return null;
@@ -241,10 +239,10 @@ namespace SessionManagement.Client
             { Log($"GetActiveSessions: {ex.Message}"); return Array.Empty<WCF.SessionInfo>(); }
         }
 
-        // ─────────────────────────────────────────────────────────
-        //  UC-05 / UC-12  —  Images
-        // ─────────────────────────────────────────────────────────
 
+        #endregion
+
+        #region UC-05 / UC-12  —  Images
         public bool UploadLoginImage(int sessionId, int userId, string imageBase64)
         {
             if (!EnsureConnection()) return false;
@@ -259,10 +257,10 @@ namespace SessionManagement.Client
             catch (Exception ex) { Log($"DownloadLoginImage: {ex.Message}"); return null; }
         }
 
-        // ─────────────────────────────────────────────────────────
-        //  UC-11  —  Client Machines
-        // ─────────────────────────────────────────────────────────
 
+        #endregion
+
+        #region UC-11  —  Client Machines
         public bool RegisterClient(string clientCode, string machineName,
             string ipAddress, string macAddress, string location)
         {
@@ -308,10 +306,10 @@ namespace SessionManagement.Client
             { Log($"GetAllClients: {ex.Message}"); return Array.Empty<WCF.ClientInfo>(); }
         }
 
-        // ─────────────────────────────────────────────────────────
-        //  UC-03  —  User Registration
-        // ─────────────────────────────────────────────────────────
 
+        #endregion
+
+        #region UC-03  —  User Registration
         public WCF.UserRegistrationResponse RegisterClientUser(
             string username, string fullName, string password,
             string phone, string address, int adminUserId,
@@ -337,10 +335,10 @@ namespace SessionManagement.Client
             { Log($"GetAllClientUsers: {ex.Message}"); return Array.Empty<WCF.UserInfo>(); }
         }
 
-        // ─────────────────────────────────────────────────────────
-        //  UC-16 / UC-17  —  Alerts
-        // ─────────────────────────────────────────────────────────
 
+        #endregion
+
+        #region UC-16 / UC-17  —  Alerts
         public bool LogSecurityAlert(int sessionId, int userId,
             string alertType, string description, string severity)
         {
@@ -365,10 +363,10 @@ namespace SessionManagement.Client
             catch (Exception ex) { Log($"AcknowledgeAlert: {ex.Message}"); return false; }
         }
 
-        // ─────────────────────────────────────────────────────────
-        //  UC-13  —  Billing
-        // ─────────────────────────────────────────────────────────
 
+        #endregion
+
+        #region UC-13  —  Billing
         public decimal GetCurrentBillingRate()
         {
             if (!EnsureConnection()) return 0m;
@@ -383,10 +381,10 @@ namespace SessionManagement.Client
             catch (Exception ex) { Log($"CalculateSessionBilling: {ex.Message}"); return 0m; }
         }
 
-        // ─────────────────────────────────────────────────────────
-        //  UC-15  —  System Logs
-        // ─────────────────────────────────────────────────────────
 
+        #endregion
+
+        #region UC-15  —  System Logs
         public WCF.SystemLogInfo[] GetSystemLogs(
             DateTime fromDate, DateTime toDate, string category)
         {
@@ -396,10 +394,10 @@ namespace SessionManagement.Client
             { Log($"GetSystemLogs: {ex.Message}"); return Array.Empty<WCF.SystemLogInfo>(); }
         }
 
-        // ─────────────────────────────────────────────────────────
-        //  UC-18  —  Reports
-        // ─────────────────────────────────────────────────────────
 
+        #endregion
+
+        #region UC-18  —  Reports
         public WCF.ReportData GetSessionReport(DateTime fromDate, DateTime toDate)
         {
             if (!EnsureConnection()) return new WCF.ReportData();
@@ -408,10 +406,10 @@ namespace SessionManagement.Client
             { Log($"GetSessionReport: {ex.Message}"); return new WCF.ReportData(); }
         }
 
-        // ─────────────────────────────────────────────────────────
-        //  Duplex Subscriptions + Heartbeat
-        // ─────────────────────────────────────────────────────────
 
+        #endregion
+
+        #region Duplex Subscriptions + Heartbeat
         public void SubscribeForNotifications(string clientCode)
         {
             if (!EnsureConnection()) return;
@@ -440,10 +438,10 @@ namespace SessionManagement.Client
             catch (Exception ex) { Log($"TerminateOrphanSession: {ex.Message}"); return 0; }
         }
 
-        // ─────────────────────────────────────────────────────────
-        //  IDisposable
-        // ─────────────────────────────────────────────────────────
 
+        #endregion
+
+        #region IDisposable
         public void Dispose() => Disconnect();
 
         protected static void Log(string msg)
@@ -526,4 +524,6 @@ namespace SessionManagement.Client
         public static string GetServiceAddress()
             => $"net.tcp://{ServerAddress}:{ServerPort}/SessionService";
     }
+
+        #endregion
 }

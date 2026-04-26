@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Configuration;
@@ -435,10 +435,8 @@ namespace SessionManagement.WCF
             }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-06 / UC-10  —  GET SESSION INFO / ACTIVE SESSIONS
-        // ═══════════════════════════════════════════════════════════
 
+        #region UC-06 / UC-10  —  GET SESSION INFO / ACTIVE SESSIONS
         public SessionInfo GetSessionInfo(int sessionId)
         {
             try
@@ -530,10 +528,10 @@ namespace SessionManagement.WCF
             }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-11  —  CLIENT MACHINE MANAGEMENT
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-11  —  CLIENT MACHINE MANAGEMENT
         /// <summary>
         /// Registers a new machine or refreshes its network identity on reconnect.
         /// <para>
@@ -770,10 +768,10 @@ namespace SessionManagement.WCF
             }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-07 / UC-13  —  BILLING
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-07 / UC-13  —  BILLING
         public decimal GetCurrentBillingRate()
         {
             try { return _db.GetCurrentBillingRate(); }
@@ -790,10 +788,10 @@ namespace SessionManagement.WCF
             }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-18  —  REPORTS
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-18  —  REPORTS
         public ReportData GetSessionReport(DateTime fromDate, DateTime toDate)
         {
             try
@@ -844,10 +842,10 @@ namespace SessionManagement.WCF
             }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  DUPLEX SUBSCRIPTIONS  (NFR-02 real-time updates)
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region DUPLEX SUBSCRIPTIONS  (NFR-02 real-time updates)
         public void SubscribeForNotifications(string clientCode)
         {
             try
@@ -895,10 +893,10 @@ namespace SessionManagement.WCF
                 $"Client {clientCode} unsubscribed", "Server");
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  HEARTBEAT  (FR-HB: liveness signalling)
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region HEARTBEAT  (FR-HB: liveness signalling)
         public void Heartbeat(string clientCode)
         {
             try
@@ -1028,10 +1026,10 @@ namespace SessionManagement.WCF
             }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  BACKGROUND: server-side auto-expiry  (FR-09 / NFR-03)
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region BACKGROUND: server-side auto-expiry  (FR-09 / NFR-03)
         private void ServerExpiryScan(object _)
         {
             try
@@ -1481,10 +1479,10 @@ namespace SessionManagement.WCF
             }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  PRIVATE HELPERS
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region PRIVATE HELPERS
         /// <summary>
         /// Builds a SessionInfo from a DataRow that must contain at minimum:
         /// SessionId, UserId, StartedAt, SelectedDurationMinutes, Status.
@@ -1598,10 +1596,10 @@ namespace SessionManagement.WCF
                 "System", "ServiceStop", "SessionService stopped", "Server");
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  BILLING RATE MANAGEMENT
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region BILLING RATE MANAGEMENT
         public BillingRateInfo[] GetAllBillingRates()
         {
             try
@@ -1708,4 +1706,6 @@ namespace SessionManagement.WCF
             return "ServiceError";
         }
     }
+
+        #endregion
 }

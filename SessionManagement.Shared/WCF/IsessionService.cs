@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Runtime.Serialization;
 using System.ServiceModel;
 
@@ -12,8 +12,8 @@ namespace SessionManagement.WCF
     [ServiceContract(CallbackContract = typeof(ISessionServiceCallback))]
     public interface ISessionService
     {
-        // ── UC-01 / UC-09  Authentication ────────────────────────
 
+        #region UC-01 / UC-09  Authentication
         /// <summary>SEQ-01/09: Authenticate a user; returns role for role check.</summary>
         [OperationContract]
         AuthenticationResponse AuthenticateUser(string username, string password, string clientCode);
@@ -21,20 +21,26 @@ namespace SessionManagement.WCF
         [OperationContract]
         bool ValidateSession(string sessionToken);
 
-        // ── UC-02  Start Session ──────────────────────────────────
 
+        #endregion
+
+        #region UC-02  Start Session
         /// <summary>SEQ-02: Create session record; returns SessionId + server times.</summary>
         [OperationContract]
         SessionStartResponse StartSession(int userId, string clientCode, int durationMinutes, string sessionToken);
 
-        // ── UC-07 / UC-08 / UC-14  End Session ───────────────────
 
+        #endregion
+
+        #region UC-07 / UC-08 / UC-14  End Session
         /// <summary>SEQ-07/08/14: End + finalize billing atomically; pushes callback.</summary>
         [OperationContract]
         bool EndSession(int sessionId, string terminationType);
 
-        // ── UC-06 / UC-10  Get Session Info ───────────────────────
 
+        #endregion
+
+        #region UC-06 / UC-10  Get Session Info
         [OperationContract]
         SessionInfo GetSessionInfo(int sessionId);
 
@@ -42,8 +48,10 @@ namespace SessionManagement.WCF
         [OperationContract]
         SessionInfo[] GetActiveSessions();
 
-        // ── UC-04 / UC-05 / UC-12  Images ────────────────────────
 
+        #endregion
+
+        #region UC-04 / UC-05 / UC-12  Images
         /// <summary>SEQ-05: Receive Base64 image, save to disk, update tblSessionImage.</summary>
         [OperationContract]
         bool UploadLoginImage(int sessionId, int userId, string imageBase64);
@@ -52,8 +60,10 @@ namespace SessionManagement.WCF
         [OperationContract]
         string DownloadLoginImage(int sessionId);
 
-        // ── UC-11  Client Machines ────────────────────────────────
 
+        #endregion
+
+        #region UC-11  Client Machines
         /// <summary>
         /// Called at client startup; registers a new machine (first connect) or
         /// refreshes its network identity (reconnect).
@@ -89,6 +99,10 @@ namespace SessionManagement.WCF
         [OperationContract]
         ClientInfo[] GetAllClients();
 
+
+        #endregion
+
+        #region UC-03  User Registration ├
         // ── UC-03  User Registration ├──────────────────────────────
 
         /// <summary>SEQ-03: Admin registers a new ClientUser with password.</summary>
@@ -120,8 +134,10 @@ namespace SessionManagement.WCF
         [OperationContract]
         UserStatusToggleResponse ToggleUserStatus(int userId, int adminUserId);
 
-        // ── UC-16 / UC-17  Security Alerts ───────────────────────
 
+        #endregion
+
+        #region UC-16 / UC-17  Security Alerts
         /// <summary>SEQ-16: Log alert + push real-time notification to admins (FR-14).</summary>
         [OperationContract]
         bool LogSecurityAlert(int sessionId, int userId,
@@ -135,16 +151,20 @@ namespace SessionManagement.WCF
         [OperationContract]
         bool AcknowledgeAlert(int alertId, int adminUserId);
 
-        // ── UC-07 / UC-13  Billing ────────────────────────────────
 
+        #endregion
+
+        #region UC-07 / UC-13  Billing
         [OperationContract]
         decimal GetCurrentBillingRate();
 
         [OperationContract]
         decimal CalculateSessionBilling(int sessionId);
 
-        // ── PAYMENT COLLECTION ───────────────────────────────────
 
+        #endregion
+
+        #region PAYMENT COLLECTION
         /// <summary>All billing records (finalized sessions). unpaidOnly=true limits to IsPaid=0.</summary>
         [OperationContract]
         BillingRecordInfo[] GetBillingRecords(bool unpaidOnly);
@@ -153,8 +173,10 @@ namespace SessionManagement.WCF
         [OperationContract]
         bool MarkBillingRecordPaid(int billingRecordId, int adminUserId);
 
-        // ── BILLING RATE MANAGEMENT ───────────────────────────────
 
+        #endregion
+
+        #region BILLING RATE MANAGEMENT
         [OperationContract]
         BillingRateInfo[] GetAllBillingRates();
 
@@ -172,8 +194,10 @@ namespace SessionManagement.WCF
         [OperationContract]
         bool SetDefaultBillingRate(int billingRateId);
 
-        // ── UC-15  Session Logs ───────────────────────────────────
 
+        #endregion
+
+        #region UC-15  Session Logs
         /// <summary>
         /// SEQ-15: Returns tblSystemLog entries for the given date range and
         /// optional category filter (Auth|Session|Billing|Security|System|null=all).
@@ -181,21 +205,27 @@ namespace SessionManagement.WCF
         [OperationContract]
         SystemLogInfo[] GetSystemLogs(DateTime fromDate, DateTime toDate, string category);
 
-        // ── UC-18  Reports ────────────────────────────────────────
 
+        #endregion
+
+        #region UC-18  Reports
         [OperationContract]
         ReportData GetSessionReport(DateTime fromDate, DateTime toDate);
 
-        // ── Duplex subscriptions ──────────────────────────────────
 
+        #endregion
+
+        #region Duplex subscriptions
         [OperationContract]
         void SubscribeForNotifications(string clientCode);
 
         [OperationContract]
         void UnsubscribeFromNotifications(string clientCode);
 
-        // ── Heartbeat ─────────────────────────────────────────────
 
+        #endregion
+
+        #region Heartbeat
         /// <summary>
         /// Client calls this every 30 s to prove it is alive.
         /// Server stamps tblClientMachine.LastSeenAt = GETDATE().
@@ -204,8 +234,10 @@ namespace SessionManagement.WCF
         [OperationContract]
         void Heartbeat(string clientCode);
 
-        // ── Orphan Session Management ──────────────────────────────
 
+        #endregion
+
+        #region Orphan Session Management
         /// <summary>
         /// Called by the client at startup BEFORE RegisterClient().
         /// Ends any Active session left on this machine from a previous
@@ -237,8 +269,10 @@ namespace SessionManagement.WCF
         void OnServerMessage(string message);
     }
 
-    // ── Data Contracts ─────────────────────────────────────────────
 
+    #endregion
+
+    #region Data Contracts
     [DataContract]
     public class AuthenticationResponse
     {
@@ -425,4 +459,6 @@ namespace SessionManagement.WCF
         [DataMember] public string NewStatus    { get; set; }
         [DataMember] public string ErrorMessage { get; set; }
     }
+
+    #endregion
 }

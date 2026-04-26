@@ -708,7 +708,7 @@ Leave flat. Revisit only if the file count grows significantly (15+).
 | 12 | D-3 Console.ReadLine() fragile | C# | Medium | Trivial | ✅ Done |
 | 13 | D-4 Image files accumulate | C# | Low | Low | ✅ Done |
 | 14 | D-5 tblSystemLog unbounded | SQL | Low | Low | ✅ Done |
-| 15 | Regions in shared files | C# style | Low | Low | Not started |
+| 15 | Regions in shared files | C# style | Low | Low | ✅ Done |
 | 16 | DatabaseHelper split DB calls | C# + SQL | Medium | Medium | ✅ Done |
 | 17 | XAML folder organization | Architecture | — | — | ✅ Decision: keep flat |
 
