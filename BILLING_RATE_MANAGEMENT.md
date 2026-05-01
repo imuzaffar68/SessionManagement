@@ -20,7 +20,7 @@ CREATE TABLE dbo.tblBillingRate (
     Name               NVARCHAR(100) NOT NULL,
     RatePerMinute      DECIMAL(10,2) NOT NULL,
     Currency           NVARCHAR(10) NOT NULL,
-    EffectiveFrom      DATE NULL,
+    EffectiveFrom      DATE NOT NULL,
     EffectiveTo        DATE NULL,
     IsActive           BIT NOT NULL DEFAULT (1),
     IsDefault          BIT NOT NULL DEFAULT (0),
@@ -122,7 +122,7 @@ CREATE TABLE dbo.tblBillingRate (
 
 #### `GetAllBillingRates()`
 ```csharp
-public DataTable GetAllBillingRates()
+public BillingRateInfo[] GetAllBillingRates()
 ```
 - Calls `sp_GetAllBillingRates`
 - Returns all billing rates

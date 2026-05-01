@@ -64,7 +64,10 @@
       "Bash(/mingw64/bin/pdftotext \"/c/Users/Muzaffar Iqbal/Downloads/Project Data/Design Document.pdf\" -)",
       "Bash(/mingw64/bin/pdftotext \"/c/Users/Muzaffar Iqbal/Downloads/Project Data/SRS Document.pdf\" -)",
       "Bash(/mingw64/bin/pdftotext \"/c/Users/Muzaffar Iqbal/Downloads/Project Data/Project Statement.pdf\" -)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "Bash(xargs ls *)",
+      "Bash(grep -i \"User@123456\" ClientAdmin/SessionAdmin.exe.config)",
+      "Bash(grep -i \"User@123456\" SessionAdmin/App.config)"
     ]
   }
 }
