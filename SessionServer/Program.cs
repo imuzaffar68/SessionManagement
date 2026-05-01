@@ -67,7 +67,11 @@ class Program
         string listenPort = ConfigurationManager.AppSettings["ServerPort"]    ?? "8001";
         var baseAddress = new Uri($"net.tcp://{listenHost}:{listenPort}/SessionService");
 
-        using (var host = new ServiceHost(typeof(SessionService), baseAddress))
+        // Create the singleton instance explicitly so we can call Dispose() after host.Close().
+        // ServiceHost(typeof(T)) creates the instance internally and never disposes it,
+        // leaving _sessionExpiryTimer and _clientOfflineTimer running after shutdown.
+        var service = new SessionService();
+        using (var host = new ServiceHost(service, baseAddress))
         {
             try
             {
@@ -125,6 +129,7 @@ class Program
                 exit.Wait();
 
                 host.Close();
+                service.Dispose();  // stops _sessionExpiryTimer and _clientOfflineTimer
                 Console.WriteLine("[WCF] Service stopped gracefully.");
             }
             catch (AddressAlreadyInUseException)

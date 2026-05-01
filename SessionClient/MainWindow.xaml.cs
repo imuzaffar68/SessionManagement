@@ -1429,9 +1429,20 @@ namespace SessionClient
         private void UpdateDurationButtonCosts()
         {
             if (_billingRate <= 0) return;
+
+            // Read limits so preset buttons outside the configured range are hidden
+            int mn = 1, mx = 480;
+            string mnS = ConfigurationManager.AppSettings["MinSessionDuration"];
+            string mxS = ConfigurationManager.AppSettings["MaxSessionDuration"];
+            if (!string.IsNullOrEmpty(mnS)) int.TryParse(mnS, out mn);
+            if (!string.IsNullOrEmpty(mxS)) int.TryParse(mxS, out mx);
+
             var presets = new[] { (btnDur15, 15), (btnDur30, 30), (btnDur60, 60), (btnDur120, 120) };
             foreach (var (btn, mins) in presets)
             {
+                // Hide presets outside the configured min/max range
+                btn.Visibility = (mins >= mn && mins <= mx) ? Visibility.Visible : Visibility.Collapsed;
+
                 decimal cost = mins * _billingRate;
                 var sp = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
                 sp.Children.Add(new System.Windows.Controls.TextBlock
@@ -1520,7 +1531,7 @@ namespace SessionClient
         {
             minutes = _selectedDurationMinutes;
 
-            // If custom is visible, parse it
+            // Parse custom value if the custom panel is visible
             if (CustomDurationPanel?.Visibility == Visibility.Visible)
             {
                 if (!int.TryParse(txtCustomDuration.Text, out minutes) || minutes <= 0)
@@ -1528,17 +1539,20 @@ namespace SessionClient
                     AppDialog.ShowWarning("Enter a valid number of minutes.", "Invalid Duration");
                     return false;
                 }
-                int mn = 1, mx = 480;
-                string mnS = ConfigurationManager.AppSettings["MinSessionDuration"];
-                string mxS = ConfigurationManager.AppSettings["MaxSessionDuration"];
-                if (!string.IsNullOrEmpty(mnS)) int.TryParse(mnS, out mn);
-                if (!string.IsNullOrEmpty(mxS)) int.TryParse(mxS, out mx);
-                if (minutes < mn || minutes > mx)
-                {
-                    AppDialog.ShowWarning($"Duration must be between {mn} and {mx} minutes.", "Invalid Duration");
-                    return false;
-                }
             }
+
+            // Validate min/max for ALL durations — preset buttons also go through this check
+            int mn = 1, mx = 480;
+            string mnS = ConfigurationManager.AppSettings["MinSessionDuration"];
+            string mxS = ConfigurationManager.AppSettings["MaxSessionDuration"];
+            if (!string.IsNullOrEmpty(mnS)) int.TryParse(mnS, out mn);
+            if (!string.IsNullOrEmpty(mxS)) int.TryParse(mxS, out mx);
+            if (minutes < mn || minutes > mx)
+            {
+                AppDialog.ShowWarning($"Duration must be between {mn} and {mx} minutes.", "Invalid Duration");
+                return false;
+            }
+
             return true;
         }
 

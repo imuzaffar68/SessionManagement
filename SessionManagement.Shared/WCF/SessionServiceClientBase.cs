@@ -90,6 +90,16 @@ namespace SessionManagement.Client
                 _factory.Endpoint.Address =
                     new EndpointAddress(ServiceConfiguration.GetServiceAddress());
 
+                // Match server security mode: None in DEBUG (dev), Transport in Release (LAN encryption).
+                if (_factory.Endpoint.Binding is System.ServiceModel.NetTcpBinding tcpBinding)
+                {
+#if DEBUG
+                    tcpBinding.Security.Mode = System.ServiceModel.SecurityMode.None;
+#else
+                    tcpBinding.Security.Mode = System.ServiceModel.SecurityMode.Transport;
+#endif
+                }
+
                 // Cap Open() — default is 1 minute, freezes UI thread when server unreachable.
                 _factory.Endpoint.Binding.OpenTimeout = TimeSpan.FromSeconds(ConnectTimeoutSeconds);
                 // Cap Send() — default is 20 minutes.  A LAN call should complete in < 5 s;

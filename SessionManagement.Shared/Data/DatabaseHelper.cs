@@ -3,6 +3,7 @@ using System.Configuration;
 using System.Data;
 using System.Data.SqlClient;
 using System.Collections.Generic;
+using System.IO;
 using SessionManagement.WCF;
 
 namespace SessionManagement.Data
@@ -15,11 +16,42 @@ namespace SessionManagement.Data
     public class DatabaseHelper
     {
         private readonly string _cs;
+        private readonly string _logPath;   // file-based fallback log when DB is unavailable
 
         public DatabaseHelper()
-            => _cs = ConfigurationManager.ConnectionStrings["SessionManagementDB"].ConnectionString;
+        {
+            _cs = ConfigurationManager.ConnectionStrings["SessionManagementDB"].ConnectionString;
+            _logPath = ResolveLogPath();
+        }
 
-        public DatabaseHelper(string cs) => _cs = cs;
+        public DatabaseHelper(string cs) { _cs = cs; _logPath = ResolveLogPath(); }
+
+        private static string ResolveLogPath()
+        {
+            try
+            {
+                string raw = ConfigurationManager.AppSettings["LogPath"] ?? @".\Logs\";
+                string path = Path.IsPathRooted(raw)
+                    ? raw
+                    : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, raw.TrimStart('.', '\\', '/'));
+                Directory.CreateDirectory(path);
+                return path;
+            }
+            catch { return null; }   // if log folder can't be created, file logging is silently skipped
+        }
+
+        private void WriteFileLog(string level, string source, string message)
+        {
+            if (_logPath == null) return;
+            try
+            {
+                string file = Path.Combine(_logPath,
+                    $"server_{DateTime.Now:yyyy-MM-dd}.log");
+                string line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [{level}] {source}: {message}{Environment.NewLine}";
+                File.AppendAllText(file, line, System.Text.Encoding.UTF8);
+            }
+            catch { /* file logging is best-effort — never throw from a log method */ }
+        }
 
         private SqlConnection Conn() => new SqlConnection(_cs);
 
@@ -1067,7 +1099,9 @@ namespace SessionManagement.Data
             }
             catch (Exception ex)
             {
+                // DB unavailable — write to file so audit events are not silently lost.
                 System.Diagnostics.Debug.WriteLine($"[WriteSystemLog FAILED] {ex.Message}");
+                WriteFileLog(category ?? "System", type ?? "Unknown", message ?? "");
             }
         }
 
@@ -1459,6 +1493,7 @@ namespace SessionManagement.Data
         public void PurgeOldLogs(int retentionDays = 180)
         {
             if (retentionDays <= 0) return;
+            if (retentionDays < 30) retentionDays = 30;   // minimum floor — SP enforces this too
             try
             {
                 using (var c = Conn())
@@ -1494,9 +1529,9 @@ namespace SessionManagement.Data
                 $"DB.{method}: {ex.Message}"); }
             catch (Exception logEx)
             {
-                // swallow intentionally — if the DB logger itself fails (e.g. DB is down)
-                // we must not throw from inside LogError or we mask the original exception
+                // DB itself is unavailable — fall back to file so the error is not silently lost.
                 System.Diagnostics.Debug.WriteLine($"[DB.LogError] secondary log failure: {logEx.Message}");
+                WriteFileLog("ERROR", method, ex.Message);
             }
         }
     }

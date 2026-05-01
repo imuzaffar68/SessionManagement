@@ -150,7 +150,7 @@
                     <TextBlock Text="USERNAME" FontSize="10" FontWeight="SemiBold"
                                Foreground="#475569" FontFamily="Segoe UI" Margin="0,0,0,7"/>
                     <TextBox x:Name="txtUsername" Style="{StaticResource ClientInput}"
-                             Height="48" Margin="0,0,0,16"/>
+                             Height="48" Margin="0,0,0,16" Tag="Enter username"/>
 
                     <!-- Password -->
                     <TextBlock Text="PASSWORD" FontSize="10" FontWeight="SemiBold"
@@ -161,10 +161,11 @@
                             <ColumnDefinition Width="48"/>
                         </Grid.ColumnDefinitions>
                         <PasswordBox x:Name="txtPassword" Grid.Column="0"
-                                     Style="{StaticResource ClientPassword}" Height="48"/>
+                                     Style="{StaticResource ClientPassword}" Height="48"
+                                     Tag="Enter password"/>
                         <TextBox x:Name="txtPasswordPlain" Grid.Column="0"
                                  Style="{StaticResource ClientInput}" Height="48"
-                                 Visibility="Collapsed"/>
+                                 Tag="Enter password" Visibility="Collapsed"/>
                         <Button x:Name="btnShowPassword" Grid.Column="1"
                                 Content="👁" Style="{StaticResource ShowPasswordBtn}"
                                 Height="48" Margin="4,0,0,0"
@@ -271,12 +272,12 @@
 
                     <!-- Duration presets grid -->
                     <UniformGrid Columns="2" Margin="0,0,0,12">
-                        <Button x:Name="btnDur15" Content="1 min" Height="52"
+                        <Button x:Name="btnDur15" Content="15 min" Height="52"
                                 Margin="0,0,6,6"
                                 Background="#1E2433" Foreground="#94A3B8"
                                 BorderBrush="#2D3748" BorderThickness="1"
                                 FontFamily="Segoe UI" FontSize="14"
-                                Cursor="Hand" Click="btnDurationPreset_Click" Tag="1">
+                                Cursor="Hand" Click="btnDurationPreset_Click" Tag="15">
                             <Button.Template>
                                 <ControlTemplate TargetType="Button">
                                     <Border x:Name="r" Background="{TemplateBinding Background}"

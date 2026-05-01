@@ -62,16 +62,33 @@
                                     BorderBrush="{TemplateBinding BorderBrush}"
                                     BorderThickness="{TemplateBinding BorderThickness}"
                                     CornerRadius="10">
-                                <ScrollViewer x:Name="PART_ContentHost"
-                                              Margin="{TemplateBinding Padding}"
-                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
-                                              VerticalScrollBarVisibility="Hidden"
-                                              HorizontalScrollBarVisibility="Hidden"/>
+                                <Grid>
+                                    <TextBlock x:Name="Placeholder"
+                                               Text="{TemplateBinding Tag}"
+                                               Foreground="#475569" FontSize="14"
+                                               FontFamily="Segoe UI"
+                                               Margin="{TemplateBinding Padding}"
+                                               VerticalAlignment="Center"
+                                               IsHitTestVisible="False"
+                                               Visibility="Collapsed"/>
+                                    <ScrollViewer x:Name="PART_ContentHost"
+                                                  Margin="{TemplateBinding Padding}"
+                                                  VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                                  VerticalScrollBarVisibility="Hidden"
+                                                  HorizontalScrollBarVisibility="Hidden"/>
+                                </Grid>
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsFocused" Value="True">
                                     <Setter Property="BorderBrush" Value="#4F8EF7"/>
                                 </Trigger>
+                                <MultiTrigger>
+                                    <MultiTrigger.Conditions>
+                                        <Condition Property="Text" Value=""/>
+                                        <Condition Property="IsFocused" Value="False"/>
+                                    </MultiTrigger.Conditions>
+                                    <Setter TargetName="Placeholder" Property="Visibility" Value="Visible"/>
+                                </MultiTrigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>
                     </Setter.Value>
@@ -93,15 +110,25 @@
                                     BorderBrush="{TemplateBinding BorderBrush}"
                                     BorderThickness="{TemplateBinding BorderThickness}"
                                     CornerRadius="10">
-                                <ScrollViewer x:Name="PART_ContentHost"
-                                              Margin="{TemplateBinding Padding}"
-                                              VerticalAlignment="Center"
-                                              VerticalScrollBarVisibility="Hidden"
-                                              HorizontalScrollBarVisibility="Hidden"/>
+                                <Grid>
+                                    <TextBlock x:Name="Placeholder"
+                                               Text="{TemplateBinding Tag}"
+                                               Foreground="#475569" FontSize="14"
+                                               FontFamily="Segoe UI"
+                                               Margin="{TemplateBinding Padding}"
+                                               VerticalAlignment="Center"
+                                               IsHitTestVisible="False"/>
+                                    <ScrollViewer x:Name="PART_ContentHost"
+                                                  Margin="{TemplateBinding Padding}"
+                                                  VerticalAlignment="Center"
+                                                  VerticalScrollBarVisibility="Hidden"
+                                                  HorizontalScrollBarVisibility="Hidden"/>
+                                </Grid>
                             </Border>
                             <ControlTemplate.Triggers>
                                 <Trigger Property="IsFocused" Value="True">
                                     <Setter Property="BorderBrush" Value="#4F8EF7"/>
+                                    <Setter TargetName="Placeholder" Property="Visibility" Value="Collapsed"/>
                                 </Trigger>
                             </ControlTemplate.Triggers>
                         </ControlTemplate>

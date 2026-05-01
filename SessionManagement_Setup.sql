@@ -1244,7 +1244,8 @@ CREATE OR ALTER PROCEDURE dbo.sp_PurgeOldLogs
 AS
 BEGIN
     SET NOCOUNT ON;
-    IF @RetentionDays <= 0 RETURN;   -- 0 = disabled
+    IF @RetentionDays <= 0 RETURN;             -- 0 = disabled
+    IF @RetentionDays < 30 SET @RetentionDays = 30;  -- minimum 30-day floor; prevents accidental wipe
 
     DECLARE @Cutoff  DATETIME = DATEADD(DAY, -@RetentionDays, GETDATE());
     DECLARE @Deleted INT;
