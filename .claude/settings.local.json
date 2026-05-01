@@ -63,7 +63,8 @@
       "Read(//tmp/**)",
       "Bash(/mingw64/bin/pdftotext \"/c/Users/Muzaffar Iqbal/Downloads/Project Data/Design Document.pdf\" -)",
       "Bash(/mingw64/bin/pdftotext \"/c/Users/Muzaffar Iqbal/Downloads/Project Data/SRS Document.pdf\" -)",
-      "Bash(/mingw64/bin/pdftotext \"/c/Users/Muzaffar Iqbal/Downloads/Project Data/Project Statement.pdf\" -)"
+      "Bash(/mingw64/bin/pdftotext \"/c/Users/Muzaffar Iqbal/Downloads/Project Data/Project Statement.pdf\" -)",
+      "Bash(git *)"
     ]
   }
 }
