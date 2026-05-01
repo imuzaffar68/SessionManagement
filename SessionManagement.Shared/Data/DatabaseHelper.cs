@@ -1,8 +1,9 @@
-using System;
+﻿using System;
 using System.Configuration;
 using System.Data;
 using System.Data.SqlClient;
 using System.Collections.Generic;
+using System.IO;
 using SessionManagement.WCF;
 
 namespace SessionManagement.Data
@@ -15,24 +16,57 @@ namespace SessionManagement.Data
     public class DatabaseHelper
     {
         private readonly string _cs;
+        private readonly string _logPath;   // file-based fallback log when DB is unavailable
 
         public DatabaseHelper()
-            => _cs = ConfigurationManager.ConnectionStrings["SessionManagementDB"].ConnectionString;
+        {
+            _cs = ConfigurationManager.ConnectionStrings["SessionManagementDB"].ConnectionString;
+            _logPath = ResolveLogPath();
+        }
 
-        public DatabaseHelper(string cs) => _cs = cs;
+        public DatabaseHelper(string cs) { _cs = cs; _logPath = ResolveLogPath(); }
+
+        private static string ResolveLogPath()
+        {
+            try
+            {
+                string raw = ConfigurationManager.AppSettings["LogPath"] ?? @".\Logs\";
+                string path = Path.IsPathRooted(raw)
+                    ? raw
+                    : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, raw.TrimStart('.', '\\', '/'));
+                Directory.CreateDirectory(path);
+                return path;
+            }
+            catch { return null; }   // if log folder can't be created, file logging is silently skipped
+        }
+
+        private void WriteFileLog(string level, string source, string message)
+        {
+            if (_logPath == null) return;
+            try
+            {
+                string file = Path.Combine(_logPath,
+                    $"server_{DateTime.Now:yyyy-MM-dd}.log");
+                string line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss} [{level}] {source}: {message}{Environment.NewLine}";
+                File.AppendAllText(file, line, System.Text.Encoding.UTF8);
+            }
+            catch { /* file logging is best-effort — never throw from a log method */ }
+        }
 
         private SqlConnection Conn() => new SqlConnection(_cs);
 
         public bool TestConnection()
         {
             try { using (var c = Conn()) { c.Open(); return true; } }
-            catch { return false; }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DB.TestConnection] {ex.Message}");
+                return false;   // probe method — caller checks the bool, no throw needed
+            }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-01 / UC-09  —  AUTHENTICATION
-        // ═══════════════════════════════════════════════════════════
 
+        #region UC-01 / UC-09  —  AUTHENTICATION
         /// <summary>
         /// SEQ-01 step 3: fetch user row by username so caller can BCrypt-verify.
         /// Returns null when user does not exist (any status).
@@ -40,7 +74,7 @@ namespace SessionManagement.Data
         public DataRow GetUserByUsername(string username)
         {
             const string sql = @"
-                SELECT UserId, Username, PasswordHash, FullName, Role, Status
+                SELECT UserId, Username, PasswordHash, FullName, Role, Status, ProfilePicturePath
                 FROM   dbo.tblUser
                 WHERE  Username = @Username";
             try
@@ -152,10 +186,10 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("CountRecentFailedLogins", ex); return 0; }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-02  —  START SESSION
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-02  —  START SESSION
         /// <summary>
         /// SEQ-02: calls sp_StartSession → inserts tblSession (Status=Active) + logs.
         /// Returns new SessionId (0 on failure).
@@ -179,10 +213,10 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("StartSession", ex); return 0; }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-07 / UC-08 / UC-14  —  END SESSION
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-07 / UC-08 / UC-14  —  END SESSION
         /// <summary>
         /// Atomically: sp_EndSession → sp_CalculateSessionBilling → sp_FinalizeSessionBilling.
         /// NFR-14: all three in one transaction — partial writes not allowed.
@@ -245,48 +279,37 @@ namespace SessionManagement.Data
         /// </summary>
         public List<int> AutoExpireOverdueSessionsWithIds()
         {
-            const string selectSql = @"
-                SELECT SessionId FROM dbo.tblSession
-                WHERE Status = 'Active' AND ExpectedEndAt < GETDATE()";
-            const string updateSql = @"
+            // Single atomic statement: expires all overdue sessions and returns their IDs.
+            // OUTPUT clause replaces the previous SELECT + N-UPDATE loop.
+            const string sql = @"
                 UPDATE dbo.tblSession
                 SET    Status                 = 'Expired',
                        EndedAt               = GETDATE(),
                        ActualDurationMinutes = SelectedDurationMinutes,
                        TerminationReason     = 'AutoExpiry'
-                WHERE  SessionId = @SessionId";
+                OUTPUT INSERTED.SessionId
+                WHERE  Status = 'Active' AND ExpectedEndAt < GETDATE()";
+
             var expiredIds = new List<int>();
             try
             {
                 using (var c = Conn())
+                using (var cmd = new SqlCommand(sql, c))
                 {
                     c.Open();
-                    // Get all expired session IDs
-                    using (var selectCmd = new SqlCommand(selectSql, c))
-                    using (var reader = selectCmd.ExecuteReader())
-                    {
+                    using (var reader = cmd.ExecuteReader())
                         while (reader.Read())
                             expiredIds.Add(reader.GetInt32(0));
-                    }
-                    // Expire each session individually
-                    foreach (var sessionId in expiredIds)
-                    {
-                        using (var updateCmd = new SqlCommand(updateSql, c))
-                        {
-                            updateCmd.Parameters.AddWithValue("@SessionId", sessionId);
-                            updateCmd.ExecuteNonQuery();
-                        }
-                    }
                 }
                 return expiredIds;
             }
-            catch (Exception ex) { LogError("AutoExpireOverdueSessionsWithIds", ex); return new List<int>(); }
+            catch (Exception ex) { LogError("AutoExpireOverdueSessionsWithIds", ex); return expiredIds; }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-06 / UC-10  —  GET SESSION INFO / ACTIVE SESSIONS
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-06 / UC-10  —  GET SESSION INFO / ACTIVE SESSIONS
         /// <summary>
         /// Returns one session row with user + machine + timing columns.
         /// Used to build SessionInfo and to obtain ClientCode for WCF callbacks.
@@ -339,10 +362,122 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("GetActiveSessions", ex); return new DataTable(); }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-04 / UC-05 / UC-12  —  SESSION IMAGES
-        // ═══════════════════════════════════════════════════════════
+        /// <summary>
+        /// Returns all active sessions for a given client machine.
+        /// Used by the offline detection scan to auto-terminate orphaned sessions.
+        /// </summary>
+        public DataTable GetActiveSessionsByMachine(int clientMachineId)
+        {
+            const string sql = @"
+                SELECT SessionId FROM dbo.tblSession
+                WHERE  ClientMachineId = @MachineId AND Status = 'Active'";
+            try
+            {
+                using (var c = Conn()) using (var cmd = new SqlCommand(sql, c))
+                {
+                    cmd.Parameters.AddWithValue("@MachineId", clientMachineId);
+                    c.Open();
+                    var dt = new DataTable();
+                    new SqlDataAdapter(cmd).Fill(dt);
+                    return dt;
+                }
+            }
+            catch (Exception ex) { LogError("GetActiveSessionsByMachine", ex); return new DataTable(); }
+        }
 
+        /// <summary>
+        /// Returns the LastSeenAt timestamp for a client machine, or null if never seen.
+        /// Called before RegisterClient (which resets LastSeenAt) so the value still
+        /// reflects the last heartbeat before a crash.
+        /// </summary>
+        public DateTime? GetClientLastSeen(string clientCode)
+        {
+            const string sql = @"
+                SELECT LastSeenAt FROM dbo.tblClientMachine WHERE ClientCode = @Code";
+            try
+            {
+                using (var c = Conn()) using (var cmd = new SqlCommand(sql, c))
+                {
+                    cmd.Parameters.AddWithValue("@Code", clientCode);
+                    c.Open();
+                    object val = cmd.ExecuteScalar();
+                    return (val == null || val == DBNull.Value) ? (DateTime?)null : Convert.ToDateTime(val);
+                }
+            }
+            catch (Exception ex) { LogError("GetClientLastSeen", ex); return null; }
+        }
+
+        /// <summary>
+        /// Terminates all Active sessions for a machine as 'OrphanTerminated', setting
+        /// EndedAt to <paramref name="actualEndTime"/> (the last known heartbeat time) so
+        /// billing reflects actual elapsed time, not "time of cleanup".
+        /// Each session is ended + billed atomically.  Returns the number of sessions terminated.
+        /// </summary>
+        public int TerminateOrphanSessionsForMachine(string clientCode, DateTime? actualEndTime)
+        {
+            int machineId = GetClientMachineIdByCode(clientCode);
+            if (machineId == 0) return 0;
+
+            DataTable active = GetActiveSessionsByMachine(machineId);
+            if (active.Rows.Count == 0) return 0;
+
+            DateTime endTime = actualEndTime ?? DateTime.Now;
+            int terminated = 0;
+
+            foreach (DataRow r in active.Rows)
+            {
+                int sessionId = Convert.ToInt32(r["SessionId"]);
+                try
+                {
+                    using (var c = Conn())
+                    {
+                        c.Open();
+                        using (var tx = c.BeginTransaction())
+                        {
+                            try
+                            {
+                                // End the session with the override end time so billing is accurate.
+                                const string endSql = @"
+                                    UPDATE dbo.tblSession
+                                    SET EndedAt               = @EndTime,
+                                        Status                = 'Terminated',
+                                        TerminationReason     = 'OrphanTerminated',
+                                        ActualDurationMinutes =
+                                            DATEDIFF(MINUTE, StartedAt, @EndTime)
+                                    WHERE SessionId = @SessionId
+                                      AND Status    = 'Active'";
+
+                                using (var cmd = new SqlCommand(endSql, c, tx))
+                                {
+                                    cmd.Parameters.AddWithValue("@EndTime",   endTime);
+                                    cmd.Parameters.AddWithValue("@SessionId", sessionId);
+                                    cmd.ExecuteNonQuery();
+                                }
+
+                                // Bill using EndedAt (sp_CalculateSessionBilling now uses
+                                // COALESCE(EndedAt, GETDATE()) after the SQL patch).
+                                ExecSP(c, tx, "sp_CalculateSessionBilling",
+                                    P("@SessionId", sessionId));
+                                ExecSP(c, tx, "sp_FinalizeSessionBilling",
+                                    P("@SessionId", sessionId));
+
+                                tx.Commit();
+                                terminated++;
+                            }
+                            catch { tx.Rollback(); throw; }
+                        }
+                    }
+                }
+                catch (Exception ex) { LogError("TerminateOrphanSessionsForMachine", ex); }
+            }
+
+            return terminated;
+        }
+
+
+        #endregion
+
+        #region UC-04 / UC-05 / UC-12  —  SESSION IMAGES
         /// <summary>
         /// UC-05: upsert tblSessionImage (one row per session).
         /// CaptureStatus: Captured | CameraUnavailable | Skipped | Failed
@@ -398,10 +533,10 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("GetSessionImagePath", ex); return null; }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-07 / UC-13  —  BILLING
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-07 / UC-13  —  BILLING
         /// <summary>Calls sp_CalculateSessionBilling; returns running amount.</summary>
         public decimal CalculateRunningBilling(int sessionId)
         {
@@ -420,28 +555,57 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("CalculateRunningBilling", ex); return 0m; }
         }
 
-        /// <summary>UC-13: current default rate per minute from tblBillingRate.</summary>
+        /// <summary>
+        /// UC-13: resolves the billing rate for the current moment.
+        /// Resolution order:
+        ///   a) Active rate whose EffectiveFrom ≤ today ≤ EffectiveTo (latest EffectiveFrom wins).
+        ///   b) Active IsDefault = 1 rate (fall-back when no date-matched rate exists).
+        ///   c) 0 — no rate configured; caller should surface a warning.
+        /// </summary>
         public decimal GetCurrentBillingRate()
         {
+            // a. Date-matched active rate — most recent EffectiveFrom takes priority
+            const string sqlDateMatched = @"
+                SELECT TOP 1 RatePerMinute
+                FROM   dbo.tblBillingRate
+                WHERE  IsActive = 1
+                  AND  EffectiveFrom IS NOT NULL
+                  AND  EffectiveFrom <= CAST(GETDATE() AS DATE)
+                  AND  (EffectiveTo IS NULL OR EffectiveTo >= CAST(GETDATE() AS DATE))
+                ORDER  BY EffectiveFrom DESC";
+
+            // b. Fall back: rate marked as default
             const string sqlDefault = @"
-                SELECT TOP 1 RatePerMinute FROM dbo.tblBillingRate
-                WHERE  IsActive = 1 AND IsDefault = 1 ORDER BY CreatedAt DESC";
-            const string sqlAny = @"
-                SELECT TOP 1 RatePerMinute FROM dbo.tblBillingRate
-                WHERE  IsActive = 1 ORDER BY CreatedAt DESC";
+                SELECT TOP 1 RatePerMinute
+                FROM   dbo.tblBillingRate
+                WHERE  IsActive = 1 AND IsDefault = 1
+                ORDER  BY CreatedAt DESC";
+
             try
             {
-                using (var c = Conn()) using (var cmd = new SqlCommand(sqlDefault, c))
+                using (var c = Conn())
+                using (var cmd = new SqlCommand(sqlDateMatched, c))
                 {
                     c.Open();
+
+                    // a. Date-matched
                     var r = cmd.ExecuteScalar();
-                    if (r != null) return Convert.ToDecimal(r);
-                    cmd.CommandText = sqlAny;
+                    if (r != null && r != DBNull.Value)
+                        return Convert.ToDecimal(r);
+
+                    // b. Default flag
+                    cmd.CommandText = sqlDefault;
                     r = cmd.ExecuteScalar();
-                    return r != null ? Convert.ToDecimal(r) : 0.50m;
+                    if (r != null && r != DBNull.Value)
+                        return Convert.ToDecimal(r);
+
+                    // d. No rate at all — log and return 0
+                    LogError("GetCurrentBillingRate",
+                        new InvalidOperationException("No active billing rate found."));
+                    return 0m;
                 }
             }
-            catch (Exception ex) { LogError("GetCurrentBillingRate", ex); return 0.50m; }
+            catch (Exception ex) { LogError("GetCurrentBillingRate", ex); return 0m; }
         }
 
         /// <summary>UC-13: finalized billing amount once session is closed.</summary>
@@ -461,10 +625,48 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("GetFinalBillingAmount", ex); return 0m; }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-11  —  CLIENT MACHINES
-        // ═══════════════════════════════════════════════════════════
+        /// <summary>Returns billing records (finalized sessions). unpaidOnly=true limits to IsPaid=0.</summary>
+        public DataTable GetBillingRecords(bool unpaidOnly)
+        {
+            try
+            {
+                using (var c = Conn())
+                using (var cmd = new SqlCommand("dbo.sp_GetBillingRecords", c))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+                    cmd.Parameters.AddWithValue("@UnpaidOnly", unpaidOnly ? 1 : 0);
+                    c.Open();
+                    var dt = new DataTable();
+                    new SqlDataAdapter(cmd).Fill(dt);
+                    return dt;
+                }
+            }
+            catch (Exception ex) { LogError("GetBillingRecords", ex); return new DataTable(); }
+        }
 
+        /// <summary>Mark a billing record paid. Returns 1=ok, 0=not found, -1=already paid.</summary>
+        public int MarkBillingRecordPaid(int billingRecordId, int adminUserId)
+        {
+            try
+            {
+                using (var c = Conn())
+                using (var cmd = new SqlCommand("dbo.sp_MarkBillingRecordPaid", c))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+                    cmd.Parameters.AddWithValue("@BillingRecordId", billingRecordId);
+                    cmd.Parameters.AddWithValue("@AdminUserId", adminUserId);
+                    c.Open();
+                    var result = cmd.ExecuteScalar();
+                    return result != null ? Convert.ToInt32(result) : 0;
+                }
+            }
+            catch (Exception ex) { LogError("MarkBillingRecordPaid", ex); return 0; }
+        }
+
+
+        #endregion
+
+        #region UC-11  —  CLIENT MACHINES
         /// <summary>Returns ClientMachineId for a ClientCode, or 0 if not found.</summary>
         public int GetClientMachineIdByCode(string clientCode)
         {
@@ -501,11 +703,18 @@ namespace SessionManagement.Data
         }
 
         /// <summary>
-        /// sp_RegisterClient: upserts the machine row and returns its ClientMachineId.
-        /// Called at client startup so the machine appears in the admin dashboard immediately.
+        /// sp_RegisterClient: registers a new machine (INSERT) or refreshes its
+        /// network identity on reconnect (UPDATE — IPAddress/MACAddress/LastSeenAt only).
+        /// MachineName and Location are written once on first INSERT and are never
+        /// overwritten by subsequent reconnects; admin edits survive reboots.
+        /// <para>
+        /// INNO SETUP: the installer must write ClientCode, ClientMachineName, and
+        /// ClientLocation to SessionClient\App.config before the app first runs.
+        /// Those values are forwarded here as clientCode/machineName/location.
+        /// </para>
         /// </summary>
         public int RegisterOrUpdateClient(string clientCode, string machineName,
-            string ipAddress, string macAddress = null)
+            string ipAddress, string macAddress = null, string location = null)
         {
             try
             {
@@ -513,16 +722,43 @@ namespace SessionManagement.Data
                 using (var cmd = new SqlCommand("sp_RegisterClient", c)
                 { CommandType = CommandType.StoredProcedure })
                 {
-                    cmd.Parameters.AddWithValue("@ClientCode", clientCode);
+                    cmd.Parameters.AddWithValue("@ClientCode",  clientCode);
                     cmd.Parameters.AddWithValue("@MachineName", machineName);
-                    cmd.Parameters.AddWithValue("@IPAddress", ipAddress);
-                    cmd.Parameters.AddWithValue("@MACAddress", (object)macAddress ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@IPAddress",   ipAddress);
+                    cmd.Parameters.AddWithValue("@MACAddress",  (object)macAddress ?? DBNull.Value);
+                    // Location is NULL on reconnect — SP ignores it for existing rows
+                    cmd.Parameters.AddWithValue("@Location",    (object)location   ?? DBNull.Value);
                     c.Open();
-                    cmd.ExecuteScalar();   // returns 1/0 success flag
+                    var result = cmd.ExecuteScalar();   // sp_RegisterClient SELECTs the id — capture it
+                    return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
                 }
-                return GetClientMachineIdByCode(clientCode);
             }
             catch (Exception ex) { LogError("RegisterOrUpdateClient", ex); return 0; }
+        }
+
+        /// <summary>
+        /// sp_UpdateClientMachineInfo: admin-only rename/relocate.
+        /// This is the ONLY path that may change MachineName or Location on an
+        /// existing row; sp_RegisterClient deliberately skips them on reconnect.
+        /// Called from SessionAdmin via ISessionService.UpdateClientMachineInfo().
+        /// </summary>
+        public bool UpdateClientMachineInfo(string clientCode, string machineName, string location)
+        {
+            try
+            {
+                using (var c = Conn())
+                using (var cmd = new SqlCommand("sp_UpdateClientMachineInfo", c)
+                { CommandType = CommandType.StoredProcedure })
+                {
+                    cmd.Parameters.AddWithValue("@ClientCode",  clientCode);
+                    cmd.Parameters.AddWithValue("@MachineName", machineName);
+                    cmd.Parameters.AddWithValue("@Location",    (object)location ?? DBNull.Value);
+                    c.Open();
+                    var result = cmd.ExecuteScalar();
+                    return result != null && Convert.ToInt32(result) == 1;
+                }
+            }
+            catch (Exception ex) { LogError("UpdateClientMachineInfo", ex); return false; }
         }
 
         /// <summary>Update IsActive status on a client machine row.</summary>
@@ -545,7 +781,7 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("UpdateClientMachineIsActive", ex); return false; }
         }
 
-        /// <summary>Update Status + LastSeenAt on a client machine row.</summary>
+/// <summary>Update Status + LastSeenAt on a client machine row.</summary>
         public bool UpdateClientMachineStatus(int clientMachineId, string status)
         {
             const string sql = @"
@@ -565,6 +801,124 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("UpdateClientMachineStatus", ex); return false; }
         }
 
+        /// <summary>
+        /// Server restart: stamp LastSeenAt = NOW for all non-Offline machines so that
+        /// the OfflineDetectionScan (which runs 60 s after startup) does not immediately
+        /// mark all connected clients as stale and kill their active sessions.
+        /// </summary>
+        public void RefreshLastSeenForActiveMachines()
+        {
+            const string sql = @"
+                UPDATE dbo.tblClientMachine
+                SET    LastSeenAt = GETDATE()
+                WHERE  Status <> 'Offline'";
+            try
+            {
+                using (var c = Conn()) using (var cmd = new SqlCommand(sql, c))
+                { c.Open(); cmd.ExecuteNonQuery(); }
+            }
+            catch (Exception ex) { LogError("RefreshLastSeenForActiveMachines", ex); }
+        }
+
+        /// <summary>
+        /// Heartbeat: touch LastSeenAt and reset MissedHeartbeats to 0.
+        /// Does NOT change Status (status restoration is handled in SessionService.Heartbeat).
+        /// Returns false if no row found.
+        /// </summary>
+        public bool UpdateClientLastSeen(string clientCode)
+        {
+            const string sql = @"
+                UPDATE dbo.tblClientMachine
+                SET    LastSeenAt = GETDATE(), MissedHeartbeats = 0
+                WHERE  ClientCode = @Code";
+            try
+            {
+                using (var c = Conn()) using (var cmd = new SqlCommand(sql, c))
+                {
+                    cmd.Parameters.AddWithValue("@Code", clientCode);
+                    c.Open();
+                    return cmd.ExecuteNonQuery() > 0;
+                }
+            }
+            catch (Exception ex) { LogError("UpdateClientLastSeen", ex); return false; }
+        }
+
+        /// <summary>
+        /// Offline detection scan with grace counter.
+        /// Step A: increments MissedHeartbeats for every non-Offline machine whose
+        ///         LastSeenAt is older than <paramref name="thresholdSeconds"/>.
+        /// Step B: marks Offline (and resets counter) only machines whose
+        ///         MissedHeartbeats has reached <paramref name="graceCount"/>.
+        /// Returns rows (ClientMachineId, ClientCode) for each machine just marked offline
+        /// so the caller can terminate active sessions and clean up subscriptions.
+        /// Default graceCount=3 means a machine must miss 3 consecutive 60-second scans
+        /// (~3 minutes total) before being declared offline — prevents false positives
+        /// under local dev load where thread-pool contention can delay heartbeats.
+        /// </summary>
+        public DataTable MarkStaleClientsOffline(int thresholdSeconds, int graceCount = 3)
+        {
+            // Step A: increment miss counter for stale-but-not-yet-offline machines
+            const string stepA = @"
+                UPDATE dbo.tblClientMachine
+                SET    MissedHeartbeats = MissedHeartbeats + 1
+                WHERE  Status <> 'Offline'
+                  AND  LastSeenAt IS NOT NULL
+                  AND  LastSeenAt < DATEADD(SECOND, -@Threshold, GETDATE())";
+
+            // Step B: mark offline only those that have exhausted the grace window
+            const string stepB = @"
+                UPDATE dbo.tblClientMachine
+                SET    Status = 'Offline', MissedHeartbeats = 0
+                OUTPUT INSERTED.ClientMachineId, INSERTED.ClientCode
+                WHERE  Status <> 'Offline'
+                  AND  MissedHeartbeats >= @GraceCount";
+            try
+            {
+                using (var c = Conn())
+                {
+                    c.Open();
+                    using (var tx = c.BeginTransaction())
+                    {
+                        try
+                        {
+                            using (var cmdA = new SqlCommand(stepA, c, tx))
+                            {
+                                cmdA.Parameters.AddWithValue("@Threshold", thresholdSeconds);
+                                cmdA.ExecuteNonQuery();
+                            }
+                            using (var cmdB = new SqlCommand(stepB, c, tx))
+                            {
+                                cmdB.Parameters.AddWithValue("@GraceCount", graceCount);
+                                var dt = new DataTable();
+                                new SqlDataAdapter(cmdB).Fill(dt);
+                                tx.Commit();
+                                return dt;
+                            }
+                        }
+                        catch { tx.Rollback(); throw; }
+                    }
+                }
+            }
+            catch (Exception ex) { LogError("MarkStaleClientsOffline", ex); return new DataTable(); }
+        }
+
+        /// <summary>Returns the current Status of a client machine, or null if not found.</summary>
+        public string GetClientStatus(string clientCode)
+        {
+            const string sql = "SELECT Status FROM dbo.tblClientMachine WHERE ClientCode = @Code";
+            try
+            {
+                using (var c = Conn()) using (var cmd = new SqlCommand(sql, c))
+                {
+                    cmd.Parameters.AddWithValue("@Code", clientCode);
+                    c.Open();
+                    var r = cmd.ExecuteScalar();
+                    return r?.ToString();
+                }
+            }
+            catch (Exception ex) { LogError("GetClientStatus", ex); return null; }
+        }
+
         /// <summary>UC-11: all client machines + current session user (if any).</summary>
         public DataTable GetAllClientMachines()
         {
@@ -572,6 +926,7 @@ namespace SessionManagement.Data
                 SELECT c.ClientMachineId, c.ClientCode, c.MachineName,
                        c.IPAddress, c.MACAddress, c.Location,
                        c.Status, c.LastSeenAt, c.IsActive,
+                       c.MissedHeartbeats,
                        u.Fullname +' (' +u.Username+')' AS CurrentUsername
                 FROM   dbo.tblClientMachine c
                 LEFT JOIN dbo.tblSession s
@@ -591,15 +946,16 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("GetAllClientMachines", ex); return new DataTable(); }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-16 / UC-17  —  ALERTS
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-16 / UC-17  —  ALERTS
         /// <summary>
         /// Calls sp_LogSecurityAlert → inserts tblAlert + tblSystemLog.
+        /// Returns the new AlertId on success, -1 on failure.
         /// SEQ-16/17: alert generated, persisted, admin notified.
         /// </summary>
-        public bool InsertSecurityAlert(string activityTypeName, int? sessionId,
+        public int InsertSecurityAlert(string activityTypeName, int? sessionId,
             int? clientMachineId, int? userId, string details, string severity)
         {
             try
@@ -615,10 +971,33 @@ namespace SessionManagement.Data
                     cmd.Parameters.AddWithValue("@Details", details);
                     cmd.Parameters.AddWithValue("@Severity", severity);
                     c.Open();
-                    return Convert.ToInt32(cmd.ExecuteScalar()) == 1;
+                    var scalar = cmd.ExecuteScalar();
+                    int id = (scalar != null && scalar != DBNull.Value) ? Convert.ToInt32(scalar) : -1;
+                    return id > 0 ? id : -1;
                 }
             }
-            catch (Exception ex) { LogError("InsertSecurityAlert", ex); return false; }
+            catch (Exception ex) { LogError("InsertSecurityAlert", ex); return -1; }
+        }
+
+        /// <summary>
+        /// Marks tblAlert.IsNotifiedToAdmin = 1 after the WCF broadcast was sent.
+        /// </summary>
+        public bool MarkAlertNotifiedToAdmin(int alertId)
+        {
+            const string sql = @"
+                UPDATE dbo.tblAlert
+                SET    IsNotifiedToAdmin = 1
+                WHERE  AlertId = @AlertId";
+            try
+            {
+                using (var c = Conn()) using (var cmd = new SqlCommand(sql, c))
+                {
+                    cmd.Parameters.AddWithValue("@AlertId", alertId);
+                    c.Open();
+                    return cmd.ExecuteNonQuery() > 0;
+                }
+            }
+            catch (Exception ex) { LogError("MarkAlertNotifiedToAdmin", ex); return false; }
         }
 
         /// <summary>UC-17: all unacknowledged alerts with ActivityType name.</summary>
@@ -672,10 +1051,10 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("AcknowledgeAlert", ex); return false; }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-15 / UC-18  —  LOGS & REPORTS
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-15 / UC-18  —  LOGS & REPORTS
         /// <summary>
         /// Write a structured row to tblSystemLog.
         /// Category MUST be: Auth | Session | Billing | Security | System
@@ -706,17 +1085,23 @@ namespace SessionManagement.Data
                     cmd.Parameters.AddWithValue("@Type", type);
                     cmd.Parameters.AddWithValue("@Message", message);
                     cmd.Parameters.AddWithValue("@Source", source);
-                    cmd.Parameters.AddWithValue("@SessionId", (object)sessionId ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@UserId", (object)userId ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@ClientMachineId", (object)clientMachineId ?? DBNull.Value);
-                    cmd.Parameters.AddWithValue("@AdminUserId", (object)adminUserId ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@SessionId",       (object)sessionId ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@UserId",          (object)userId ?? DBNull.Value);
+                    // Treat 0 as NULL — 0 is never a valid FK value and causes a constraint
+                    // violation when the machine hasn't registered yet (e.g. sp_RegisterClient failed).
+                    cmd.Parameters.AddWithValue("@ClientMachineId",
+                        clientMachineId.HasValue && clientMachineId.Value > 0
+                            ? (object)clientMachineId.Value : DBNull.Value);
+                    cmd.Parameters.AddWithValue("@AdminUserId",     (object)adminUserId ?? DBNull.Value);
                     c.Open();
                     cmd.ExecuteNonQuery();
                 }
             }
             catch (Exception ex)
             {
+                // DB unavailable — write to file so audit events are not silently lost.
                 System.Diagnostics.Debug.WriteLine($"[WriteSystemLog FAILED] {ex.Message}");
+                WriteFileLog(category ?? "System", type ?? "Unknown", message ?? "");
             }
         }
 
@@ -781,10 +1166,10 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("GetSystemLogs", ex); return new DataTable(); }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-03  —  USER REGISTRATION (ADMIN)
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-03  —  USER REGISTRATION (ADMIN)
         /// <summary>
         /// SEQ-03: Admin registers a new ClientUser.
         /// Returns UserId if successful, 0 if username already exists or error.
@@ -801,7 +1186,7 @@ namespace SessionManagement.Data
 
                     cmd.Parameters.AddWithValue("@Username", username);
                     cmd.Parameters.AddWithValue("@PasswordHash", passwordHash);
-                    cmd.Parameters.AddWithValue("@FullName", (object)fullName ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@FullName", fullName);
                     cmd.Parameters.AddWithValue("@Phone", (object)phone ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@Address", (object)address ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@AdminUserId", adminUserId);
@@ -826,8 +1211,8 @@ namespace SessionManagement.Data
         public DataTable GetAllClientUsers()
         {
             const string sql = @"
-                SELECT UserId, Username, FullName, Phone, Address, Status, 
-                       Role, CreatedAt, LastLoginAt
+                SELECT UserId, Username, FullName, Phone, Address, Status,
+                       Role, CreatedAt, LastLoginAt, ProfilePicturePath
                 FROM   dbo.tblUser
                 WHERE  Role = 'ClientUser'
                 ORDER  BY CreatedAt DESC";
@@ -845,31 +1230,49 @@ namespace SessionManagement.Data
         }
 
         /// <summary>
-        /// Update ClientUser details (FullName, Phone, Address).
+        /// Update ClientUser details. Pass profilePicturePath = null to keep the existing path.
         /// </summary>
-        public bool UpdateClientUser(int userId, string fullName, string phone, string address)
+        public bool UpdateClientUser(int userId, string fullName, string phone, string address,
+            string profilePicturePath = null)
         {
-            const string sql = @"
-                UPDATE dbo.tblUser
-                SET    FullName = @FullName,
-                       Phone = @Phone,
-                       Address = @Address
-                WHERE  UserId = @UserId AND Role = 'ClientUser'";
             try
             {
                 using (var c = Conn())
-                using (var cmd = new SqlCommand(sql, c))
+                using (var cmd = new SqlCommand("dbo.sp_UpdateClientUser", c))
                 {
+                    cmd.CommandType = CommandType.StoredProcedure;
                     cmd.Parameters.AddWithValue("@UserId", userId);
-                    cmd.Parameters.AddWithValue("@FullName", (object)fullName ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@FullName", fullName);
                     cmd.Parameters.AddWithValue("@Phone", (object)phone ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@Address", (object)address ?? DBNull.Value);
+                    cmd.Parameters.AddWithValue("@ProfilePicturePath", (object)profilePicturePath ?? DBNull.Value);
                     c.Open();
-                    int rowsAffected = cmd.ExecuteNonQuery();
-                    return rowsAffected > 0;
+                    cmd.ExecuteNonQuery();
+                    return true;
                 }
             }
             catch (Exception ex) { LogError("UpdateClientUser", ex); return false; }
+        }
+
+        /// <summary>
+        /// Hard-delete a ClientUser via stored procedure.
+        /// Returns: 1 = deleted, -1 = has sessions (blocked), 0 = not found / error.
+        /// </summary>
+        public int DeleteClientUser(int userId)
+        {
+            try
+            {
+                using (var c = Conn())
+                using (var cmd = new SqlCommand("dbo.sp_DeleteClientUser", c))
+                {
+                    cmd.CommandType = CommandType.StoredProcedure;
+                    cmd.Parameters.AddWithValue("@UserId", userId);
+                    c.Open();
+                    var result = cmd.ExecuteScalar();
+                    return result != null ? Convert.ToInt32(result) : 0;
+                }
+            }
+            catch (Exception ex) { LogError("DeleteClientUser", ex); return 0; }
         }
 
         /// <summary>
@@ -920,10 +1323,10 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("UpdateUserStatus", ex); return false; }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  BILLING RATE MANAGEMENT
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region BILLING RATE MANAGEMENT
         /// <summary>
         /// Get all billing rates from database.
         /// Returns array of BillingRateInfo DTOs.
@@ -1079,9 +1482,31 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("SetDefaultBillingRate", ex); return false; }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  PRIVATE HELPERS
-        // ═══════════════════════════════════════════════════════════
+
+        #endregion
+
+        #region PRIVATE HELPERS
+        /// <summary>
+        /// Deletes tblSystemLog rows older than <paramref name="retentionDays"/>.
+        /// Called once at server startup. Pass 0 to disable.
+        /// </summary>
+        public void PurgeOldLogs(int retentionDays = 180)
+        {
+            if (retentionDays <= 0) return;
+            if (retentionDays < 30) retentionDays = 30;   // minimum floor — SP enforces this too
+            try
+            {
+                using (var c = Conn())
+                using (var cmd = new SqlCommand("dbo.sp_PurgeOldLogs", c)
+                { CommandType = System.Data.CommandType.StoredProcedure })
+                {
+                    cmd.Parameters.AddWithValue("@RetentionDays", retentionDays);
+                    c.Open();
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            catch (Exception ex) { LogError("PurgeOldLogs", ex); }
+        }
 
         private static SqlParameter P(string name, object value)
             => new SqlParameter(name, value ?? DBNull.Value);
@@ -1102,7 +1527,14 @@ namespace SessionManagement.Data
             System.Diagnostics.Debug.WriteLine($"[DB.{method}] {ex.Message}");
             try { WriteSystemLog(null, null, null, null, "System", "DBError",
                 $"DB.{method}: {ex.Message}"); }
-            catch { /* swallow */ }
+            catch (Exception logEx)
+            {
+                // DB itself is unavailable — fall back to file so the error is not silently lost.
+                System.Diagnostics.Debug.WriteLine($"[DB.LogError] secondary log failure: {logEx.Message}");
+                WriteFileLog("ERROR", method, ex.Message);
+            }
         }
     }
+
+        #endregion
 }

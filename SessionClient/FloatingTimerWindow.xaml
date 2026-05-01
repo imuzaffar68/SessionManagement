@@ -1,6 +1,7 @@
 <Window x:Class="SessionClient.FloatingTimerWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Icon="app.ico"
         Title="Session Timer"
         Height="90" Width="230"
         WindowStyle="None"

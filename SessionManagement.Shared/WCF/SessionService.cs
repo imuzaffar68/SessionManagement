@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Configuration;
@@ -28,8 +28,24 @@ namespace SessionManagement.WCF
             _subs = new ConcurrentDictionary<string, ISessionServiceCallback>(
                 StringComparer.OrdinalIgnoreCase);
 
+        // ── Pending terminations for clients with no live callback channel ──
+        // Populated by EndSession() when the target client is not in _subs.
+        // Drained by SubscribeForNotifications() the moment the client reconnects.
+        private static readonly ConcurrentDictionary<string, (int SessionId, string Reason)>
+            _pendingTerminations = new ConcurrentDictionary<string, (int, string)>(
+                StringComparer.OrdinalIgnoreCase);
+
+        // ── One-shot auth tokens: token → userId ─────────────────────
+        // Stored on AuthenticateUser success, consumed atomically on StartSession.
+        // Instance field is correct here — singleton service means one instance per host.
+        private readonly ConcurrentDictionary<string, int> _tokenStore =
+            new ConcurrentDictionary<string, int>(StringComparer.Ordinal);
+
         // ── server-side session expiry (every 30 s) ───────────────
-        private readonly Timer _expiryTimer;
+        private readonly Timer _sessionExpiryTimer;
+
+        // ── server-side offline detection (every 60 s) ────────────
+        private readonly Timer _clientOfflineTimer;
 
         // ── image storage path ────────────────────────────────────
         private readonly string _imgPath;
@@ -38,15 +54,91 @@ namespace SessionManagement.WCF
         public SessionService()
         {
             _db = new DatabaseHelper();
-            _imgPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Images");
+            // Use %PROGRAMDATA% so the server can write images even when installed under
+            // C:\Program Files (which requires elevation for writes to BaseDirectory).
+            _imgPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                "SessionManagement", "Images");
             Directory.CreateDirectory(_imgPath);
 
-            _expiryTimer = new Timer(ServerExpiryScan, null,
-                TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30));
+            _sessionExpiryTimer = new Timer(ServerExpiryScan, null,
+                TimeSpan.FromSeconds(ServiceConstants.ExpiryCheckIntervalSeconds),
+                TimeSpan.FromSeconds(ServiceConstants.ExpiryCheckIntervalSeconds));
+
+            _clientOfflineTimer = new Timer(OfflineDetectionScan, null,
+                TimeSpan.FromSeconds(ServiceConstants.OfflineCheckIntervalSeconds),
+                TimeSpan.FromSeconds(ServiceConstants.OfflineCheckIntervalSeconds));
+
+            // After a server power-cut, all client machines have stale LastSeenAt
+            // from before the crash.  Stamp them now so the first OfflineDetectionScan
+            // (60 s from now) does not immediately kill every active client session.
+            _db.RefreshLastSeenForActiveMachines();
+            PurgeOldImages();
+
+            int logDays = 180;
+            string logCfg = ConfigurationManager.AppSettings["LogRetentionDays"];
+            if (!string.IsNullOrEmpty(logCfg)) int.TryParse(logCfg, out logDays);
+            _db.PurgeOldLogs(logDays);
 
             _db.WriteSystemLog(null, null, null, null,
                 "System", "ServiceStart", "SessionService started", "Server");
         }
+
+        // ─────────────────────────────────────────────────────────
+        //  Image cleanup
+        // ─────────────────────────────────────────────────────────
+
+        private void PurgeOldImages()
+        {
+            try
+            {
+                int days = 90;
+                string cfg = ConfigurationManager.AppSettings["ImageRetentionDays"];
+                if (!string.IsNullOrEmpty(cfg)) int.TryParse(cfg, out days);
+                if (days <= 0) return;   // 0 = disabled
+
+                DateTime cutoff = DateTime.Now.AddDays(-days);
+                int deleted = 0;
+
+                foreach (string folder in new[] { _imgPath,
+                    Path.Combine(Path.GetDirectoryName(_imgPath), "ProfilePics") })
+                {
+                    if (!Directory.Exists(folder)) continue;
+                    foreach (string file in Directory.GetFiles(folder))
+                    {
+                        if (File.GetCreationTime(file) < cutoff)
+                        {
+                            try { File.Delete(file); deleted++; }
+                            catch (Exception ex)
+                            {
+                                System.Diagnostics.Debug.WriteLine(
+                                    $"[PurgeImages] Could not delete {file}: {ex.Message}");
+                            }
+                        }
+                    }
+                }
+
+                if (deleted > 0)
+                    _db.WriteSystemLog(null, null, null, null,
+                        "System", "ImagePurge",
+                        $"Purged {deleted} image file(s) older than {days} days", "Server");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[PurgeImages] {ex.Message}");
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────
+        //  Input validation helper
+        // ─────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Returns true when the string is non-null, non-whitespace, and within maxLen.
+        /// Keeps every service method's guard a one-liner.
+        /// </summary>
+        private static bool IsValidString(string value, int maxLen = 255)
+            => !string.IsNullOrWhiteSpace(value) && value.Length <= maxLen;
 
         // ═══════════════════════════════════════════════════════════
         //  UC-01 / UC-09  —  AUTHENTICATION
@@ -56,6 +148,10 @@ namespace SessionManagement.WCF
         public AuthenticationResponse AuthenticateUser(
             string username, string password, string clientCode)
         {
+            if (!IsValidString(username) || !IsValidString(password) || !IsValidString(clientCode, 50))
+                return new AuthenticationResponse
+                { IsAuthenticated = false, ErrorMessage = "Invalid input." };
+
             // SEQ-01 step 1: resolve machine id (needed for LoginAttempt row)
             int machineId = _db.GetClientMachineIdByCode(clientCode);
             bool isAdminLogin = string.Equals(clientCode, "ADMIN", StringComparison.OrdinalIgnoreCase);
@@ -147,26 +243,33 @@ namespace SessionManagement.WCF
                     "Auth", "LoginSuccess",
                     $"User '{username}' authenticated on {clientCode}", "Server");
 
+                string picPath = user["ProfilePicturePath"]?.ToString();
+
+                string token = AuthenticationHelper.GenerateSessionToken();
+                _tokenStore[token] = userId;   // overwrite if same user re-authenticates before starting a session
+
                 return new AuthenticationResponse
                 {
-                    IsAuthenticated = true,
-                    UserId          = userId,
-                    Username        = user["Username"].ToString(),
-                    FullName        = user["FullName"]?.ToString() ?? "",
-                    UserType        = user["Role"].ToString(),
-                    SessionToken    = AuthenticationHelper.GenerateSessionToken()
+                    IsAuthenticated      = true,
+                    UserId               = userId,
+                    Username             = user["Username"].ToString(),
+                    FullName             = user["FullName"]?.ToString() ?? "",
+                    UserType             = user["Role"].ToString(),
+                    SessionToken         = token,
+                    ProfilePictureBase64 = LoadProfilePicture(picPath)
                 };
             }
             catch (Exception ex)
             {
                 _db.WriteSystemLog(null, null, isAdminLogin ? (int?)null : machineId, null,
-                    "Auth", "LoginError", ex.Message, "Server");
+                    "Auth", ExceptionCategory(ex), $"AuthenticateUser: {ex.Message}", "Server");
                 return Fail("Authentication service error. Please try again.");
             }
         }
 
         public bool ValidateSession(string sessionToken)
-            => !string.IsNullOrWhiteSpace(sessionToken);
+            => !string.IsNullOrWhiteSpace(sessionToken)
+               && _tokenStore.ContainsKey(sessionToken);
 
         // ═══════════════════════════════════════════════════════════
         //  UC-02  —  START SESSION
@@ -174,24 +277,67 @@ namespace SessionManagement.WCF
         // ═══════════════════════════════════════════════════════════
 
         public SessionStartResponse StartSession(
-            int userId, string clientCode, int durationMinutes)
+            int userId, string clientCode, int durationMinutes, string sessionToken)
         {
+            if (userId <= 0 || !IsValidString(clientCode, 50) || durationMinutes <= 0 || durationMinutes > 1440)
+                return new SessionStartResponse
+                { Success = false, ErrorMessage = "Invalid input." };
+
+            // Atomically validate + consume token — TryRemove prevents replay attacks
+            if (!_tokenStore.TryRemove(sessionToken ?? string.Empty, out int tokenUserId)
+                || tokenUserId != userId)
+                return new SessionStartResponse
+                { Success = false, ErrorMessage = "SESSION_TOKEN_EXPIRED" };
+
             try
             {
                 int machineId = _db.GetClientMachineIdByCode(clientCode);
                 if (machineId == 0)
+                {
+                    _db.WriteSystemLog(null, userId, null, null,
+                        "Session", "SessionStartFailed",
+                        $"StartSession rejected: machine '{clientCode}' not registered", "Server");
                     return new SessionStartResponse
                     { Success = false, ErrorMessage = "Client machine not registered." };
+                }
+
                 // Check if machine is active (blocked machines cannot start sessions)
                 if (!_db.IsClientMachineActive(machineId))
+                {
+                    _db.WriteSystemLog(null, userId, machineId, null,
+                        "Session", "SessionStartFailed",
+                        $"StartSession rejected: machine '{clientCode}' is disabled", "Server");
                     return new SessionStartResponse
                     { Success = false, ErrorMessage = "This machine is not available for use. Please contact your administrator." };
+                }
 
-                // SEQ-02 step 2: INSERT tblSession (sp_StartSession also writes SystemLog)
+                // SEQ-02 step 2: INSERT tblSession via sp_StartSession.
+                // SP returns: positive = new SessionId, -1 = user conflict, -2 = machine conflict, 0 = error.
                 int sessionId = _db.StartSession(userId, machineId, durationMinutes);
-                if (sessionId == 0)
+                if (sessionId == -1)
+                {
+                    _db.WriteSystemLog(null, userId, machineId, null,
+                        "Session", "SessionStartFailed",
+                        $"StartSession rejected: user {userId} already has an active session", "Server");
+                    return new SessionStartResponse
+                    { Success = false, ErrorMessage = "You already have an active session on another machine." };
+                }
+                if (sessionId == -2)
+                {
+                    _db.WriteSystemLog(null, userId, machineId, null,
+                        "Session", "SessionStartFailed",
+                        $"StartSession rejected: machine '{clientCode}' already has an active session", "Server");
+                    return new SessionStartResponse
+                    { Success = false, ErrorMessage = "This machine already has an active session." };
+                }
+                if (sessionId <= 0)
+                {
+                    _db.WriteSystemLog(null, userId, machineId, null,
+                        "Session", "SessionStartFailed",
+                        $"StartSession failed: sp_StartSession returned {sessionId} for machine '{clientCode}'", "Server");
                     return new SessionStartResponse
                     { Success = false, ErrorMessage = "Failed to create session record." };
+                }
 
                 // SEQ-02 step 3: mark machine Active
                 _db.UpdateClientMachineStatus(machineId, "Active");
@@ -206,9 +352,9 @@ namespace SessionManagement.WCF
                 //    "Server");
 
                 // SEQ-02 step 5: push to all subscribed admins (FR-06 real-time monitor)
-                //System.Threading.ThreadPool.QueueUserWorkItem(_ =>
-                //    Broadcast(cb => cb.OnServerMessage(
-                //        $"New session: {clientCode} | {durationMinutes} min | SessionId={sessionId}")));
+                System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+                    Broadcast(cb => cb.OnServerMessage(
+                        $"SESSION_STARTED:{clientCode} — {durationMinutes} min (Session #{sessionId})")));
 
                 return new SessionStartResponse
                 {
@@ -220,7 +366,8 @@ namespace SessionManagement.WCF
             }
             catch (Exception ex)
             {
-                _db.LogSystemEvent(null, userId, null, "SessionStartError", ex.Message, "Error");
+                _db.LogSystemEvent(null, userId, null, ExceptionCategory(ex),
+                    $"StartSession: {ex.Message}", "Error");
                 return new SessionStartResponse
                 { Success = false, ErrorMessage = "Session start failed. Please retry." };
             }
@@ -233,6 +380,9 @@ namespace SessionManagement.WCF
 
         public bool EndSession(int sessionId, string terminationType)
         {
+            if (sessionId <= 0 || !IsValidString(terminationType, 50))
+                return false;
+
             try
             {
                 DataRow row = _db.GetSessionById(sessionId);
@@ -251,28 +401,42 @@ namespace SessionManagement.WCF
                 // step 3: machine back to Idle
                 _db.UpdateClientMachineStatus(machineId, "Idle");
 
-                // step 4: Session log
-                _db.WriteSystemLog(sessionId, userId, machineId, null,
-                    "Session", "SessionEnded",
-                    $"Session {sessionId} ended — reason: {reason}", "Server");
+                // step 4: Session log written by sp_EndSession (atomic with the transaction)
 
-                // SEQ-14 step 5: push termination to the client machine (WCF callback)
+                // SEQ-14 step 5: push termination to the client machine (WCF callback).
+                // If the client has no live subscription (e.g. mid-reconnect after a server
+                // restart), store the event so SubscribeForNotifications() replays it the
+                // instant the client re-subscribes — guaranteeing zero missed terminations.
+                if (_subs.ContainsKey(code))
+                {
+                    int capturedSid    = sessionId;
+                    string capturedRsn = reason;
+                    System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+                        Notify(code, cb => cb.OnSessionTerminated(capturedSid, capturedRsn)));
+                }
+                else
+                {
+                    _pendingTerminations[code] = (sessionId, reason);
+                }
+
+                // step 6: notify all admins so dashboard refreshes in real-time
+                string username = row["Username"]?.ToString() ?? "?";
                 System.Threading.ThreadPool.QueueUserWorkItem(_ =>
-                    Notify(code, cb => cb.OnSessionTerminated(sessionId, reason)));
+                    Broadcast(cb => cb.OnServerMessage(
+                        $"SESSION_ENDED:{code} [{username}] — {reason} (Session #{sessionId})")));
 
                 return true;
             }
             catch (Exception ex)
             {
-                _db.LogSystemEvent(sessionId, null, null, "SessionEndError", ex.Message, "Error");
+                _db.LogSystemEvent(sessionId, null, null, ExceptionCategory(ex),
+                    $"EndSession: {ex.Message}", "Error");
                 return false;
             }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-06 / UC-10  —  GET SESSION INFO / ACTIVE SESSIONS
-        // ═══════════════════════════════════════════════════════════
 
+        #region UC-06 / UC-10  —  GET SESSION INFO / ACTIVE SESSIONS
         public SessionInfo GetSessionInfo(int sessionId)
         {
             try
@@ -291,9 +455,10 @@ namespace SessionManagement.WCF
         {
             try
             {
-                DataTable dt  = _db.GetActiveSessions();
-                var list = new List<SessionInfo>();
-                foreach (DataRow r in dt.Rows) list.Add(Map(r));
+                DataTable dt = _db.GetActiveSessions();
+                var list     = new List<SessionInfo>();
+                foreach (DataRow r in dt.Rows)
+                    list.Add(Map(r));
                 return list.ToArray();
             }
             catch (Exception ex)
@@ -363,25 +528,69 @@ namespace SessionManagement.WCF
             }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-11  —  CLIENT MACHINE MANAGEMENT
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-11  —  CLIENT MACHINE MANAGEMENT
+        /// <summary>
+        /// Registers a new machine or refreshes its network identity on reconnect.
+        /// <para>
+        /// clientCode is auto-derived by the client as "CL-" + MAC address
+        /// (ResolveClientCode() in SessionClient\MainWindow.xaml.cs).
+        /// machineName and location come from App.config keys ClientMachineName /
+        /// ClientLocation, which are written by the Inno Setup installer wizard.
+        /// On subsequent reconnects the values are re-sent, but the SP only writes
+        /// them on first INSERT — admin renames via UpdateClientMachineInfo persist.
+        /// </para>
+        /// </summary>
         public bool RegisterClient(string clientCode, string machineName,
-            string ipAddress, string macAddress)
+            string ipAddress, string macAddress, string location)
         {
+            if (!IsValidString(clientCode, 50) || !IsValidString(machineName))
+                return false;
+
             try
             {
+                // Check before upsert so we can broadcast only on genuine first-time registration
+                bool isNew = _db.GetClientMachineIdByCode(clientCode) == 0;
+
                 int id = _db.RegisterOrUpdateClient(clientCode, machineName,
-                    ipAddress, macAddress);
-                _db.WriteSystemLog(null, null, id, null,
-                    "System", "ClientRegistered",
-                    $"Client {clientCode} ({machineName}) registered/updated", "Server");
+                    ipAddress, macAddress, location);
+                // Log written by sp_RegisterClient (atomic with the transaction)
+
+                // Notify all connected admins only when a brand-new machine appears
+                if (isNew && id > 0)
+                    Broadcast(cb => cb.OnServerMessage(
+                        $"CLIENT_REGISTERED:{clientCode} ({machineName})"));
+
                 return id > 0;
             }
             catch (Exception ex)
             {
                 _db.LogSystemEvent(null, null, null, "ClientRegisterErr", ex.Message, "Error");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Admin-only: rename a machine or change its physical location from
+        /// SessionAdmin without touching the client PC.
+        /// Updates MachineName and Location in tblClientMachine — the only path
+        /// that may do so after first registration (sp_RegisterClient UPDATE path
+        /// deliberately skips these columns so this change survives client reboots).
+        /// </summary>
+        public bool UpdateClientMachineInfo(string clientCode, string machineName, string location)
+        {
+            if (!IsValidString(clientCode, 50) || !IsValidString(machineName))
+                return false;
+
+            try
+            {
+                return _db.UpdateClientMachineInfo(clientCode, machineName, location);
+            }
+            catch (Exception ex)
+            {
+                _db.LogSystemEvent(null, null, null, "UpdateClientMachineInfoErr", ex.Message, "Error");
                 return false;
             }
         }
@@ -407,7 +616,13 @@ namespace SessionManagement.WCF
             {
                 int id = _db.GetClientMachineIdByCode(clientCode);
                 if (id == 0) return false;
-                return _db.UpdateClientMachineIsActive(id, isActive);
+                bool ok = _db.UpdateClientMachineIsActive(id, isActive);
+                if (ok)
+                    _db.WriteSystemLog(null, null, id, null,
+                        "System", isActive ? "MachineEnabled" : "MachineDisabled",
+                        $"Machine '{clientCode}' {(isActive ? "enabled" : "disabled")} by admin",
+                        "Server");
+                return ok;
             }
             catch (Exception ex)
             {
@@ -426,18 +641,21 @@ namespace SessionManagement.WCF
                 {
                     list.Add(new ClientInfo
                     {
-                        ClientId      = Convert.ToInt32(r["ClientMachineId"]),
-                        ClientCode    = r["ClientCode"].ToString(),
-                        MachineName   = r["MachineName"].ToString(),
-                        IpAddress     = r["IPAddress"].ToString(),
-                        MacAddress    = r["MACAddress"]?.ToString(),
-                        Location      = r["Location"]?.ToString(),
-                        IsActive      = (bool)r["IsActive"],
-                        Status        = r["Status"].ToString(),
-                        LastActiveTime= r["LastSeenAt"] != DBNull.Value
-                                        ? Convert.ToDateTime(r["LastSeenAt"])
-                                        : (DateTime?)null,
-                        CurrentUser   = r["CurrentUsername"]?.ToString()
+                        ClientId         = Convert.ToInt32(r["ClientMachineId"]),
+                        ClientCode       = r["ClientCode"].ToString(),
+                        MachineName      = r["MachineName"].ToString(),
+                        IpAddress        = r["IPAddress"].ToString(),
+                        MacAddress       = r["MACAddress"]?.ToString(),
+                        Location         = r["Location"]?.ToString(),
+                        IsActive         = (bool)r["IsActive"],
+                        Status           = r["Status"].ToString(),
+                        LastActiveTime   = r["LastSeenAt"] != DBNull.Value
+                                           ? Convert.ToDateTime(r["LastSeenAt"])
+                                           : (DateTime?)null,
+                        CurrentUser      = r["CurrentUsername"]?.ToString(),
+                        MissedHeartbeats = r["MissedHeartbeats"] != DBNull.Value
+                                           ? Convert.ToInt32(r["MissedHeartbeats"])
+                                           : 0
                     });
                 }
                 return list.ToArray();
@@ -458,6 +676,9 @@ namespace SessionManagement.WCF
         public bool LogSecurityAlert(int sessionId, int userId,
             string alertType, string description, string severity)
         {
+            if (!IsValidString(alertType, 100) || !IsValidString(description) || !IsValidString(severity, 20))
+                return false;
+
             try
             {
                 // SEQ-16 step 2: look up machine for complete alert row
@@ -468,17 +689,29 @@ namespace SessionManagement.WCF
                 string code     = row?["ClientCode"]?.ToString();
 
                 // SEQ-16 step 3: sp_LogSecurityAlert (writes tblAlert + tblSystemLog)
-                bool ok = _db.InsertSecurityAlert(alertType,
+                int alertId = _db.InsertSecurityAlert(alertType,
                     sessionId == 0 ? (int?)null : sessionId,
                     machineId, userId, description, severity);
 
-                if (ok)
+                if (alertId > 0)
                 {
-                    // SEQ-17 step 1: real-time push to all subscribed admins (FR-14)
-                    Broadcast(cb => cb.OnServerMessage(
-                        $"[{severity}] ALERT from {code ?? "??"}: {alertType} — {description}"));
+                    // Mark notified BEFORE the async broadcast so the DB is always
+                    // consistent even if the thread pool task is delayed.
+                    _db.MarkAlertNotifiedToAdmin(alertId);
+
+                    // SEQ-17 step 1: real-time push to all subscribed admins (FR-14).
+                    // MUST be async (thread pool) — NOT synchronous.
+                    // LogSecurityAlert is invoked on the client's UI thread.  A
+                    // synchronous Broadcast here acquires the admin channel's TCP send
+                    // lock, which is also held by the admin's data-refresh WCF calls.
+                    // That lock contention blocks the server from returning this call,
+                    // which blocks the client UI thread, which starves the heartbeat
+                    // DispatcherTimer — causing false-positive offline detection.
+                    System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+                        Broadcast(cb => cb.OnServerMessage(
+                            $"[{severity}] ALERT from {code ?? "??"}: {alertType} — {description}")));
                 }
-                return ok;
+                return alertId > 0;
             }
             catch (Exception ex)
             {
@@ -535,14 +768,14 @@ namespace SessionManagement.WCF
             }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-07 / UC-13  —  BILLING
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-07 / UC-13  —  BILLING
         public decimal GetCurrentBillingRate()
         {
             try { return _db.GetCurrentBillingRate(); }
-            catch { return 0.50m; }
+            catch { return 0m; }
         }
 
         public decimal CalculateSessionBilling(int sessionId)
@@ -555,10 +788,10 @@ namespace SessionManagement.WCF
             }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  UC-18  —  REPORTS
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region UC-18  —  REPORTS
         public ReportData GetSessionReport(DateTime fromDate, DateTime toDate)
         {
             try
@@ -584,8 +817,8 @@ namespace SessionManagement.WCF
                         ClientCode       = r["ClientCode"].ToString(),
                         MachineName      = r["MachineName"].ToString(),
                         StartTime        = Convert.ToDateTime(r["StartedAt"]),
-                        SelectedDuration = r["SelectedDurationMinutes"] != DBNull.Value
-                                           ? Convert.ToInt32(r["SelectedDurationMinutes"]) : 0,
+                        SelectedDuration = r["ActualDurationMinutes"] != DBNull.Value
+                                           ? Convert.ToInt32(r["ActualDurationMinutes"]) : 0,
                         SessionStatus    = r["Status"].ToString(),
                         CurrentBilling   = r["BillingAmount"] != DBNull.Value
                                            ? Convert.ToDecimal(r["BillingAmount"]) : 0m
@@ -609,20 +842,42 @@ namespace SessionManagement.WCF
             }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  DUPLEX SUBSCRIPTIONS  (NFR-02 real-time updates)
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region DUPLEX SUBSCRIPTIONS  (NFR-02 real-time updates)
         public void SubscribeForNotifications(string clientCode)
         {
             try
             {
                 var cb = OperationContext.Current
                              .GetCallbackChannel<ISessionServiceCallback>();
+                bool isNewSubscription = !_subs.ContainsKey(clientCode);
                 _subs[clientCode] = cb;
-                _db.WriteSystemLog(null, null, null, null,
-                    "System", "ClientSubscribed",
-                    $"Client {clientCode} subscribed for notifications", "Server");
+
+                // RC-4: replay any termination that fired while this client had no
+                // subscription channel (e.g. admin terminated during server-restart window).
+                if (_pendingTerminations.TryRemove(clientCode, out var pending))
+                {
+                    var replayCb     = cb;
+                    int replaySid    = pending.SessionId;
+                    string replayRsn = pending.Reason;
+                    ThreadPool.QueueUserWorkItem(_ =>
+                    {
+                        try { replayCb.OnSessionTerminated(replaySid, replayRsn); }
+                        catch (Exception) { /* best-effort — client also validates via GetSessionInfo */ }
+                    });
+
+                    _db.WriteSystemLog(null, null, null, null,
+                        "System", "TerminationReplayed",
+                        $"Replayed OnSessionTerminated (session {replaySid}) to {clientCode} on reconnect",
+                        "Server");
+                }
+
+                if (isNewSubscription)
+                    _db.WriteSystemLog(null, null, null, null,
+                        "System", "ClientSubscribed",
+                        $"Client {clientCode} subscribed for notifications", "Server");
             }
             catch (Exception ex)
             {
@@ -638,10 +893,143 @@ namespace SessionManagement.WCF
                 $"Client {clientCode} unsubscribed", "Server");
         }
 
+
+        #endregion
+
+        #region HEARTBEAT  (FR-HB: liveness signalling)
+        public void Heartbeat(string clientCode)
+        {
+            try
+            {
+                // Read status BEFORE updating — used for recovery detection below.
+                string previousStatus = _db.GetClientStatus(clientCode);
+
+                // Touch LastSeenAt and reset MissedHeartbeats counter.
+                _db.UpdateClientLastSeen(clientCode);
+
+                // Recovery path: if this heartbeat arrives after the machine was
+                // prematurely marked Offline (grace counter exhausted before the
+                // delayed heartbeat got through), restore its status and notify admins.
+                if (string.Equals(previousStatus, "Offline", StringComparison.OrdinalIgnoreCase))
+                {
+                    int machineId = _db.GetClientMachineIdByCode(clientCode);
+                    if (machineId != 0)
+                    {
+                        // RC-3: restore to Active if the machine still has a running session
+                        // (client kept its timer going during the outage), otherwise Idle.
+                        // Unconditionally using "Idle" was wrong — it showed the machine as
+                        // available for new sessions while the old session was still live.
+                        var activeSessions = _db.GetActiveSessionsByMachine(machineId);
+                        string recoveryStatus = activeSessions.Rows.Count > 0 ? "Active" : "Idle";
+                        _db.UpdateClientMachineStatus(machineId, recoveryStatus);
+                    }
+
+                    _db.WriteSystemLog(null, null,
+                        machineId != 0 ? (int?)machineId : null, null,
+                        "System", "MachineOnline",
+                        $"Machine {clientCode} came back online — late heartbeat received after offline marking",
+                        "Server");
+
+                    ThreadPool.QueueUserWorkItem(_ =>
+                        Broadcast(cb => cb.OnServerMessage(
+                            $"MACHINE_ONLINE:{clientCode} — Machine is back online")));
+                }
+            }
+            catch { /* best-effort; must not throw on the client */ }
+        }
+
         // ═══════════════════════════════════════════════════════════
-        //  BACKGROUND: server-side auto-expiry  (FR-09 / NFR-03)
+        //  ORPHAN SESSION MANAGEMENT
+        //  Called at client startup (before RegisterClient) so that
+        //  LastSeenAt in the DB still holds the pre-crash heartbeat time.
         // ═══════════════════════════════════════════════════════════
 
+        public int TerminateOrphanSession(string clientCode)
+        {
+            try
+            {
+                // LastSeenAt is read NOW, before the client calls RegisterClient()
+                // which would overwrite it with the restart time.
+                // This gives us the best available proxy for when the machine crashed.
+                DateTime? lastSeen = _db.GetClientLastSeen(clientCode);
+
+                int count = _db.TerminateOrphanSessionsForMachine(clientCode, lastSeen);
+
+                if (count > 0)
+                {
+                    _db.WriteSystemLog(null, null, null, null,
+                        "Session", "OrphanTerminated",
+                        $"{count} orphan session(s) terminated for {clientCode} " +
+                        $"(effective end: {lastSeen?.ToString("HH:mm:ss") ?? "now"})",
+                        "Server");
+
+                    ThreadPool.QueueUserWorkItem(_ =>
+                        Broadcast(cb => cb.OnServerMessage(
+                            $"Orphan cleanup: {count} session(s) terminated on {clientCode}. Refresh dashboard.")));
+                }
+
+                return count;
+            }
+            catch (Exception ex)
+            {
+                _db.LogSystemEvent(null, null, null, "OrphanTerminateErr", ex.Message, "Error");
+                return 0;
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        //  BACKGROUND: server-side offline detection (every 60 s)
+        //  Any machine with LastSeenAt < NOW-90s that is not 'Offline'
+        //  is marked Offline and its active session is auto-terminated.
+        // ═══════════════════════════════════════════════════════════
+
+        private void OfflineDetectionScan(object state)
+        {
+            try
+            {
+                System.Data.DataTable stale = _db.MarkStaleClientsOffline(thresholdSeconds: ServiceConstants.OfflineThresholdSeconds);
+                if (stale.Rows.Count == 0) return;
+
+                foreach (System.Data.DataRow r in stale.Rows)
+                {
+                    int    machineId  = Convert.ToInt32(r["ClientMachineId"]);
+                    string clientCode = r["ClientCode"].ToString();
+
+                    // remove dead WCF callback channel if still registered
+                    ISessionServiceCallback removed;
+                    _subs.TryRemove(clientCode, out removed);
+
+                    // auto-terminate any active session on this machine
+                    System.Data.DataTable activeSessions = _db.GetActiveSessionsByMachine(machineId);
+                    foreach (System.Data.DataRow sr in activeSessions.Rows)
+                    {
+                        int sessionId = Convert.ToInt32(sr["SessionId"]);
+                        _db.EndSession(sessionId, "Crash");
+                        _db.WriteSystemLog(sessionId, null, machineId, null,
+                            "Session", "CrashTermination",
+                            $"Session {sessionId} auto-terminated: machine {clientCode} went offline",
+                            "Server");
+                    }
+
+                    _db.WriteSystemLog(null, null, machineId, null,
+                        "System", "MachineOffline",
+                        $"Machine {clientCode} marked Offline — missed heartbeat", "Server");
+                }
+
+                ThreadPool.QueueUserWorkItem(__ =>
+                    Broadcast(cb => cb.OnServerMessage(
+                        $"{stale.Rows.Count} machine(s) went offline. Refresh client list.")));
+            }
+            catch (Exception ex)
+            {
+                _db.LogSystemEvent(null, null, null, "OfflineDetectionErr", ex.Message, "Error");
+            }
+        }
+
+
+        #endregion
+
+        #region BACKGROUND: server-side auto-expiry  (FR-09 / NFR-03)
         private void ServerExpiryScan(object _)
         {
             try
@@ -724,8 +1112,9 @@ namespace SessionManagement.WCF
         // ═══════════════════════════════════════════════════════════
 
         public UserRegistrationResponse RegisterClientUser(
-            string username, string fullName, string password, 
-            string phone, string address, int adminUserId)
+            string username, string fullName, string password,
+            string phone, string address, int adminUserId,
+            string profilePictureBase64)
         {
             try
             {
@@ -736,6 +1125,15 @@ namespace SessionManagement.WCF
                     {
                         Success = false,
                         ErrorMessage = "Username and password are required."
+                    };
+                }
+
+                if (string.IsNullOrWhiteSpace(fullName))
+                {
+                    return new UserRegistrationResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Full name is required."
                     };
                 }
 
@@ -772,7 +1170,7 @@ namespace SessionManagement.WCF
                 string passwordHash = AuthenticationHelper.HashPassword(password);
 
                 // SEQ-03 step 4: insert user into database
-                int userId = _db.RegisterClientUser(username, fullName, passwordHash, 
+                int userId = _db.RegisterClientUser(username, fullName, passwordHash,
                     phone, address, adminUserId);
 
                 if (userId <= 0)
@@ -782,6 +1180,13 @@ namespace SessionManagement.WCF
                         Success = false,
                         ErrorMessage = "Failed to register user. Please try again."
                     };
+                }
+
+                // Save profile picture if provided, then store path via the same SP used for updates
+                if (!string.IsNullOrEmpty(profilePictureBase64))
+                {
+                    string picPath = SaveProfilePicture(userId, profilePictureBase64);
+                    if (picPath != null) _db.UpdateClientUser(userId, fullName, phone, address, picPath);
                 }
 
                 // SEQ-03 step 5: log the registration
@@ -815,18 +1220,20 @@ namespace SessionManagement.WCF
                 var list = new List<UserInfo>();
                 foreach (DataRow r in dt.Rows)
                 {
+                    string picPath = r["ProfilePicturePath"]?.ToString();
                     list.Add(new UserInfo
                     {
-                        UserId = Convert.ToInt32(r["UserId"]),
-                        Username = r["Username"].ToString(),
-                        FullName = r["FullName"]?.ToString() ?? "",
-                        Phone = r["Phone"]?.ToString() ?? "",
-                        Address = r["Address"]?.ToString() ?? "",
-                        Status = r["Status"].ToString(),
-                        Role = r["Role"].ToString(),
-                        CreatedAt = Convert.ToDateTime(r["CreatedAt"]),
-                        LastLoginAt = r["LastLoginAt"] != DBNull.Value
-                                      ? (DateTime?)Convert.ToDateTime(r["LastLoginAt"]) : null
+                        UserId               = Convert.ToInt32(r["UserId"]),
+                        Username             = r["Username"].ToString(),
+                        FullName             = r["FullName"]?.ToString() ?? "",
+                        Phone                = r["Phone"]?.ToString() ?? "",
+                        Address              = r["Address"]?.ToString() ?? "",
+                        Status               = r["Status"].ToString(),
+                        Role                 = r["Role"].ToString(),
+                        CreatedAt            = Convert.ToDateTime(r["CreatedAt"]),
+                        LastLoginAt          = r["LastLoginAt"] != DBNull.Value
+                                              ? (DateTime?)Convert.ToDateTime(r["LastLoginAt"]) : null,
+                        ProfilePictureBase64 = LoadProfilePicture(picPath)
                     });
                 }
                 return list.ToArray();
@@ -838,12 +1245,18 @@ namespace SessionManagement.WCF
             }
         }
 
-        public UserUpdateResponse UpdateClientUser(int userId, string fullName, 
-            string phone, string address, int adminUserId)
+        public UserUpdateResponse UpdateClientUser(int userId, string fullName,
+            string phone, string address, int adminUserId, string profilePictureBase64)
         {
             try
             {
-                bool ok = _db.UpdateClientUser(userId, fullName, phone, address);
+                // Save picture first to get the path, then pass it in the single DB call.
+                // SP uses CASE WHEN so null path = keep existing.
+                string picPath = null;
+                if (!string.IsNullOrEmpty(profilePictureBase64))
+                    picPath = SaveProfilePicture(userId, profilePictureBase64);
+
+                bool ok = _db.UpdateClientUser(userId, fullName, phone, address, picPath);
                 if (!ok)
                 {
                     return new UserUpdateResponse
@@ -858,11 +1271,7 @@ namespace SessionManagement.WCF
                     "Auth", "UserUpdated",
                     $"ClientUser {userId} updated by admin {adminUserId}", "Server");
 
-                return new UserUpdateResponse
-                {
-                    Success = true,
-                    UserId = userId
-                };
+                return new UserUpdateResponse { Success = true, UserId = userId };
             }
             catch (Exception ex)
             {
@@ -876,7 +1285,107 @@ namespace SessionManagement.WCF
             }
         }
 
-        public PasswordResetResponse ResetClientUserPassword(int userId, 
+        public UserDeleteResponse DeleteClientUser(int userId, int adminUserId)
+        {
+            try
+            {
+                int result = _db.DeleteClientUser(userId);
+                if (result == -1)
+                    return new UserDeleteResponse
+                    {
+                        Success = false,
+                        UserId = userId,
+                        ErrorMessage = "Cannot delete — this user has session history. Disable the account instead."
+                    };
+                if (result <= 0)
+                    return new UserDeleteResponse
+                    {
+                        Success = false,
+                        UserId = userId,
+                        ErrorMessage = "User not found or could not be deleted."
+                    };
+
+                _db.WriteSystemLog(null, userId, null, adminUserId,
+                    "Auth", "UserDeleted",
+                    $"ClientUser {userId} deleted by admin {adminUserId}", "Server");
+
+                return new UserDeleteResponse { Success = true, UserId = userId };
+            }
+            catch (Exception ex)
+            {
+                _db.LogSystemEvent(null, null, null, "UserDeleteErr", ex.Message, "Error");
+                return new UserDeleteResponse
+                {
+                    Success = false,
+                    UserId = userId,
+                    ErrorMessage = "Delete failed. Please try again."
+                };
+            }
+        }
+
+        private string SaveProfilePicture(int userId, string base64)
+        {
+            if (string.IsNullOrEmpty(base64)) return null;
+            try
+            {
+                string dir = System.IO.Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+                    "SessionManagement", "ProfilePics");
+                System.IO.Directory.CreateDirectory(dir);
+                string path = System.IO.Path.Combine(dir, $"{userId}.jpg");
+                System.IO.File.WriteAllBytes(path, Convert.FromBase64String(base64));
+                return path;
+            }
+            catch { return null; }
+        }
+
+        private string LoadProfilePicture(string path)
+        {
+            if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path)) return null;
+            try { return Convert.ToBase64String(System.IO.File.ReadAllBytes(path)); }
+            catch { return null; }
+        }
+
+        public BillingRecordInfo[] GetBillingRecords(bool unpaidOnly)
+        {
+            try
+            {
+                DataTable dt = _db.GetBillingRecords(unpaidOnly);
+                var list = new List<BillingRecordInfo>();
+                foreach (DataRow r in dt.Rows)
+                {
+                    list.Add(new BillingRecordInfo
+                    {
+                        BillingRecordId   = Convert.ToInt32(r["BillingRecordId"]),
+                        SessionId         = Convert.ToInt32(r["SessionId"]),
+                        Username          = r["Username"]?.ToString() ?? "",
+                        FullName          = r["FullName"]?.ToString() ?? "",
+                        MachineCode       = r["MachineCode"]?.ToString() ?? "",
+                        BillableMinutes   = Convert.ToInt32(r["BillableMinutes"]),
+                        Amount            = Convert.ToDecimal(r["Amount"]),
+                        Currency          = r["Currency"]?.ToString() ?? "",
+                        CalculatedAt      = Convert.ToDateTime(r["CalculatedAt"]),
+                        IsPaid            = Convert.ToBoolean(r["IsPaid"]),
+                        PaidAt            = r["PaidAt"] != DBNull.Value ? (DateTime?)Convert.ToDateTime(r["PaidAt"]) : null,
+                        ReceivedByAdminId = r["ReceivedByAdminId"] != DBNull.Value ? (int?)Convert.ToInt32(r["ReceivedByAdminId"]) : null
+                    });
+                }
+                return list.ToArray();
+            }
+            catch (Exception ex)
+            {
+                _db.LogSystemEvent(null, null, null, "GetBillingRecordsErr", ex.Message, "Error");
+                return Array.Empty<BillingRecordInfo>();
+            }
+        }
+
+        public bool MarkBillingRecordPaid(int billingRecordId, int adminUserId)
+        {
+            int result = _db.MarkBillingRecordPaid(billingRecordId, adminUserId);
+            return result == 1;
+        }
+
+        public PasswordResetResponse ResetClientUserPassword(int userId,
             string newPassword, int adminUserId)
         {
             try
@@ -970,10 +1479,10 @@ namespace SessionManagement.WCF
             }
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  PRIVATE HELPERS
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region PRIVATE HELPERS
         /// <summary>
         /// Builds a SessionInfo from a DataRow that must contain at minimum:
         /// SessionId, UserId, StartedAt, SelectedDurationMinutes, Status.
@@ -1015,7 +1524,9 @@ namespace SessionManagement.WCF
                 ExpectedEndTime  = expectedEnd,
                 SessionStatus    = r["Status"].ToString(),
                 RemainingMinutes = remaining,
-                CurrentBilling   = elapsed * rate
+                CurrentBilling   = elapsed * rate,
+                ImagePath        = r.Table.Columns.Contains("ImagePath") && r["ImagePath"] != DBNull.Value
+                                   ? r["ImagePath"].ToString() : null
             };
         }
 
@@ -1039,35 +1550,56 @@ namespace SessionManagement.WCF
         private static AuthenticationResponse Fail(string msg)
             => new AuthenticationResponse { IsAuthenticated = false, ErrorMessage = msg };
 
-        /// <summary>Push to ONE subscriber; remove on dead channel.</summary>
-        private static void Notify(string code, Action<ISessionServiceCallback> act)
+        /// <summary>Push to ONE subscriber; remove and mark Offline on dead channel.</summary>
+        private void Notify(string code, Action<ISessionServiceCallback> act)
         {
             if (code == null) return;
             if (_subs.TryGetValue(code, out var cb))
                 try { act(cb); }
-                catch { _subs.TryRemove(code, out _); }
+                catch (Exception)
+                {
+                    // RC-5: catch all WCF exceptions (CommunicationException, TimeoutException,
+                    // ObjectDisposedException) — not just CommunicationException — to prevent
+                    // unhandled exceptions on the ThreadPool from terminating the host process.
+                    _subs.TryRemove(code, out _);
+                    try { _db.UpdateClientMachineStatus(_db.GetClientMachineIdByCode(code), "Offline"); }
+                    catch { /* best-effort */ }
+                }
         }
 
-        /// <summary>Push to ALL subscribers; prune dead channels.</summary>
-        private static void Broadcast(Action<ISessionServiceCallback> act)
+        /// <summary>
+        /// Push to admin subscribers only (keys starting with "ADMIN").
+        /// Client machines are always notified via Notify(code, ...) — never via Broadcast.
+        /// Keeping Broadcast admin-only prevents a deadlock where a client's duplex channel
+        /// is blocked waiting for a service-call reply while the server simultaneously tries
+        /// to push a callback on that same channel.
+        /// </summary>
+        private void Broadcast(Action<ISessionServiceCallback> act)
         {
-            foreach (var key in _subs.Keys.ToList())
+            foreach (var key in _subs.Keys
+                                     .Where(k => k.StartsWith("ADMIN", StringComparison.OrdinalIgnoreCase))
+                                     .ToList())
                 if (_subs.TryGetValue(key, out var cb))
                     try { act(cb); }
-                    catch { _subs.TryRemove(key, out _); }
+                    catch (Exception)
+                    {
+                        // RC-5: catch all exceptions so a dead admin channel never crashes the host.
+                        _subs.TryRemove(key, out _);
+                    }
         }
 
         public void Dispose()
         {
-            _expiryTimer?.Dispose();
+            _sessionExpiryTimer?.Dispose();
+            _clientOfflineTimer?.Dispose();
             _db.WriteSystemLog(null, null, null, null,
                 "System", "ServiceStop", "SessionService stopped", "Server");
         }
 
-        // ═══════════════════════════════════════════════════════════
-        //  BILLING RATE MANAGEMENT
-        // ═══════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region BILLING RATE MANAGEMENT
         public BillingRateInfo[] GetAllBillingRates()
         {
             try
@@ -1087,7 +1619,9 @@ namespace SessionManagement.WCF
         {
             try
             {
-                return _db.InsertBillingRate(name, ratePerMinute, currency, 
+                // Duplicate name (-2) and date-range overlap (-3) are checked inside sp_InsertBillingRate.
+                // SP sets @NewBillingRateId to -2 or -3 and returns early; CATCH returns -1 for unexpected errors.
+                return _db.InsertBillingRate(name, ratePerMinute, currency,
                     effectiveFrom, effectiveTo, isDefault, adminUserId, notes);
             }
             catch (Exception ex)
@@ -1103,6 +1637,7 @@ namespace SessionManagement.WCF
         {
             try
             {
+                // Duplicate name and date-range overlap are checked inside sp_UpdateBillingRate (SELECT 0; RETURN).
                 return _db.UpdateBillingRate(billingRateId, name, ratePerMinute,
                     currency, effectiveFrom, effectiveTo, isActive, isDefault, notes);
             }
@@ -1141,5 +1676,36 @@ namespace SessionManagement.WCF
                 return false;
             }
         }
+
+        // ─────────────────────────────────────────────────────────
+        //  Exception categorization helper  (H-6)
+        // ─────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Classifies an exception so log records distinguish infrastructure
+        /// failures (DB down, network) from code bugs (null ref, argument).
+        /// Use the returned tag as the Type field in WriteSystemLog calls.
+        ///
+        ///   SqlException        → "DBError"       (infra — DB/SP failure)
+        ///   TimeoutException    → "Timeout"        (infra — slow query / network)
+        ///   NullReferenceEx     → "CodeBug"        (bug — unexpected null)
+        ///   ArgumentEx          → "CodeBug"        (bug — bad internal call)
+        ///   anything else       → "ServiceError"   (unknown — investigate)
+        ///
+        /// Pattern: replace the generic catch body with
+        ///   string tag = ExceptionCategory(ex);
+        ///   _db.WriteSystemLog(..., "System", tag, $"Method: {ex.Message}", "Server");
+        /// </summary>
+        private static string ExceptionCategory(Exception ex)
+        {
+            if (ex is System.Data.SqlClient.SqlException)    return "DBError";
+            if (ex is TimeoutException)                      return "Timeout";
+            if (ex is NullReferenceException
+             || ex is ArgumentException
+             || ex is InvalidOperationException)             return "CodeBug";
+            return "ServiceError";
+        }
     }
+
+        #endregion
 }

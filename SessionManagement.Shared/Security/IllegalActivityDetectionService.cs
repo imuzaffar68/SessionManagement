@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net;
@@ -168,9 +168,8 @@ namespace SessionManagement.Security
             "192.168.0.",    // Generic — only flagged when adapter name hints hotspot
         };
 
-        // ─────────────────────────────────────────────────────────────────────
-        //  Constructor
-        // ─────────────────────────────────────────────────────────────────────
+
+        #region Constructor
         public IllegalActivityDetectionService(int sessionId, int userId,
             int checkIntervalSeconds = 60)
         {
@@ -189,9 +188,10 @@ namespace SessionManagement.Security
             _timer = new Timer(RunChecks, null, interval, interval);
         }
 
-        // ─────────────────────────────────────────────────────────────────────
-        //  Main scan loop — runs on thread-pool
-        // ─────────────────────────────────────────────────────────────────────
+
+        #endregion
+
+        #region Main scan loop — runs on thread-pool
         private void RunChecks(object state)
         {
             if (!_running) return;
@@ -377,9 +377,10 @@ namespace SessionManagement.Security
             }
         }
 
-        // ═════════════════════════════════════════════════════════════════════
-        //  FR-12 Rule 2c — PAC script / AutoConfigURL
-        // ═════════════════════════════════════════════════════════════════════
+
+        #endregion
+
+        #region FR-12 Rule 2c — PAC script / AutoConfigURL
         private void CheckPacScript()
         {
             using (var key = Registry.CurrentUser.OpenSubKey(
@@ -582,9 +583,10 @@ namespace SessionManagement.Security
             return "Unknown";
         }
 
-        // ═════════════════════════════════════════════════════════════════════
-        //  FR-12 Rule 3 — Blacklisted process detection
-        // ═════════════════════════════════════════════════════════════════════
+
+        #endregion
+
+        #region FR-12 Rule 3 — Blacklisted process detection
         private void CheckBlacklistedProcesses()
         {
             Process[] all;
@@ -802,10 +804,10 @@ namespace SessionManagement.Security
             }
         }
 
-        // ═════════════════════════════════════════════════════════════════════
-        //  Helpers
-        // ═════════════════════════════════════════════════════════════════════
 
+        #endregion
+
+        #region Helpers
         private void Raise(string dedupeKey, string alertType, string description, string severity)
         {
             lock (_reportLock)
@@ -838,9 +840,10 @@ namespace SessionManagement.Security
             }
         }
 
-        // ─────────────────────────────────────────────────────────────────────
-        //  Lifecycle
-        // ─────────────────────────────────────────────────────────────────────
+
+        #endregion
+
+        #region Lifecycle
         public void Stop()
         {
             _running = false;
@@ -869,4 +872,6 @@ namespace SessionManagement.Security
         public string Severity { get; set; }
         public DateTime DetectedAt { get; set; }
     }
+
+        #endregion
 }

@@ -21,6 +21,10 @@ IF OBJECT_ID('dbo.sp_StartSession', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_Start
 GO
 IF OBJECT_ID('dbo.sp_EndSession', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_EndSession;
 GO
+IF OBJECT_ID('dbo.sp_GetBillingRecords', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_GetBillingRecords;
+GO
+IF OBJECT_ID('dbo.sp_MarkBillingRecordPaid', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_MarkBillingRecordPaid;
+GO
 IF OBJECT_ID('dbo.sp_GetActiveSessions', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_GetActiveSessions;
 GO
 IF OBJECT_ID('dbo.sp_LogSecurityAlert', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_LogSecurityAlert;
@@ -29,7 +33,9 @@ IF OBJECT_ID('dbo.sp_CalculateSessionBilling', 'P') IS NOT NULL DROP PROCEDURE d
 GO
 IF OBJECT_ID('dbo.sp_FinalizeSessionBilling', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_FinalizeSessionBilling;
 GO
-IF OBJECT_ID('dbo.sp_RegisterClient', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_RegisterClient;
+IF OBJECT_ID('dbo.sp_RegisterClient',          'P') IS NOT NULL DROP PROCEDURE dbo.sp_RegisterClient;
+GO
+IF OBJECT_ID('dbo.sp_UpdateClientMachineInfo', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_UpdateClientMachineInfo;
 GO
 IF OBJECT_ID('dbo.sp_RegisterClientUser', 'P') IS NOT NULL DROP PROCEDURE dbo.sp_RegisterClientUser;
 GO
@@ -81,14 +87,15 @@ CREATE TABLE dbo.tblUser (
     UserId            INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
     Username          NVARCHAR(50) NOT NULL,
     PasswordHash      NVARCHAR(255) NOT NULL,
-    FullName          NVARCHAR(100) NULL,
+    FullName          NVARCHAR(100) NOT NULL,
     Role              NVARCHAR(20) NOT NULL,
     Status            NVARCHAR(20) NOT NULL,
     Phone             NVARCHAR(30) NULL,
     Address           NVARCHAR(200) NULL,
     CreatedByUserId   INT NULL,
     CreatedAt         DATETIME NOT NULL CONSTRAINT DF_tblUser_CreatedAt DEFAULT (GETDATE()),
-    LastLoginAt       DATETIME NULL,
+    LastLoginAt          DATETIME NULL,
+    ProfilePicturePath   NVARCHAR(500) NULL,
     CONSTRAINT UQ_tblUser_Username UNIQUE (Username),
     CONSTRAINT CK_tblUser_Role CHECK (Role IN ('Admin', 'ClientUser')),
     CONSTRAINT CK_tblUser_Status CHECK (Status IN ('Active', 'Blocked', 'Disabled'))
@@ -114,8 +121,10 @@ CREATE TABLE dbo.tblClientMachine (
     Status            NVARCHAR(20) NOT NULL,
     LastSeenAt        DATETIME NOT NULL CONSTRAINT DF_tblClientMachine_LastSeenAt DEFAULT (GETDATE()),
     IsActive          BIT NOT NULL CONSTRAINT DF_tblClientMachine_IsActive DEFAULT (1),
-    CONSTRAINT UQ_tblClientMachine_IP UNIQUE (IPAddress),
-    CONSTRAINT UQ_tblClientMachine_ClientCode UNIQUE (ClientCode), --v2
+    MissedHeartbeats  INT NOT NULL CONSTRAINT DF_tblClientMachine_MissedHeartbeats DEFAULT (0),
+    -- IPAddress has no unique constraint: DHCP reassignment and reinstalls
+    -- can produce the same IP on a different machine. ClientCode (MAC-derived) is the unique key.
+    CONSTRAINT UQ_tblClientMachine_ClientCode UNIQUE (ClientCode),
     CONSTRAINT CK_tblClientMachine_Status CHECK (Status IN ('Idle', 'Active', 'Offline'))
 );
 GO
@@ -199,17 +208,22 @@ GO
 -- 5) tblBillingRate
 CREATE TABLE dbo.tblBillingRate (
     BillingRateId      INT IDENTITY(1,1) NOT NULL PRIMARY KEY,
-    Name               NVARCHAR(100) NOT NULL,
+    Name               NVARCHAR(100) NOT NULL CONSTRAINT UQ_tblBillingRate_Name UNIQUE,
     RatePerMinute      DECIMAL(10,2) NOT NULL,
     Currency           NVARCHAR(10) NOT NULL,
-    EffectiveFrom      DATE NULL,
-    EffectiveTo        DATE NULL,
+    EffectiveFrom      DATE NOT NULL,             -- mandatory: required for date-based rate resolution
+    EffectiveTo        DATE NULL,                 -- NULL = open-ended (no expiry)
     IsActive           BIT NOT NULL CONSTRAINT DF_tblBillingRate_IsActive DEFAULT (1),
     IsDefault          BIT NOT NULL CONSTRAINT DF_tblBillingRate_IsDefault DEFAULT (0),
     SetByAdminUserId   INT NULL,
     Notes              NVARCHAR(500) NULL,
     CreatedAt          DATETIME NOT NULL CONSTRAINT DF_tblBillingRate_CreatedAt DEFAULT (GETDATE())
 );
+GO
+
+-- Index to speed up date-range resolution queries in GetCurrentBillingRate
+CREATE INDEX IX_tblBillingRate_DateRange
+    ON dbo.tblBillingRate (EffectiveFrom, EffectiveTo, IsActive, Currency);
 GO
 
 ALTER TABLE dbo.tblBillingRate
@@ -230,6 +244,9 @@ CREATE TABLE dbo.tblBillingRecord (
     CalculatedAt       DATETIME NOT NULL CONSTRAINT DF_tblBillingRecord_CalculatedAt DEFAULT (GETDATE()),
     Status             NVARCHAR(20) NOT NULL CONSTRAINT DF_tblBillingRecord_Status DEFAULT ('Running'),
     Remarks            NVARCHAR(500) NULL,
+    IsPaid             BIT NOT NULL CONSTRAINT DF_tblBillingRecord_IsPaid DEFAULT (0),
+    PaidAt             DATETIME NULL,
+    ReceivedByAdminId  INT NULL,
     CONSTRAINT CK_tblBillingRecord_Status CHECK (Status IN ('Finalized', 'Running')),
     CONSTRAINT UQ_tblBillingRecord_Session UNIQUE (SessionId)
 );
@@ -429,6 +446,26 @@ BEGIN
     DECLARE @SessionId INT;
 
     BEGIN TRY
+        -- Guard: user already has an active session
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblSession
+            WHERE  UserId = @UserId AND Status = 'Active'
+        )
+        BEGIN
+            SELECT -1 AS SessionId;  -- user conflict
+            RETURN;
+        END
+
+        -- Guard: machine already has an active session
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblSession
+            WHERE  ClientMachineId = @ClientMachineId AND Status = 'Active'
+        )
+        BEGIN
+            SELECT -2 AS SessionId;  -- machine conflict
+            RETURN;
+        END
+
         INSERT INTO dbo.tblSession
             (UserId, ClientMachineId, LoginAt, StartedAt, SelectedDurationMinutes, Status)
         VALUES
@@ -514,6 +551,76 @@ END;
 GO
 
 
+-- sp_GetBillingRecords
+CREATE PROCEDURE dbo.sp_GetBillingRecords
+    @UnpaidOnly BIT = 0
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT
+        br.BillingRecordId,
+        br.SessionId,
+        u.Username,
+        u.FullName,
+        cm.ClientCode      AS MachineCode,
+        br.BillableMinutes,
+        br.Amount,
+        brate.Currency,
+        br.CalculatedAt,
+        br.IsPaid,
+        br.PaidAt,
+        br.ReceivedByAdminId
+    FROM dbo.tblBillingRecord br
+    INNER JOIN dbo.tblSession       s     ON s.SessionId          = br.SessionId
+    INNER JOIN dbo.tblUser          u     ON u.UserId              = s.UserId
+    INNER JOIN dbo.tblClientMachine cm    ON cm.ClientMachineId    = s.ClientMachineId
+    INNER JOIN dbo.tblBillingRate   brate ON brate.BillingRateId   = br.BillingRateId
+    WHERE br.Status = 'Finalized'
+      AND (@UnpaidOnly = 0 OR br.IsPaid = 0)
+    ORDER BY br.CalculatedAt DESC;
+END;
+GO
+
+-- sp_MarkBillingRecordPaid
+CREATE PROCEDURE dbo.sp_MarkBillingRecordPaid
+    @BillingRecordId INT,
+    @AdminUserId     INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        IF NOT EXISTS (SELECT 1 FROM dbo.tblBillingRecord WHERE BillingRecordId = @BillingRecordId)
+        BEGIN
+            SELECT 0 AS Result; RETURN;
+        END;
+
+        IF EXISTS (SELECT 1 FROM dbo.tblBillingRecord WHERE BillingRecordId = @BillingRecordId AND IsPaid = 1)
+        BEGIN
+            SELECT -1 AS Result; RETURN;
+        END;
+
+        UPDATE dbo.tblBillingRecord
+        SET    IsPaid            = 1,
+               PaidAt            = GETDATE(),
+               ReceivedByAdminId = @AdminUserId
+        WHERE  BillingRecordId = @BillingRecordId;
+
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('Billing', 'Info',
+            'BillingRecord ' + CAST(@BillingRecordId AS VARCHAR) +
+            ' marked paid by admin ' + CAST(@AdminUserId AS VARCHAR), 'Server');
+
+        SELECT 1 AS Result;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'Error', 'sp_MarkBillingRecordPaid: ' + ERROR_MESSAGE(), 'Server');
+        SELECT 0 AS Result;
+    END CATCH
+END;
+GO
+
+
 -- sp_GetActiveSessions
 CREATE PROCEDURE dbo.sp_GetActiveSessions
 AS
@@ -536,11 +643,14 @@ BEGIN
         br.BillingRateId,
         br.RatePerMinute,
         DATEDIFF(MINUTE, s.StartedAt, GETDATE()) AS ElapsedMinutes,
-        CAST(DATEDIFF(MINUTE, s.StartedAt, GETDATE()) * br.RatePerMinute AS DECIMAL(10,2)) AS CurrentBilling
+        CAST(DATEDIFF(MINUTE, s.StartedAt, GETDATE()) * br.RatePerMinute AS DECIMAL(10,2)) AS CurrentBilling,
+        img.ImagePath
     FROM dbo.tblSession s
     INNER JOIN dbo.tblUser u ON s.UserId = u.UserId
     INNER JOIN dbo.tblClientMachine c ON s.ClientMachineId = c.ClientMachineId
     LEFT JOIN dbo.tblBillingRate br ON br.IsActive = 1 AND br.IsDefault = 1
+    LEFT JOIN dbo.tblSessionImage img ON img.SessionId = s.SessionId
+                                     AND img.CaptureStatus = 'Captured'
     WHERE s.Status = 'Active'
     ORDER BY s.StartedAt DESC;
 END;
@@ -579,6 +689,8 @@ BEGIN
         VALUES
             (@ActivityTypeId, @SessionId, @ClientMachineId, @UserId, GETDATE(), @Severity, 'New', @Details);
 
+        DECLARE @AlertId INT = SCOPE_IDENTITY();
+
         INSERT INTO dbo.tblSystemLog
             (Category, Type, Message, Source, SessionId, UserId, ClientMachineId)
         VALUES
@@ -586,7 +698,7 @@ BEGIN
              'Security Alert: ' + @ActivityTypeName + ' - ' + @Details,
              'Server', @SessionId, @UserId, @ClientMachineId);
 
-        SELECT 1 AS Result;
+        SELECT @AlertId AS AlertId;   -- returns inserted AlertId (used to set IsNotifiedToAdmin)
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog
@@ -594,7 +706,7 @@ BEGIN
         VALUES
             ('System', 'Error', 'Error in sp_LogSecurityAlert: ' + ERROR_MESSAGE(), 'Server');
 
-        SELECT 0 AS Result;
+        SELECT -1 AS AlertId;
     END CATCH
 END;
 GO
@@ -698,12 +810,41 @@ END;
 GO
 
 
+-- ============================================================
 -- sp_RegisterClient
+-- Called by every client machine at startup via RegisterClient().
+--
+-- BEHAVIOUR (intentional split — do NOT merge back into one UPDATE):
+--   INSERT path  → new machine; all columns including MachineName and
+--                  Location are written from the installer-configured
+--                  App.config values (ClientMachineName, ClientLocation).
+--   UPDATE path  → existing machine reconnecting; ONLY network-identity
+--                  columns (IPAddress, MACAddress, LastSeenAt) are
+--                  refreshed.  MachineName and Location are intentionally
+--                  left untouched so that any rename/relocation performed
+--                  by an admin via sp_UpdateClientMachineInfo survives
+--                  client reboots.
+--
+-- INNO SETUP NOTE:
+--   The installer must write TWO keys to SessionClient\App.config:
+--     ClientMachineName — friendly display name  (e.g. "Computer 01")
+--     ClientLocation    — physical seat / row    (e.g. "Row A – Seat 1")
+--   ClientCode is NOT set by the installer.  It is auto-derived at runtime
+--   by ResolveClientCode() in SessionClient\MainWindow.xaml.cs as:
+--       "CL-" + MAC address  (e.g. "CL-A1B2C3D4E5F6")
+--   This guarantees a globally unique, hardware-stable code per machine
+--   with zero manual configuration.  The sentinel value "CL001" in
+--   App.config triggers the auto-derivation logic.
+-- ============================================================
 CREATE PROCEDURE dbo.sp_RegisterClient
-    @ClientCode NVARCHAR(50),
-    @MachineName NVARCHAR(50),
-    @IPAddress NVARCHAR(45),
-    @MACAddress NVARCHAR(50) = NULL
+    @ClientCode  NVARCHAR(50),
+    @MachineName NVARCHAR(100),
+    @IPAddress   NVARCHAR(45),
+    @MACAddress  NVARCHAR(50)  = NULL,
+    -- Location: physical seat/row set once at install time via App.config key
+    -- "ClientLocation".  Only written on first INSERT; admin edits via
+    -- sp_UpdateClientMachineInfo are preserved on subsequent reconnects.
+    @Location    NVARCHAR(100) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -711,37 +852,31 @@ BEGIN
     DECLARE @MachineId INT;
 
     BEGIN TRY
-        IF EXISTS (
-            SELECT 1
-            FROM dbo.tblClientMachine
-            WHERE IPAddress = @IPAddress
-              AND ClientCode <> @ClientCode
-        )
-        BEGIN
-            RAISERROR('IPAddress already assigned to another client.', 16, 1);
-            RETURN;
-        END;
+        -- ClientCode (set by installer, derived from seat/PC identity) is the
+        -- true unique identifier per machine.  IPAddress is informational only.
 
         IF EXISTS (SELECT 1 FROM dbo.tblClientMachine WHERE ClientCode = @ClientCode)
         BEGIN
+            -- Reconnect path: refresh network identity only.
+            -- MachineName and Location are NOT updated here — admin renames
+            -- done via sp_UpdateClientMachineInfo must survive client reboots.
             UPDATE dbo.tblClientMachine
-            SET MachineName = @MachineName,
-                IPAddress = @IPAddress,
-                MACAddress = ISNULL(@MACAddress, MACAddress),
-                Status = 'Idle',
-                LastSeenAt = GETDATE()
-            WHERE ClientCode = @ClientCode;
+            SET    IPAddress  = @IPAddress,
+                   MACAddress = ISNULL(@MACAddress, MACAddress),
+                   LastSeenAt = GETDATE()
+            WHERE  ClientCode = @ClientCode;
 
             SELECT @MachineId = ClientMachineId
-            FROM dbo.tblClientMachine
-            WHERE ClientCode = @ClientCode;
+            FROM   dbo.tblClientMachine
+            WHERE  ClientCode = @ClientCode;
         END
         ELSE
         BEGIN
+            -- First-connect path: full insert with installer-supplied values.
             INSERT INTO dbo.tblClientMachine
-                (ClientCode, MachineName, IPAddress, MACAddress, Status, IsActive)
+                (ClientCode, MachineName, IPAddress, MACAddress, Location, Status, IsActive)
             VALUES
-                (@ClientCode, @MachineName, @IPAddress, @MACAddress, 'Idle', 1);
+                (@ClientCode, @MachineName, @IPAddress, @MACAddress, @Location, 'Idle', 1);
 
             SET @MachineId = SCOPE_IDENTITY();
         END;
@@ -756,23 +891,72 @@ BEGIN
         SELECT @MachineId AS ClientMachineId;
     END TRY
     BEGIN CATCH
-        INSERT INTO dbo.tblSystemLog
-            (Category, Type, Message, Source)
-        VALUES
-            ('System', 'Error', 'sp_RegisterClient: ' + ERROR_MESSAGE(), 'Server');
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'Error', 'sp_RegisterClient: ' + ERROR_MESSAGE(), 'Server');
 
         SELECT 0 AS ClientMachineId;
     END CATCH
 END;
 GO
+
+-- ============================================================
+-- sp_UpdateClientMachineInfo
+-- Called by the admin from SessionAdmin (Edit button in Clients tab)
+-- to rename a machine or update its physical location without
+-- touching the client PC.
+--
+-- Unlike sp_RegisterClient, this is the ONLY procedure that may
+-- update MachineName and Location on an existing row.  Client
+-- reconnects deliberately skip these columns so admin edits persist.
+-- ============================================================
+CREATE OR ALTER PROCEDURE dbo.sp_UpdateClientMachineInfo
+    @ClientCode  NVARCHAR(50),
+    @MachineName NVARCHAR(100),
+    @Location    NVARCHAR(100) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        IF NOT EXISTS (SELECT 1 FROM dbo.tblClientMachine WHERE ClientCode = @ClientCode)
+        BEGIN
+            SELECT 0 AS Result;  -- machine not found
+            RETURN;
+        END;
+
+        UPDATE dbo.tblClientMachine
+        SET    MachineName = @MachineName,
+               Location   = @Location
+        WHERE  ClientCode  = @ClientCode;
+
+        -- Audit trail so the admin change is visible in System Logs
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'MachineInfoUpdated',
+                'Admin updated machine info for ' + @ClientCode +
+                ': Name="' + @MachineName + '"' +
+                CASE WHEN @Location IS NOT NULL
+                     THEN ', Location="' + @Location + '"'
+                     ELSE '' END,
+                'Server');
+
+        SELECT 1 AS Result;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'Error', 'sp_UpdateClientMachineInfo: ' + ERROR_MESSAGE(), 'Server');
+
+        SELECT 0 AS Result;
+    END CATCH
+END;
+GO
 --sp_RegisterClientUser
 CREATE OR ALTER PROCEDURE dbo.sp_RegisterClientUser
-    @Username NVARCHAR(50),
+    @Username     NVARCHAR(50),
     @PasswordHash NVARCHAR(255),
-    @FullName NVARCHAR(100) = NULL,
-    @Phone NVARCHAR(30) = NULL,
-    @Address NVARCHAR(200) = NULL,
-    @AdminUserId INT
+    @FullName     NVARCHAR(100),
+    @Phone        NVARCHAR(30)  = NULL,
+    @Address      NVARCHAR(200) = NULL,
+    @AdminUserId  INT
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -780,6 +964,10 @@ BEGIN
     DECLARE @UserId INT;
 
     BEGIN TRY
+        -- Validate required fields
+        IF LTRIM(RTRIM(ISNULL(@FullName, ''))) = ''
+            RAISERROR('Full name is required.', 16, 1);
+
         -- Insert user
         INSERT INTO dbo.tblUser
         (
@@ -803,35 +991,82 @@ BEGIN
         IF ERROR_NUMBER() IN (2627, 2601)
         BEGIN
             SELECT -1 AS UserId;
-
-            INSERT INTO dbo.tblSystemLog
-            (
-                Category, Type, Message, Source
-            )
-            VALUES
-            (
-                'User',
-                'Duplicate',
-                'Duplicate username attempt: "' + @Username + '"',
-                'Server'
-            );
+            INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+            VALUES ('Auth', 'DuplicateUser',
+                'Duplicate username attempt: "' + @Username + '"', 'Server');
         END
         ELSE
         BEGIN
             SELECT 0 AS UserId;
-
-            INSERT INTO dbo.tblSystemLog
-            (
-                Category, Type, Message, Source
-            )
-            VALUES
-            (
-                'System',
-                'Error',
-                'sp_RegisterClientUser: ' + ERROR_MESSAGE(),
-                'Server'
-            );
+            INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+            VALUES ('System', 'Error',
+                'sp_RegisterClientUser: ' + ERROR_MESSAGE(), 'Server');
         END
+    END CATCH
+END
+GO
+
+-- sp_UpdateClientUser
+CREATE OR ALTER PROCEDURE dbo.sp_UpdateClientUser
+    @UserId             INT,
+    @FullName           NVARCHAR(100),
+    @Phone              NVARCHAR(30)   = NULL,
+    @Address            NVARCHAR(200)  = NULL,
+    @ProfilePicturePath NVARCHAR(500)  = NULL   -- NULL = keep existing path
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    BEGIN TRY
+        -- Validate required fields
+        IF LTRIM(RTRIM(ISNULL(@FullName, ''))) = ''
+            RAISERROR('Full name is required.', 16, 1);
+
+        UPDATE dbo.tblUser
+        SET    FullName           = @FullName,
+               Phone              = @Phone,
+               Address            = @Address,
+               ProfilePicturePath = CASE
+                                        WHEN @ProfilePicturePath IS NOT NULL
+                                        THEN @ProfilePicturePath
+                                        ELSE ProfilePicturePath
+                                    END
+        WHERE  UserId = @UserId AND Role = 'ClientUser';
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'Error',
+            'sp_UpdateClientUser: ' + ERROR_MESSAGE(), 'Server');
+        THROW;
+    END CATCH
+END
+GO
+
+
+-- sp_DeleteClientUser
+CREATE OR ALTER PROCEDURE dbo.sp_DeleteClientUser
+    @UserId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        -- Block delete if user has any session history (FK integrity)
+        IF EXISTS (SELECT 1 FROM dbo.tblSession WHERE UserId = @UserId)
+        BEGIN
+            SELECT -1 AS Result;  -- has sessions
+            RETURN;
+        END
+
+        DELETE FROM dbo.tblUser
+        WHERE  UserId = @UserId AND Role = 'ClientUser';
+
+        SELECT @@ROWCOUNT AS Result;  -- 1 = deleted, 0 = not found
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'Error',
+            'sp_DeleteClientUser: ' + ERROR_MESSAGE(), 'Server');
+        SELECT 0 AS Result;
     END CATCH
 END
 GO
@@ -926,13 +1161,16 @@ VALUES
     ('CL003', 'CLIENT-PC-03', '192.168.1.102', '00:1A:2B:3C:4D:60', 'Floor 2', 'Idle', 1);
 GO
 
--- Billing Rates
+-- Billing Rates (EffectiveFrom required; non-overlapping per currency)
+-- "Standard Rate" is the current open-ended default.
+-- "Discount Rate" covered a historical window (closed period — no overlap).
+-- "Premium Rate" is inactive (opt-in upgrade, not date-driven) — kept for reference.
 INSERT INTO dbo.tblBillingRate
-    (Name, RatePerMinute, Currency, IsActive, IsDefault)
+    (Name, RatePerMinute, Currency, EffectiveFrom, EffectiveTo, IsActive, IsDefault)
 VALUES
-    ('Standard Rate', 0.50, 'USD', 1, 1),
-    ('Premium Rate', 1.00, 'USD', 1, 0),
-    ('Discount Rate', 0.25, 'USD', 1, 0);
+    ('Standard Rate', 3.00, 'PKR', '2024-01-01', NULL,         1, 1),
+    ('Discount Rate', 2.00, 'PKR', '2023-01-01', '2023-12-31', 1, 0),
+    ('Premium Rate',  5.00, 'PKR', '2024-01-01', NULL,         0, 0);  -- inactive; not in overlap checks
 GO
 
 -- Activity Types
@@ -1011,7 +1249,7 @@ GO
 ALTER PROCEDURE dbo.sp_RegisterClientUser
     @Username     NVARCHAR(50),
     @PasswordHash NVARCHAR(255),
-    @FullName     NVARCHAR(100) = NULL,
+    @FullName     NVARCHAR(100),
     @Phone        NVARCHAR(30)  = NULL,
     @Address      NVARCHAR(200) = NULL,
     @AdminUserId  INT
@@ -1020,6 +1258,9 @@ BEGIN
     SET NOCOUNT ON;
     DECLARE @UserId INT;
     BEGIN TRY
+        IF LTRIM(RTRIM(ISNULL(@FullName, ''))) = ''
+            RAISERROR('Full name is required.', 16, 1);
+
         INSERT INTO dbo.tblUser
             (Username, PasswordHash, FullName, Role, Status,
              Phone, Address, CreatedByUserId)
@@ -1035,7 +1276,7 @@ BEGIN
         BEGIN
             SELECT -1 AS UserId;
             INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
-            VALUES ('Auth', 'DuplicateUser',           -- fixed: was 'User'
+            VALUES ('Auth', 'DuplicateUser',
                 'Duplicate username attempt: "' + @Username + '"', 'Server');
         END
         ELSE
@@ -1191,58 +1432,73 @@ GO
 --  Inserts a new billing rate. If IsDefault=1, sets all others
 --  to IsDefault=0 before insertion.
 -- ═══════════════════════════════════════════════════════════
-CREATE or alter PROCEDURE dbo.sp_InsertBillingRate
-    @Name NVARCHAR(100),
-    @RatePerMinute DECIMAL(10,2),
-    @Currency NVARCHAR(10),
-    @EffectiveFrom DATE = NULL,
-    @EffectiveTo DATE = NULL,
-    @IsDefault BIT = 0,
+CREATE OR ALTER PROCEDURE dbo.sp_InsertBillingRate
+    @Name             NVARCHAR(100),
+    @RatePerMinute    DECIMAL(10,2),
+    @Currency         NVARCHAR(10),
+    @EffectiveFrom    DATE,                        -- required; NOT NULL in table
+    @EffectiveTo      DATE = NULL,                 -- NULL = open-ended
+    @IsDefault        BIT = 0,
     @SetByAdminUserId INT,
-    @Notes NVARCHAR(500) = NULL,
+    @Notes            NVARCHAR(500) = NULL,
     @NewBillingRateId INT OUTPUT
 AS
 BEGIN
     SET NOCOUNT ON;
+    SET @NewBillingRateId = -1;
 
     BEGIN TRY
-        -- Validate rate
+        -- 1. Rate must be non-negative
         IF @RatePerMinute < 0
+            RAISERROR('Rate per minute cannot be negative.', 16, 1);
+
+        -- 2. Date range integrity
+        IF @EffectiveTo IS NOT NULL AND @EffectiveTo < @EffectiveFrom
+            RAISERROR('Effective To must be on or after Effective From.', 16, 1);
+
+        -- 3. Unique name (case-insensitive)
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblBillingRate
+            WHERE  LTRIM(RTRIM(Name)) = LTRIM(RTRIM(@Name))
+        )
         BEGIN
-            RAISERROR('Rate cannot be negative.', 16, 1);
+            SET @NewBillingRateId = -2;  -- duplicate name
             RETURN;
-        END;
+        END
 
-        -- If this is being set as default, unset all others
-        IF @IsDefault = 1
+        -- 4. No overlapping date ranges for the same active currency
+        --    Two ranges overlap when: newFrom <= existTo  AND  newTo >= existFrom
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblBillingRate
+            WHERE  IsActive = 1
+              AND  Currency  = @Currency
+              AND  @EffectiveFrom <= COALESCE(EffectiveTo,   '9999-12-31')
+              AND  COALESCE(@EffectiveTo, '9999-12-31') >= EffectiveFrom
+        )
         BEGIN
-            UPDATE dbo.tblBillingRate SET IsDefault = 0;
-        END;
+            SET @NewBillingRateId = -3;  -- date range overlap
+            RETURN;
+        END
 
-        -- Insert new rate
+        -- 5. If setting as default, unset all others
+        IF @IsDefault = 1
+            UPDATE dbo.tblBillingRate SET IsDefault = 0;
+
+        -- 6. Insert
         INSERT INTO dbo.tblBillingRate
-            (Name, RatePerMinute, Currency, EffectiveFrom, EffectiveTo, IsActive, IsDefault, SetByAdminUserId, Notes, CreatedAt)
+            (Name, RatePerMinute, Currency, EffectiveFrom, EffectiveTo,
+             IsActive, IsDefault, SetByAdminUserId, Notes, CreatedAt)
         VALUES
-            (@Name, @RatePerMinute, @Currency, @EffectiveFrom, @EffectiveTo, 1, @IsDefault, @SetByAdminUserId, @Notes, GETDATE());
+            (@Name, @RatePerMinute, @Currency, @EffectiveFrom, @EffectiveTo,
+             1, @IsDefault, @SetByAdminUserId, @Notes, GETDATE());
 
         SET @NewBillingRateId = SCOPE_IDENTITY();
-
-        -- Log the action
-        --INSERT INTO dbo.tblSystemLog
-        --    (Category, Type, Message, Source)
-        --VALUES
-        --    ('Billing', 'RateCreated', 
-        --     'Billing rate created: ' + @Name + ' (' + CAST(@RatePerMinute AS NVARCHAR(20)) + ' ' + @Currency + '/min)',
-        --     'Admin');
-
         SELECT @NewBillingRateId AS BillingRateId;
     END TRY
     BEGIN CATCH
-        INSERT INTO dbo.tblSystemLog
-            (Category, Type, Message, Source)
-        VALUES
-            ('Billing', 'Error', 'Error in sp_InsertBillingRate: ' + ERROR_MESSAGE(), 'Admin');
-
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('Billing', 'Error',
+                'Error in sp_InsertBillingRate: ' + ERROR_MESSAGE(), 'Admin');
         SELECT -1 AS BillingRateId;
     END CATCH
 END;
@@ -1255,82 +1511,90 @@ GO
 -- ═══════════════════════════════════════════════════════════
 CREATE OR ALTER PROCEDURE dbo.sp_UpdateBillingRate
     @BillingRateId INT,
-    @Name NVARCHAR(100),
+    @Name          NVARCHAR(100),
     @RatePerMinute DECIMAL(10,2),
-    @Currency NVARCHAR(10),
-    @EffectiveFrom DATE = NULL,
-    @EffectiveTo DATE = NULL,
-    @IsActive BIT,
-    @IsDefault BIT = 0,
-    @Notes NVARCHAR(500) = NULL
+    @Currency      NVARCHAR(10),
+    @EffectiveFrom DATE,                          -- required
+    @EffectiveTo   DATE = NULL,                   -- NULL = open-ended
+    @IsActive      BIT,
+    @IsDefault     BIT = 0,
+    @Notes         NVARCHAR(500) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
-
     DECLARE @OldIsDefault BIT;
 
     BEGIN TRY
-        -- Validate inputs
-        IF @RatePerMinute < 0
-        BEGIN
-            RAISERROR('Rate cannot be negative.', 16, 1);
-            RETURN;
-        END;
-
+        -- 1. Existence check
         IF NOT EXISTS (SELECT 1 FROM dbo.tblBillingRate WHERE BillingRateId = @BillingRateId)
-        BEGIN
             RAISERROR('Billing rate not found.', 16, 1);
-            RETURN;
-        END;
 
-        -- Get the old IsDefault value
+        -- 2. Rate must be non-negative
+        IF @RatePerMinute < 0
+            RAISERROR('Rate per minute cannot be negative.', 16, 1);
+
+        -- 3. Date range integrity
+        IF @EffectiveTo IS NOT NULL AND @EffectiveTo < @EffectiveFrom
+            RAISERROR('Effective To must be on or after Effective From.', 16, 1);
+
+        -- 4. Unique name, excluding self (case-insensitive)
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblBillingRate
+            WHERE  BillingRateId <> @BillingRateId
+              AND  LTRIM(RTRIM(Name)) = LTRIM(RTRIM(@Name))
+        )
+        BEGIN
+            SELECT 0 AS Result;  -- duplicate name
+            RETURN;
+        END
+
+        -- 5. No overlapping date ranges for the same active currency, excluding self
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblBillingRate
+            WHERE  IsActive = 1
+              AND  Currency  = @Currency
+              AND  BillingRateId <> @BillingRateId
+              AND  @EffectiveFrom <= COALESCE(EffectiveTo,   '9999-12-31')
+              AND  COALESCE(@EffectiveTo, '9999-12-31') >= EffectiveFrom
+        )
+        BEGIN
+            SELECT 0 AS Result;  -- date range overlap
+            RETURN;
+        END
+
+        -- 6. Default flag management
         SELECT @OldIsDefault = IsDefault FROM dbo.tblBillingRate WHERE BillingRateId = @BillingRateId;
 
-        -- If setting this as default and it wasn't before, unset others
         IF @IsDefault = 1 AND @OldIsDefault = 0
-        BEGIN
             UPDATE dbo.tblBillingRate SET IsDefault = 0 WHERE BillingRateId <> @BillingRateId;
-        END;
 
-        -- If unsetting as default, ensure at least one other is default
         IF @IsDefault = 0 AND @OldIsDefault = 1
         BEGIN
-            -- Check if there are other active rates
-            IF NOT EXISTS (SELECT 1 FROM dbo.tblBillingRate WHERE IsDefault = 1 AND BillingRateId <> @BillingRateId)
-            BEGIN
-                RAISERROR('At least one default rate must exist. Cannot unset as default.', 16, 1);
-                RETURN;
-            END;
+            IF NOT EXISTS (
+                SELECT 1 FROM dbo.tblBillingRate
+                WHERE IsDefault = 1 AND BillingRateId <> @BillingRateId
+            )
+                RAISERROR('At least one default rate must remain. Cannot unset this rate as default.', 16, 1);
         END;
 
-        -- Update the rate
+        -- 7. Apply update
         UPDATE dbo.tblBillingRate
-        SET Name = @Name,
-            RatePerMinute = @RatePerMinute,
-            Currency = @Currency,
-            EffectiveFrom = @EffectiveFrom,
-            EffectiveTo = @EffectiveTo,
-            IsActive = @IsActive,
-            IsDefault = @IsDefault,
-            Notes = @Notes
-        WHERE BillingRateId = @BillingRateId;
-
-        -- Log the action
-        --INSERT INTO dbo.tblSystemLog
-        --    (Category, Type, Message, Source)
-        --VALUES
-        --    ('Billing', 'RateUpdated',
-        --     'Billing rate updated: ' + @Name + ' (' + CAST(@RatePerMinute AS NVARCHAR(20)) + ' ' + @Currency + '/min)',
-        --     'Admin');
+        SET    Name          = @Name,
+               RatePerMinute = @RatePerMinute,
+               Currency      = @Currency,
+               EffectiveFrom = @EffectiveFrom,
+               EffectiveTo   = @EffectiveTo,
+               IsActive      = @IsActive,
+               IsDefault     = @IsDefault,
+               Notes         = @Notes
+        WHERE  BillingRateId = @BillingRateId;
 
         SELECT 1 AS Result;
     END TRY
     BEGIN CATCH
-        INSERT INTO dbo.tblSystemLog
-            (Category, Type, Message, Source)
-        VALUES
-            ('Billing', 'Error', 'Error in sp_UpdateBillingRate: ' + ERROR_MESSAGE(), 'Admin');
-
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('Billing', 'Error',
+                'Error in sp_UpdateBillingRate: ' + ERROR_MESSAGE(), 'Admin');
         SELECT 0 AS Result;
     END CATCH
 END;
@@ -1493,4 +1757,728 @@ BEGIN
         SELECT 0 AS Result;
     END CATCH
 END;
+GO
+
+-- ============================================================
+-- PATCH: FullName required — NOT NULL column + updated SPs
+-- Run against ClientServerSessionDB after the main SQL script.
+-- ============================================================
+
+USE ClientServerSessionDB;
+GO
+
+-- Step 1: back-fill any NULLs before enforcing NOT NULL
+UPDATE dbo.tblUser
+SET    FullName = LTRIM(RTRIM(ISNULL(Username, 'Unknown')))
+WHERE  FullName IS NULL OR LTRIM(RTRIM(FullName)) = '';
+GO
+
+-- Step 2: enforce NOT NULL on the column
+ALTER TABLE dbo.tblUser
+    ALTER COLUMN FullName NVARCHAR(100) NOT NULL;
+GO
+
+-- Step 3: update sp_RegisterClientUser (make @FullName required, add guard)
+CREATE OR ALTER PROCEDURE dbo.sp_RegisterClientUser
+    @Username     NVARCHAR(50),
+    @PasswordHash NVARCHAR(255),
+    @FullName     NVARCHAR(100),
+    @Phone        NVARCHAR(30)  = NULL,
+    @Address      NVARCHAR(200) = NULL,
+    @AdminUserId  INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DECLARE @UserId INT;
+    BEGIN TRY
+        IF LTRIM(RTRIM(ISNULL(@FullName, ''))) = ''
+            RAISERROR('Full name is required.', 16, 1);
+
+        INSERT INTO dbo.tblUser
+            (Username, PasswordHash, FullName, Role, Status,
+             Phone, Address, CreatedByUserId)
+        VALUES
+            (@Username, @PasswordHash, @FullName, 'ClientUser', 'Active',
+             @Phone, @Address, @AdminUserId);
+
+        SET @UserId = SCOPE_IDENTITY();
+        SELECT @UserId AS UserId;
+    END TRY
+    BEGIN CATCH
+        IF ERROR_NUMBER() IN (2627, 2601)
+        BEGIN
+            SELECT -1 AS UserId;
+            INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+            VALUES ('Auth', 'DuplicateUser',
+                'Duplicate username attempt: "' + @Username + '"', 'Server');
+        END
+        ELSE
+        BEGIN
+            SELECT 0 AS UserId;
+            INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+            VALUES ('System', 'Error',
+                'sp_RegisterClientUser: ' + ERROR_MESSAGE(), 'Server');
+        END
+    END CATCH
+END
+GO
+
+-- Step 4: create sp_UpdateClientUser
+CREATE OR ALTER PROCEDURE dbo.sp_UpdateClientUser
+    @UserId             INT,
+    @FullName           NVARCHAR(100),
+    @Phone              NVARCHAR(30)  = NULL,
+    @Address            NVARCHAR(200) = NULL,
+    @ProfilePicturePath NVARCHAR(500) = NULL   -- NULL = keep existing path
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        IF LTRIM(RTRIM(ISNULL(@FullName, ''))) = ''
+            RAISERROR('Full name is required.', 16, 1);
+
+        UPDATE dbo.tblUser
+        SET    FullName           = @FullName,
+               Phone              = @Phone,
+               Address            = @Address,
+               ProfilePicturePath = CASE
+                                        WHEN @ProfilePicturePath IS NOT NULL THEN @ProfilePicturePath
+                                        ELSE ProfilePicturePath
+                                    END
+        WHERE  UserId = @UserId AND Role = 'ClientUser';
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'Error',
+            'sp_UpdateClientUser: ' + ERROR_MESSAGE(), 'Server');
+        THROW;
+    END CATCH
+END
+GO
+
+SELECT 'FullName PATCH COMPLETE' AS Status;
+GO
+
+
+-- ============================================================
+-- PATCH: ProfilePicturePath column + sp_DeleteClientUser
+-- Run against ClientServerSessionDB after the main SQL script.
+-- ============================================================
+
+USE ClientServerSessionDB;
+GO
+
+-- Step 1: add ProfilePicturePath column if it does not exist
+IF NOT EXISTS (
+    SELECT 1 FROM sys.columns
+    WHERE object_id = OBJECT_ID('dbo.tblUser') AND name = 'ProfilePicturePath'
+)
+BEGIN
+    ALTER TABLE dbo.tblUser ADD ProfilePicturePath NVARCHAR(500) NULL;
+END
+GO
+
+-- Step 2: create / update sp_DeleteClientUser
+CREATE OR ALTER PROCEDURE dbo.sp_DeleteClientUser
+    @UserId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        IF EXISTS (SELECT 1 FROM dbo.tblSession WHERE UserId = @UserId)
+        BEGIN
+            SELECT -1 AS Result;
+            RETURN;
+        END
+
+        DELETE FROM dbo.tblUser
+        WHERE  UserId = @UserId AND Role = 'ClientUser';
+
+        SELECT @@ROWCOUNT AS Result;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'Error',
+            'sp_DeleteClientUser: ' + ERROR_MESSAGE(), 'Server');
+        SELECT 0 AS Result;
+    END CATCH
+END
+GO
+
+SELECT 'ProfilePicturePath + sp_DeleteClientUser PATCH COMPLETE' AS Status;
+GO
+
+
+-- ============================================================
+-- PATCH: sp_StartSession — duplicate session guard
+-- Run against ClientServerSessionDB after the main SQL script.
+-- ============================================================
+
+USE ClientServerSessionDB;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sp_StartSession
+    @UserId INT,
+    @ClientMachineId INT,
+    @SelectedDurationMinutes INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @SessionId INT;
+
+    BEGIN TRY
+        -- Guard: user already has an active session
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblSession
+            WHERE  UserId = @UserId AND Status = 'Active'
+        )
+        BEGIN
+            SELECT -1 AS SessionId;
+            RETURN;
+        END
+
+        -- Guard: machine already has an active session
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblSession
+            WHERE  ClientMachineId = @ClientMachineId AND Status = 'Active'
+        )
+        BEGIN
+            SELECT -2 AS SessionId;
+            RETURN;
+        END
+
+        INSERT INTO dbo.tblSession
+            (UserId, ClientMachineId, LoginAt, StartedAt, SelectedDurationMinutes, Status)
+        VALUES
+            (@UserId, @ClientMachineId, GETDATE(), GETDATE(), @SelectedDurationMinutes, 'Active');
+
+        SET @SessionId = SCOPE_IDENTITY();
+
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source, SessionId, UserId, ClientMachineId)
+        VALUES
+            ('Session', 'StartSession',
+             'Session started for ' + CAST(@SelectedDurationMinutes AS NVARCHAR(10)) + ' minutes',
+             'Server', @SessionId, @UserId, @ClientMachineId);
+
+        SELECT @SessionId AS SessionId;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source)
+        VALUES
+            ('System', 'Error', 'Error in sp_StartSession: ' + ERROR_MESSAGE(), 'Server');
+
+        SELECT 0 AS SessionId;
+    END CATCH
+END;
+GO
+
+SELECT 'sp_StartSession duplicate-session guard PATCH COMPLETE' AS Status;
+GO
+
+
+-- ============================================================
+-- PATCH: sp_InsertBillingRate / sp_UpdateBillingRate
+-- Remove duplicate C#-layer checks; SPs now own the validation.
+-- Run against ClientServerSessionDB after the main SQL script.
+-- ============================================================
+
+USE ClientServerSessionDB;
+GO
+
+-- sp_InsertBillingRate: dup-name returns -2 via OUTPUT param, overlap returns -3 via OUTPUT param
+CREATE OR ALTER PROCEDURE dbo.sp_InsertBillingRate
+    @Name             NVARCHAR(100),
+    @RatePerMinute    DECIMAL(10,2),
+    @Currency         NVARCHAR(10),
+    @EffectiveFrom    DATE,
+    @EffectiveTo      DATE = NULL,
+    @IsDefault        BIT = 0,
+    @SetByAdminUserId INT,
+    @Notes            NVARCHAR(500) = NULL,
+    @NewBillingRateId INT OUTPUT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET @NewBillingRateId = -1;
+
+    BEGIN TRY
+        IF @RatePerMinute < 0
+            RAISERROR('Rate per minute cannot be negative.', 16, 1);
+
+        IF @EffectiveTo IS NOT NULL AND @EffectiveTo < @EffectiveFrom
+            RAISERROR('Effective To must be on or after Effective From.', 16, 1);
+
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblBillingRate
+            WHERE  LTRIM(RTRIM(Name)) = LTRIM(RTRIM(@Name))
+        )
+        BEGIN
+            SET @NewBillingRateId = -2;
+            RETURN;
+        END
+
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblBillingRate
+            WHERE  IsActive = 1
+              AND  Currency  = @Currency
+              AND  @EffectiveFrom <= COALESCE(EffectiveTo,   '9999-12-31')
+              AND  COALESCE(@EffectiveTo, '9999-12-31') >= EffectiveFrom
+        )
+        BEGIN
+            SET @NewBillingRateId = -3;
+            RETURN;
+        END
+
+        IF @IsDefault = 1
+            UPDATE dbo.tblBillingRate SET IsDefault = 0;
+
+        INSERT INTO dbo.tblBillingRate
+            (Name, RatePerMinute, Currency, EffectiveFrom, EffectiveTo,
+             IsActive, IsDefault, SetByAdminUserId, Notes, CreatedAt)
+        VALUES
+            (@Name, @RatePerMinute, @Currency, @EffectiveFrom, @EffectiveTo,
+             1, @IsDefault, @SetByAdminUserId, @Notes, GETDATE());
+
+        SET @NewBillingRateId = SCOPE_IDENTITY();
+        SELECT @NewBillingRateId AS BillingRateId;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('Billing', 'Error',
+                'Error in sp_InsertBillingRate: ' + ERROR_MESSAGE(), 'Admin');
+        SELECT -1 AS BillingRateId;
+    END CATCH
+END;
+GO
+
+-- sp_UpdateBillingRate: dup-name and overlap return SELECT 0; RETURN (no RAISERROR, no spurious Error log)
+CREATE OR ALTER PROCEDURE dbo.sp_UpdateBillingRate
+    @BillingRateId INT,
+    @Name          NVARCHAR(100),
+    @RatePerMinute DECIMAL(10,2),
+    @Currency      NVARCHAR(10),
+    @EffectiveFrom DATE,
+    @EffectiveTo   DATE = NULL,
+    @IsActive      BIT,
+    @IsDefault     BIT = 0,
+    @Notes         NVARCHAR(500) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    DECLARE @OldIsDefault BIT;
+
+    BEGIN TRY
+        IF NOT EXISTS (SELECT 1 FROM dbo.tblBillingRate WHERE BillingRateId = @BillingRateId)
+            RAISERROR('Billing rate not found.', 16, 1);
+
+        IF @RatePerMinute < 0
+            RAISERROR('Rate per minute cannot be negative.', 16, 1);
+
+        IF @EffectiveTo IS NOT NULL AND @EffectiveTo < @EffectiveFrom
+            RAISERROR('Effective To must be on or after Effective From.', 16, 1);
+
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblBillingRate
+            WHERE  BillingRateId <> @BillingRateId
+              AND  LTRIM(RTRIM(Name)) = LTRIM(RTRIM(@Name))
+        )
+        BEGIN
+            SELECT 0 AS Result;
+            RETURN;
+        END
+
+        IF EXISTS (
+            SELECT 1 FROM dbo.tblBillingRate
+            WHERE  IsActive = 1
+              AND  Currency  = @Currency
+              AND  BillingRateId <> @BillingRateId
+              AND  @EffectiveFrom <= COALESCE(EffectiveTo,   '9999-12-31')
+              AND  COALESCE(@EffectiveTo, '9999-12-31') >= EffectiveFrom
+        )
+        BEGIN
+            SELECT 0 AS Result;
+            RETURN;
+        END
+
+        SELECT @OldIsDefault = IsDefault FROM dbo.tblBillingRate WHERE BillingRateId = @BillingRateId;
+
+        IF @IsDefault = 1 AND @OldIsDefault = 0
+            UPDATE dbo.tblBillingRate SET IsDefault = 0 WHERE BillingRateId <> @BillingRateId;
+
+        IF @IsDefault = 0 AND @OldIsDefault = 1
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM dbo.tblBillingRate
+                WHERE IsDefault = 1 AND BillingRateId <> @BillingRateId
+            )
+                RAISERROR('At least one default rate must remain. Cannot unset this rate as default.', 16, 1);
+        END;
+
+        UPDATE dbo.tblBillingRate
+        SET    Name          = @Name,
+               RatePerMinute = @RatePerMinute,
+               Currency      = @Currency,
+               EffectiveFrom = @EffectiveFrom,
+               EffectiveTo   = @EffectiveTo,
+               IsActive      = @IsActive,
+               IsDefault     = @IsDefault,
+               Notes         = @Notes
+        WHERE  BillingRateId = @BillingRateId;
+
+        SELECT 1 AS Result;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('Billing', 'Error',
+                'Error in sp_UpdateBillingRate: ' + ERROR_MESSAGE(), 'Admin');
+        SELECT 0 AS Result;
+    END CATCH
+END;
+GO
+
+SELECT 'Billing rate SP deduplication PATCH COMPLETE' AS Status;
+GO
+
+
+-- ============================================================
+-- PATCH: Consolidate sp_UpdateClientUser — add ProfilePicturePath
+-- Run against ClientServerSessionDB after all previous patches.
+-- This supersedes the sp_UpdateClientUser defined in the FullName PATCH.
+-- ============================================================
+USE ClientServerSessionDB;
+GO
+
+CREATE OR ALTER PROCEDURE dbo.sp_UpdateClientUser
+    @UserId             INT,
+    @FullName           NVARCHAR(100),
+    @Phone              NVARCHAR(30)  = NULL,
+    @Address            NVARCHAR(200) = NULL,
+    @ProfilePicturePath NVARCHAR(500) = NULL   -- NULL = keep existing path
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        IF LTRIM(RTRIM(ISNULL(@FullName, ''))) = ''
+            RAISERROR('Full name is required.', 16, 1);
+
+        UPDATE dbo.tblUser
+        SET    FullName           = @FullName,
+               Phone              = @Phone,
+               Address            = @Address,
+               ProfilePicturePath = CASE
+                                        WHEN @ProfilePicturePath IS NOT NULL THEN @ProfilePicturePath
+                                        ELSE ProfilePicturePath
+                                    END
+        WHERE  UserId = @UserId AND Role = 'ClientUser';
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'Error',
+            'sp_UpdateClientUser: ' + ERROR_MESSAGE(), 'Server');
+        THROW;
+    END CATCH
+END
+GO
+
+SELECT 'UpdateClientUser consolidation PATCH COMPLETE' AS Status;
+GO
+
+
+-- ============================================================
+-- PATCH: Payment tracking — IsPaid / PaidAt / ReceivedByAdminId
+-- Run against ClientServerSessionDB after all previous patches.
+-- ============================================================
+USE ClientServerSessionDB;
+GO
+
+-- Step 1: add columns to tblBillingRecord
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.tblBillingRecord') AND name = 'IsPaid')
+    ALTER TABLE dbo.tblBillingRecord ADD IsPaid BIT NOT NULL CONSTRAINT DF_tblBillingRecord_IsPaid DEFAULT (0);
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.tblBillingRecord') AND name = 'PaidAt')
+    ALTER TABLE dbo.tblBillingRecord ADD PaidAt DATETIME NULL;
+GO
+IF NOT EXISTS (SELECT 1 FROM sys.columns WHERE object_id = OBJECT_ID('dbo.tblBillingRecord') AND name = 'ReceivedByAdminId')
+    ALTER TABLE dbo.tblBillingRecord ADD ReceivedByAdminId INT NULL;
+GO
+
+-- Step 2: sp_GetBillingRecords
+CREATE OR ALTER PROCEDURE dbo.sp_GetBillingRecords
+    @UnpaidOnly BIT = 0
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SELECT
+        br.BillingRecordId,
+        br.SessionId,
+        u.Username,
+        u.FullName,
+        cm.ClientCode      AS MachineCode,
+        br.BillableMinutes,
+        br.Amount,
+        brate.Currency,
+        br.CalculatedAt,
+        br.IsPaid,
+        br.PaidAt,
+        br.ReceivedByAdminId
+    FROM dbo.tblBillingRecord br
+    INNER JOIN dbo.tblSession       s     ON s.SessionId          = br.SessionId
+    INNER JOIN dbo.tblUser          u     ON u.UserId              = s.UserId
+    INNER JOIN dbo.tblClientMachine cm    ON cm.ClientMachineId    = s.ClientMachineId
+    INNER JOIN dbo.tblBillingRate   brate ON brate.BillingRateId   = br.BillingRateId
+    WHERE br.Status = 'Finalized'
+      AND (@UnpaidOnly = 0 OR br.IsPaid = 0)
+    ORDER BY br.CalculatedAt DESC;
+END;
+GO
+
+-- Step 3: sp_MarkBillingRecordPaid
+CREATE OR ALTER PROCEDURE dbo.sp_MarkBillingRecordPaid
+    @BillingRecordId INT,
+    @AdminUserId     INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        IF NOT EXISTS (SELECT 1 FROM dbo.tblBillingRecord WHERE BillingRecordId = @BillingRecordId)
+        BEGIN
+            SELECT 0 AS Result; RETURN;
+        END;
+
+        IF EXISTS (SELECT 1 FROM dbo.tblBillingRecord WHERE BillingRecordId = @BillingRecordId AND IsPaid = 1)
+        BEGIN
+            SELECT -1 AS Result; RETURN;
+        END;
+
+        UPDATE dbo.tblBillingRecord
+        SET    IsPaid            = 1,
+               PaidAt            = GETDATE(),
+               ReceivedByAdminId = @AdminUserId
+        WHERE  BillingRecordId = @BillingRecordId;
+
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('Billing', 'Info',
+            'BillingRecord ' + CAST(@BillingRecordId AS VARCHAR) +
+            ' marked paid by admin ' + CAST(@AdminUserId AS VARCHAR), 'Server');
+
+        SELECT 1 AS Result;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'Error', 'sp_MarkBillingRecordPaid: ' + ERROR_MESSAGE(), 'Server');
+        SELECT 0 AS Result;
+    END CATCH
+END;
+GO
+
+SELECT 'Payment tracking PATCH COMPLETE' AS Status;
+GO
+
+
+-- ============================================================
+-- PATCH: Orphan Session Management
+--   1. Fix sp_CalculateSessionBilling to use EndedAt (when set)
+--      instead of GETDATE() so orphan sessions bill for actual
+--      elapsed time, not for "now".
+--   2. Add sp_TerminateOrphanSessions: server-side orphan cleanup
+--      called by TerminateOrphanSession WCF method on client startup.
+-- Run against ClientServerSessionDB after all previous patches.
+-- ============================================================
+USE ClientServerSessionDB;
+GO
+
+-- Step 1: patch sp_CalculateSessionBilling
+--   Old: DATEDIFF(MINUTE, StartedAt, GETDATE())
+--   New: DATEDIFF(MINUTE, StartedAt, COALESCE(EndedAt, GETDATE()))
+--   Effect: when EndedAt has been pre-set to the crash/orphan time,
+--           billing uses that time; for in-progress sessions EndedAt
+--           is NULL so GETDATE() is used as before.
+CREATE OR ALTER PROCEDURE dbo.sp_CalculateSessionBilling
+    @SessionId INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @BillingRateId  INT,
+            @RatePerMinute  DECIMAL(10,2),
+            @ElapsedMinutes INT,
+            @Amount         DECIMAL(10,2);
+
+    BEGIN TRY
+        -- Use EndedAt when already set (orphan / crash path); GETDATE() for live sessions.
+        SELECT @ElapsedMinutes = DATEDIFF(MINUTE, StartedAt, COALESCE(EndedAt, GETDATE()))
+        FROM   dbo.tblSession
+        WHERE  SessionId = @SessionId;
+
+        SELECT @BillingRateId = BillingRateId,
+               @RatePerMinute = RatePerMinute
+        FROM   dbo.tblBillingRate
+        WHERE  IsActive = 1 AND IsDefault = 1;
+
+        IF @BillingRateId IS NULL
+        BEGIN
+            SELECT TOP 1
+                @BillingRateId = BillingRateId,
+                @RatePerMinute = RatePerMinute
+            FROM dbo.tblBillingRate
+            WHERE IsActive = 1
+            ORDER BY CreatedAt DESC;
+        END;
+
+        SET @Amount = ISNULL(@ElapsedMinutes, 0) * ISNULL(@RatePerMinute, 0);
+
+        IF EXISTS (SELECT 1 FROM dbo.tblBillingRecord WHERE SessionId = @SessionId)
+        BEGIN
+            UPDATE dbo.tblBillingRecord
+            SET BillableMinutes = @ElapsedMinutes,
+                Amount          = @Amount,
+                BillingRateId   = @BillingRateId,
+                CalculatedAt    = GETDATE()
+            WHERE SessionId = @SessionId;
+        END
+        ELSE
+        BEGIN
+            INSERT INTO dbo.tblBillingRecord
+                (SessionId, BillingRateId, BillableMinutes, Amount, Status)
+            VALUES
+                (@SessionId, @BillingRateId, @ElapsedMinutes, @Amount, 'Running');
+        END;
+
+        SELECT @Amount AS Amount;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source, SessionId)
+        VALUES
+            ('Billing', 'Error',
+             'Error in sp_CalculateSessionBilling: ' + ERROR_MESSAGE(),
+             'Server', @SessionId);
+        SELECT 0 AS Amount;
+    END CATCH
+END;
+GO
+
+SELECT 'sp_CalculateSessionBilling EndedAt fix PATCH COMPLETE' AS Status;
+GO
+
+-- ============================================================
+--  PATCH A: Drop IP unique constraint (informational column only)
+-- ============================================================
+IF EXISTS (
+    SELECT 1 FROM sys.key_constraints
+    WHERE name = 'UQ_tblClientMachine_IP'
+      AND parent_object_id = OBJECT_ID('dbo.tblClientMachine')
+)
+    ALTER TABLE dbo.tblClientMachine DROP CONSTRAINT UQ_tblClientMachine_IP;
+GO
+
+SELECT 'UQ_tblClientMachine_IP constraint dropped' AS Status;
+GO
+
+-- ============================================================
+--  PATCH B: Rebuild sp_RegisterClient
+--  - No IP uniqueness check (removed)
+--  - MAC-based fallback: if a row exists with the same MAC but
+--    a different ClientCode (e.g. old "CL001" vs new "CL-AABBCC..."),
+--    update that row's ClientCode to the new value so the machine
+--    keeps its history instead of getting a duplicate row.
+-- ============================================================
+CREATE OR ALTER PROCEDURE dbo.sp_RegisterClient
+    @ClientCode  NVARCHAR(50),
+    @MachineName NVARCHAR(50),
+    @IPAddress   NVARCHAR(45),
+    @MACAddress  NVARCHAR(50) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    DECLARE @MachineId INT;
+
+    BEGIN TRY
+        -- 1. Exact ClientCode match → normal update
+        IF EXISTS (SELECT 1 FROM dbo.tblClientMachine WHERE ClientCode = @ClientCode)
+        BEGIN
+            UPDATE dbo.tblClientMachine
+            SET MachineName = @MachineName,
+                IPAddress   = @IPAddress,
+                MACAddress  = ISNULL(@MACAddress, MACAddress),
+                Status      = 'Idle',
+                LastSeenAt  = GETDATE()
+            WHERE ClientCode = @ClientCode;
+
+            SELECT @MachineId = ClientMachineId
+            FROM   dbo.tblClientMachine
+            WHERE  ClientCode = @ClientCode;
+        END
+        -- 2. Same MAC, different ClientCode → adopt the existing row and update its code.
+        --    This handles machines that were previously registered with a manual code
+        --    (e.g. CL001) and are now auto-generating from their MAC.
+        ELSE IF @MACAddress IS NOT NULL
+            AND EXISTS (SELECT 1 FROM dbo.tblClientMachine WHERE MACAddress = @MACAddress)
+        BEGIN
+            UPDATE dbo.tblClientMachine
+            SET ClientCode  = @ClientCode,
+                MachineName = @MachineName,
+                IPAddress   = @IPAddress,
+                Status      = 'Idle',
+                LastSeenAt  = GETDATE()
+            WHERE MACAddress = @MACAddress;
+
+            SELECT @MachineId = ClientMachineId
+            FROM   dbo.tblClientMachine
+            WHERE  MACAddress = @MACAddress;
+        END
+        -- 3. Genuinely new machine → insert
+        ELSE
+        BEGIN
+            INSERT INTO dbo.tblClientMachine
+                (ClientCode, MachineName, IPAddress, MACAddress, Status, IsActive)
+            VALUES
+                (@ClientCode, @MachineName, @IPAddress, @MACAddress, 'Idle', 1);
+
+            SET @MachineId = SCOPE_IDENTITY();
+        END;
+
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source, ClientMachineId)
+        VALUES
+            ('System', 'ClientRegistered',
+             'Client ' + @ClientCode + ' (' + @MachineName + ') registered/updated',
+             'Server', @MachineId);
+
+        SELECT @MachineId AS ClientMachineId;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog
+            (Category, Type, Message, Source)
+        VALUES
+            ('System', 'Error', 'sp_RegisterClient: ' + ERROR_MESSAGE(), 'Server');
+
+        SELECT 0 AS ClientMachineId;
+    END CATCH
+END;
+GO
+
+SELECT 'sp_RegisterClient patch COMPLETE' AS Status;
+GO
+
+-- ============================================================
+--  PATCH C: Add MissedHeartbeats column to tblClientMachine
+--  Supports heartbeat grace counter: machine is only marked
+--  Offline after 3 consecutive missed scans (~3 min), preventing
+--  false-positive offline detection under local dev load.
+-- ============================================================
+IF NOT EXISTS (
+    SELECT 1 FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_NAME = 'tblClientMachine' AND COLUMN_NAME = 'MissedHeartbeats'
+)
+    ALTER TABLE dbo.tblClientMachine
+        ADD MissedHeartbeats INT NOT NULL
+            CONSTRAINT DF_tblClientMachine_MissedHeartbeats DEFAULT (0);
+GO
+
+SELECT 'PATCH C: MissedHeartbeats column added to tblClientMachine' AS Status;
 GO

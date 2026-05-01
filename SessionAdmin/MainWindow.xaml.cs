@@ -3,11 +3,16 @@ using System.Collections.ObjectModel;
 using System.Data;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Interop;
+using System.Windows.Input;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using SessionManagement.Client;
+using SessionManagement.UI;
 using SessionManagement.WCF;
 
 namespace SessionAdmin
@@ -21,21 +26,39 @@ namespace SessionAdmin
 
         private SessionServiceClient _svc;
         private DispatcherTimer _refreshTimer;
+        private DispatcherTimer _toastTimer;
 
         private string _adminFullname;
         private string _adminUsername;
-        private int _adminUserId;
+        private int    _adminUserId;
+        private string _adminProfileBase64;
 
         private ObservableCollection<ActiveSessionVM> _sessions = new ObservableCollection<ActiveSessionVM>();
         private ObservableCollection<ClientVM> _clients = new ObservableCollection<ClientVM>();
         private ObservableCollection<AlertVM> _alerts = new ObservableCollection<AlertVM>();
         private ObservableCollection<LogVM> _logs = new ObservableCollection<LogVM>();
         private ObservableCollection<UserVM> _users = new ObservableCollection<UserVM>();
-        private ObservableCollection<BillingRateVM> _billingRates = new ObservableCollection<BillingRateVM>();
-        private int? _selectedBillingRateId = null;
+        private ObservableCollection<BillingRateVM>    _billingRates   = new ObservableCollection<BillingRateVM>();
+        private ObservableCollection<BillingRecordVM>  _billingRecords = new ObservableCollection<BillingRecordVM>();
+        private ObservableCollection<ReportSessionVM> _reportSessions = new ObservableCollection<ReportSessionVM>();
+
+        // Cached last report data so export always works regardless of which panel is visible
+        private ReportData _lastReportData;
+        private string     _lastReportType;
+        private DateTime   _lastReportFrom;
+        private DateTime   _lastReportTo;
 
         // Current active nav page
         private string _currentPage = "dashboard";
+
+        // Custom-maximize state — tracks whether the window is filling the work area.
+        // We do NOT use WindowState.Maximized because with WindowStyle="None" it extends
+        // over the taskbar; instead we manually size the window to SystemParameters.WorkArea.
+        private bool _isManuallyMaximized;
+        private Rect _normalBounds;
+
+        // Prevents concurrent background reconnect tasks from the 2-second poll.
+        private bool _reconnectInProgress;
 
         #endregion
 
@@ -44,17 +67,28 @@ namespace SessionAdmin
         // ═══════════════════════════════════════════════════════════
         #region Initialization
 
-        public MainWindow()
+        // Called by SplashWindow with an already-connected service client.
+        public MainWindow(SessionServiceClient svc = null)
         {
             InitializeComponent();
+            Icon = BitmapFrame.Create(new Uri("pack://application:,,,/app.ico", UriKind.Absolute));
+            Loaded += (_, __) => ToggleMaximize();
+
+            if (svc != null)
+            {
+                _svc = svc;
+                _svc.ServerMessage += OnServerMessage;
+            }
 
             // Bind collections
-            dgActiveSessions.ItemsSource = _sessions;
-            dgClients.ItemsSource = _clients;
-            dgAlerts.ItemsSource = _alerts;
-            dgLogs.ItemsSource = _logs;
+            dgActiveSessions.ItemsSource  = _sessions;
+            dgClients.ItemsSource         = _clients;
+            dgAlerts.ItemsSource          = _alerts;
+            dgLogs.ItemsSource            = _logs;
+            dgReportSessions.ItemsSource  = _reportSessions;
             dgUsers.ItemsSource = _users;
-            dgBillingRates.ItemsSource = _billingRates;
+            dgBillingRates.ItemsSource   = _billingRates;
+            dgBillingRecords.ItemsSource = _billingRecords;
 
             // Default date ranges
             dpFromDate.SelectedDate = DateTime.Today.AddMonths(-1);
@@ -76,20 +110,139 @@ namespace SessionAdmin
 
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
+            HookPasswordPlaceholder(txtAdminPassword);
+
+            // Skip if splash already connected.
+            if (_svc != null && _svc.IsConnected) return;
+
             try
             {
                 _svc = new SessionServiceClient();
                 _svc.ServerMessage += OnServerMessage;
 
                 if (!_svc.Connect())
-                    MessageBox.Show("Cannot connect to server.", "Connection Error",
-                        MessageBoxButton.OK, MessageBoxImage.Error);
+                    AppDialog.ShowError("Cannot connect to server.", "Connection Error");
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Init error: {ex.Message}", "Error",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                AppDialog.ShowError($"Init error: {ex.Message}");
             }
+        }
+
+        #endregion
+
+        // ═══════════════════════════════════════════════════════════
+        //  #region TOUCHPAD HORIZONTAL SCROLL
+        // ═══════════════════════════════════════════════════════════
+        #region Touchpad Horizontal Scroll
+
+        private const int WM_MOUSEHWHEEL = 0x020E;
+        private DataGrid _mouseOverDataGrid;
+        private bool _hScrollProcessing;
+
+        protected override void OnSourceInitialized(EventArgs e)
+        {
+            base.OnSourceInitialized(e);
+            // Track which DataGrid the mouse is currently over via WPF events —
+            // far more reliable than hit-testing inside a WndProc hook.
+            PreviewMouseMove += (s, me) =>
+                _mouseOverDataGrid = FindAncestorOrSelf<DataGrid>(me.OriginalSource as DependencyObject);
+
+            // Two hooks for belt-and-suspenders: AddHook fires for the window HWND;
+            // ThreadPreprocessMessage fires for any child HWND (WPF rendering child).
+            var src = HwndSource.FromHwnd(new WindowInteropHelper(this).Handle);
+            src?.AddHook(WndProcHook);
+
+            ComponentDispatcher.ThreadPreprocessMessage += OnThreadPreprocessMessage;
+            Closed += (s, ev) => ComponentDispatcher.ThreadPreprocessMessage -= OnThreadPreprocessMessage;
+        }
+
+        private IntPtr WndProcHook(IntPtr hwnd, int msg, IntPtr wParam, IntPtr lParam, ref bool handled)
+        {
+            if (msg != WM_MOUSEHWHEEL || _hScrollProcessing) return IntPtr.Zero;
+            int delta = (short)((wParam.ToInt64() >> 16) & 0xFFFF);
+            if (delta == 0) return IntPtr.Zero;
+            _hScrollProcessing = true;
+            try { ScrollDataGridH(delta); } finally { _hScrollProcessing = false; }
+            handled = true;
+            return IntPtr.Zero;
+        }
+
+        private void OnThreadPreprocessMessage(ref MSG msg, ref bool handled)
+        {
+            if (handled || msg.message != WM_MOUSEHWHEEL || _hScrollProcessing) return;
+            int delta = (short)((msg.wParam.ToInt64() >> 16) & 0xFFFF);
+            if (delta == 0) return;
+            _hScrollProcessing = true;
+            try { ScrollDataGridH(delta); } finally { _hScrollProcessing = false; }
+            handled = true;
+        }
+
+        private void ScrollDataGridH(int delta)
+        {
+            var dg = _mouseOverDataGrid;
+            if (dg == null || !dg.IsVisible) return;
+            dg.ApplyTemplate();
+            var sv = dg.Template?.FindName("DG_ScrollViewer", dg) as ScrollViewer
+                     ?? FindDescendant<ScrollViewer>(dg);
+            sv?.ScrollToHorizontalOffset(sv.HorizontalOffset + delta / 3.0);
+        }
+
+        private void DgScrollChanged(object sender, ScrollChangedEventArgs e)
+        {
+            if (!(sender is DataGrid dg)) return;
+            var parent = VisualTreeHelper.GetParent(dg) as Grid;
+            if (parent == null) return;
+            bool canScroll = e.ExtentWidth > e.ViewportWidth;
+            foreach (UIElement child in parent.Children)
+                if (child is StackPanel sp) sp.Visibility = canScroll ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void BtnScrollLeft_Click(object sender, RoutedEventArgs e)
+        {
+            var container = FindAncestorOrSelf<Grid>((Button)sender);
+            ScrollDgHByButton(container, -120);
+        }
+
+        private void BtnScrollRight_Click(object sender, RoutedEventArgs e)
+        {
+            var container = FindAncestorOrSelf<Grid>((Button)sender);
+            ScrollDgHByButton(container, +120);
+        }
+
+        private void ScrollDgHByButton(Grid container, double delta)
+        {
+            if (container == null) return;
+            DataGrid dg = null;
+            foreach (UIElement child in container.Children)
+                if (child is DataGrid d) { dg = d; break; }
+            if (dg == null) return;
+            dg.ApplyTemplate();
+            var sv = dg.Template?.FindName("DG_ScrollViewer", dg) as ScrollViewer
+                     ?? FindDescendant<ScrollViewer>(dg);
+            sv?.ScrollToHorizontalOffset(sv.HorizontalOffset + delta);
+        }
+
+        private static T FindAncestorOrSelf<T>(DependencyObject obj) where T : DependencyObject
+        {
+            while (obj != null)
+            {
+                if (obj is T t) return t;
+                obj = VisualTreeHelper.GetParent(obj);
+            }
+            return null;
+        }
+
+        private static T FindDescendant<T>(DependencyObject obj) where T : DependencyObject
+        {
+            if (obj is T t) return t;
+            int count = VisualTreeHelper.GetChildrenCount(obj);
+            for (int i = 0; i < count; i++)
+            {
+                var result = FindDescendant<T>(VisualTreeHelper.GetChild(obj, i));
+                if (result != null) return result;
+            }
+            return null;
         }
 
         #endregion
@@ -101,22 +254,53 @@ namespace SessionAdmin
 
         private void UpdateConnectionStatus()
         {
-            bool connected = _svc != null && _svc.IsConnected;
-            ellipseConnectionStatus.Fill = connected
-                ? System.Windows.Media.Brushes.LimeGreen
-                : System.Windows.Media.Brushes.OrangeRed;
-            lblConnectionStatus.Text = connected ? "Connected" : "Disconnected";
-            btnConnect.Visibility = connected ? Visibility.Collapsed : Visibility.Visible;
+            bool connected = _svc != null && _svc.IsChannelReady;
+            var dot   = connected ? System.Windows.Media.Brushes.LimeGreen : System.Windows.Media.Brushes.OrangeRed;
+            var label = connected ? "Connected" : "Disconnected";
+            var retry = connected ? Visibility.Collapsed : Visibility.Visible;
+
+            // Login panel
+            ellipseConnectionStatus.Fill   = dot;  lblConnectionStatus.Text   = label;  btnConnect.Visibility        = retry;
+            // Sidebar
+            ellipseSidebarConnection.Fill  = dot;  lblSidebarConnection.Text  = label;  btnSidebarConnect.Visibility = retry;
+
+            // Background auto-reconnect — one attempt at a time; EnsureConnection() has
+            // a built-in 10s cooldown so this never hammers the server.
+            if (!connected && _svc != null && !_reconnectInProgress)
+            {
+                _reconnectInProgress = true;
+                var svc = _svc;
+                Task.Run(() =>
+                {
+                    try { svc.EnsureConnection(); } catch { }
+                    Dispatcher.BeginInvoke(new Action(() => _reconnectInProgress = false));
+                });
+            }
         }
 
-        private void btnConnect_Click(object sender, RoutedEventArgs e)
+        private async void btnConnect_Click(object sender, RoutedEventArgs e)
         {
-            if (_svc != null && !_svc.Connect())
-                MessageBox.Show("Failed to connect to server.", "Connection Error",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
-            UpdateConnectionStatus();
-        }
+            btnConnect.IsEnabled         = false;
+            btnSidebarConnect.IsEnabled  = false;
+            ConnectingOverlay.Visibility = Visibility.Visible;
 
+            try
+            {
+                var svc = _svc;
+                await Task.Run(() => { try { svc?.Connect(); } catch { } });
+            }
+            finally
+            {
+                ConnectingOverlay.Visibility = Visibility.Collapsed;
+                btnConnect.IsEnabled         = true;
+                btnSidebarConnect.IsEnabled  = true;
+                UpdateConnectionStatus();
+
+                if (_svc?.IsChannelReady != true)
+                    AppDialog.ShowError("Could not reach the server.\nPlease try again in a moment.",
+                                        "Connection Failed");
+            }
+        }
         #endregion
 
         // ═══════════════════════════════════════════════════════════
@@ -138,21 +322,11 @@ namespace SessionAdmin
             PageLogs.Visibility = Visibility.Collapsed;
             PageReports.Visibility = Visibility.Collapsed;
 
-            // Reset all nav buttons to inactive
-            btnNavDashboard.Style = (Style)Resources["NavBtn"];
-            btnNavSessions.Style = (Style)Resources["NavBtn"];
-            btnNavClients.Style = (Style)Resources["NavBtn"];
-            btnNavUsers.Style = (Style)Resources["NavBtn"];
-            btnNavBilling.Style = (Style)Resources["NavBtn"];
-            btnNavAlerts.Style = (Style)Resources["NavBtn"];
-            btnNavLogs.Style = (Style)Resources["NavBtn"];
-            btnNavReports.Style = (Style)Resources["NavBtn"];
-
             switch (page)
             {
                 case "dashboard":
                     PageDashboard.Visibility = Visibility.Visible;
-                    btnNavDashboard.Style = (Style)Resources["NavBtnActive"];
+                    btnNavDashboard.IsChecked = true;
                     lblPageTitle.Text = "Dashboard";
                     lblPageSubtitle.Text = " — Live Overview";
                     LoadDashboard();
@@ -160,7 +334,7 @@ namespace SessionAdmin
 
                 case "sessions":
                     PageSessions.Visibility = Visibility.Visible;
-                    btnNavSessions.Style = (Style)Resources["NavBtnActive"];
+                    btnNavSessions.IsChecked = true;
                     lblPageTitle.Text = "Active Sessions";
                     lblPageSubtitle.Text = " — Live Monitoring";
                     LoadActiveSessions();
@@ -168,7 +342,7 @@ namespace SessionAdmin
 
                 case "clients":
                     PageClients.Visibility = Visibility.Visible;
-                    btnNavClients.Style = (Style)Resources["NavBtnActive"];
+                    btnNavClients.IsChecked = true;
                     lblPageTitle.Text = "Client Machines";
                     lblPageSubtitle.Text = " — Machine Status";
                     LoadClients();
@@ -176,7 +350,7 @@ namespace SessionAdmin
 
                 case "users":
                     PageUsers.Visibility = Visibility.Visible;
-                    btnNavUsers.Style = (Style)Resources["NavBtnActive"];
+                    btnNavUsers.IsChecked = true;
                     lblPageTitle.Text = "User Management";
                     lblPageSubtitle.Text = " — Client Accounts";
                     LoadClientUsers();
@@ -184,15 +358,16 @@ namespace SessionAdmin
 
                 case "billing":
                     PageBilling.Visibility = Visibility.Visible;
-                    btnNavBilling.Style = (Style)Resources["NavBtnActive"];
+                    btnNavBilling.IsChecked = true;
                     lblPageTitle.Text = "Billing Rates";
                     lblPageSubtitle.Text = " — Rate Configuration";
                     LoadBillingRates();
+                    LoadBillingRecords();
                     break;
 
                 case "alerts":
                     PageAlerts.Visibility = Visibility.Visible;
-                    btnNavAlerts.Style = (Style)Resources["NavBtnActive"];
+                    btnNavAlerts.IsChecked = true;
                     lblPageTitle.Text = "Security Alerts";
                     lblPageSubtitle.Text = " — Threat Detection";
                     LoadAlerts();
@@ -200,16 +375,22 @@ namespace SessionAdmin
 
                 case "logs":
                     PageLogs.Visibility = Visibility.Visible;
-                    btnNavLogs.Style = (Style)Resources["NavBtnActive"];
+                    btnNavLogs.IsChecked = true;
                     lblPageTitle.Text = "Session Logs";
                     lblPageSubtitle.Text = " — Activity History";
+                    // Auto-load with current date range so the page is never stale on navigate.
+                    if (dpLogFrom.SelectedDate != null && dpLogTo.SelectedDate != null)
+                        btnLoadLogs_Click(btnLoadLogs, null);
                     break;
 
                 case "reports":
                     PageReports.Visibility = Visibility.Visible;
-                    btnNavReports.Style = (Style)Resources["NavBtnActive"];
+                    btnNavReports.IsChecked = true;
                     lblPageTitle.Text = "Reports";
                     lblPageSubtitle.Text = " — Analytics";
+                    // Clear stale results so the page starts clean each visit.
+                    pnlSessionUsage.Visibility = Visibility.Collapsed;
+                    pnlTextReport.Visibility = Visibility.Collapsed;
                     break;
             }
         }
@@ -232,6 +413,35 @@ namespace SessionAdmin
 
         private bool _adminPasswordVisible;
 
+        // Fix: PasswordBox.Password is not a DP so XAML triggers can't hide the placeholder
+        // once content has been typed. Hook PasswordChanged to manage Visibility directly.
+        private static void HookPasswordPlaceholder(System.Windows.Controls.PasswordBox pb)
+        {
+            pb.PasswordChanged += (s, _) =>
+            {
+                var box = (System.Windows.Controls.PasswordBox)s;
+                var ph = FindVisualChild<System.Windows.Controls.TextBlock>(box, "Placeholder");
+                if (ph == null) return;
+                if (box.Password.Length > 0)
+                    ph.Visibility = Visibility.Collapsed;
+                else
+                    ph.ClearValue(UIElement.VisibilityProperty);
+            };
+        }
+
+        private static T FindVisualChild<T>(System.Windows.DependencyObject parent, string name)
+            where T : System.Windows.FrameworkElement
+        {
+            for (int i = 0; i < System.Windows.Media.VisualTreeHelper.GetChildrenCount(parent); i++)
+            {
+                var child = System.Windows.Media.VisualTreeHelper.GetChild(parent, i);
+                if (child is T t && t.Name == name) return t;
+                var found = FindVisualChild<T>(child, name);
+                if (found != null) return found;
+            }
+            return null;
+        }
+
         private void btnShowAdminPassword_Click(object sender, RoutedEventArgs e)
         {
             _adminPasswordVisible = !_adminPasswordVisible;
@@ -251,7 +461,7 @@ namespace SessionAdmin
             }
         }
 
-        private void btnAdminLogin_Click(object sender, RoutedEventArgs e)
+        private async void btnAdminLogin_Click(object sender, RoutedEventArgs e)
         {
             string user = txtAdminUsername.Text.Trim();
             string pass = _adminPasswordVisible
@@ -267,37 +477,71 @@ namespace SessionAdmin
             }
 
             btnAdminLogin.IsEnabled = false;
-            btnAdminLogin.Content = "Signing in…";
+            btnAdminLogin.Content   = "Signing in…";
+
+            AuthenticationResponse resp = null;
+            Exception loginEx           = null;
 
             try
             {
-                var resp = _svc.AuthenticateUser(user, pass, "ADMIN");
-
-                if (!resp.IsAuthenticated)
-                { ShowLoginError(resp.ErrorMessage ?? "Invalid credentials."); return; }
-
-                if (resp.UserType != "Admin")
-                { ShowLoginError("Access denied. Admin privileges required."); return; }
-
-                _adminFullname = resp.FullName;
-                _adminUsername = resp.Username;
-                _adminUserId = resp.UserId;
-                lblAdminUser.Text = _adminFullname ?? _adminUsername;
-
-                _svc.SubscribeForNotifications("ADMIN");
-                ShowDashboard();
-                LoadAll();
-                _refreshTimer.Start();
-            }
-            catch (Exception ex)
-            {
-                ShowLoginError("Connection error: " + ex.Message);
+                var svc = _svc;
+                (resp, loginEx) = await Task.Run(() =>
+                {
+                    try
+                    {
+                        var r = svc.AuthenticateUser(user, pass, "ADMIN");
+                        if (r.IsAuthenticated && r.UserType == "Admin")
+                            svc.SubscribeForNotifications("ADMIN_" + r.UserId);
+                        return (r, (Exception)null);
+                    }
+                    catch (Exception ex) { return (null, ex); }
+                });
             }
             finally
             {
                 btnAdminLogin.IsEnabled = true;
-                btnAdminLogin.Content = "Sign In →";
+                btnAdminLogin.Content   = "Sign In →";
             }
+
+            if (loginEx != null)
+            { ShowLoginError("Connection error: " + loginEx.Message); return; }
+
+            if (!resp.IsAuthenticated)
+            { ShowLoginError(resp.ErrorMessage ?? "Invalid credentials."); return; }
+
+            if (resp.UserType != "Admin")
+            { ShowLoginError("Access denied. Admin privileges required."); return; }
+
+            _adminFullname      = resp.FullName;
+            _adminUsername      = resp.Username;
+            _adminUserId        = resp.UserId;
+            _adminProfileBase64 = resp.ProfilePictureBase64;
+            lblAdminUser.Text    = _adminFullname ?? _adminUsername;
+            lblAdminInitial.Text = (_adminFullname ?? _adminUsername ?? "A").Substring(0, 1).ToUpper();
+
+            if (!string.IsNullOrEmpty(_adminProfileBase64))
+            {
+                try
+                {
+                    var bytes = Convert.FromBase64String(_adminProfileBase64);
+                    var bmp   = new BitmapImage();
+                    using (var ms = new System.IO.MemoryStream(bytes))
+                    {
+                        bmp.BeginInit();
+                        bmp.CacheOption  = BitmapCacheOption.OnLoad;
+                        bmp.StreamSource = ms;
+                        bmp.EndInit();
+                    }
+                    imgAdminAvatar.Source      = bmp;
+                    imgAdminAvatar.Visibility  = Visibility.Visible;
+                    lblAdminInitial.Visibility = Visibility.Collapsed;
+                }
+                catch { /* corrupt/missing picture — show initial */ }
+            }
+
+            ShowDashboard();
+            LoadAll();
+            _refreshTimer.Start();
         }
 
         private void ShowLoginError(string msg)
@@ -381,18 +625,20 @@ namespace SessionAdmin
                 {
                     _sessions.Add(new ActiveSessionVM
                     {
-                        SessionId = s.SessionId,
-                        ClientId = s.ClientCode,
-                        Username = s.Username,
-                        StartTime = s.StartTime.ToString("HH:mm:ss"),
-                        Duration = $"{s.SelectedDuration} min",
-                        RemainingTime = $"{s.RemainingMinutes} min",
+                        SessionId      = s.SessionId,
+                        ClientId       = s.ClientCode,
+                        Username       = s.Username,
+                        FullName       = s.FullName,
+                        StartTime      = s.StartTime.ToString("hh:mm:ss tt"),
+                        Duration       = $"{s.SelectedDuration} min",
+                        RemainingTime  = $"{s.RemainingMinutes} min",
                         CurrentBilling = $"${s.CurrentBilling:F2}",
-                        Status = s.SessionStatus
+                        Status         = s.SessionStatus,
+                        ImagePath      = s.ImagePath
                     });
                 }
                 lblActiveCount.Text = $"{_sessions.Count} sessions";
-                lblLastUpdate.Text = $"Updated {DateTime.Now:HH:mm:ss}";
+                lblLastUpdate.Text = $"Updated {DateTime.Now:hh:mm:ss tt}";
             }
             catch (Exception ex)
             {
@@ -405,74 +651,89 @@ namespace SessionAdmin
             LoadAll();
         }
 
-        private void btnTerminateSession_Click(object sender, RoutedEventArgs e)
+        private async void btnTerminateSession_Click(object sender, RoutedEventArgs e)
         {
             var btn = sender as Button;
             var session = btn?.DataContext as ActiveSessionVM;
             if (session == null) return;
 
-            var r = MessageBox.Show(
-                $"Terminate session {session.SessionId} for '{session.Username}'?",
-                "Confirm Termination", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (r != MessageBoxResult.Yes) return;
+            if (!AppDialog.Confirm($"Terminate session {session.SessionId} for '{session.Username}'?", "Confirm Termination")) return;
 
+            if (btn != null) btn.IsEnabled = false;
             try
             {
-                bool ok = _svc.EndSession(session.SessionId, "Admin");
+                bool ok = false;
+                Exception err = null;
+                var svc = _svc;
+                (ok, err) = await Task.Run(() =>
+                {
+                    try   { return (svc.EndSession(session.SessionId, "Admin"), (Exception)null); }
+                    catch (Exception ex) { return (false, ex); }
+                });
+
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
+
                 if (ok)
                 {
                     _sessions.Remove(session);
                     lblActiveCount.Text = $"{_sessions.Count} sessions";
+                    ShowToast($"Session {session.SessionId} for '{session.Username}' terminated.");
                 }
                 else
-                    MessageBox.Show("Failed to terminate session.", "Error",
-                        MessageBoxButton.OK, MessageBoxImage.Error);
+                    ShowToast("Failed to terminate session.", "error");
             }
-            catch (Exception ex)
+            finally
             {
-                MessageBox.Show($"Error: {ex.Message}", "Error",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                if (btn != null) btn.IsEnabled = true;
             }
         }
 
-        private void btnViewImage_Click(object sender, RoutedEventArgs e)
+        private async void btnViewImage_Click(object sender, RoutedEventArgs e)
         {
-            var selected = dgActiveSessions.SelectedItem as ActiveSessionVM;
-            if (selected == null)
-            {
-                MessageBox.Show("Please select a session first.", "No Selection",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
+            var btn = (Button)sender;
+            var session = btn.DataContext as ActiveSessionVM;
+            if (session == null) return;
 
+            btn.IsEnabled = false;
             try
             {
-                string b64 = _svc.DownloadLoginImage(selected.SessionId);
+                string b64 = null;
+                Exception err = null;
+                var svc = _svc;
+                (b64, err) = await Task.Run(() =>
+                {
+                    try   { return (svc.DownloadLoginImage(session.SessionId), (Exception)null); }
+                    catch (Exception ex) { return ((string)null, ex); }
+                });
+
+                if (err != null) { ShowToast($"Error loading image: {err.Message}", "error"); return; }
+
                 if (string.IsNullOrEmpty(b64))
                 {
-                    MessageBox.Show("No image available for this session.", "No Image",
-                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    ShowToast("No login image available for this session.", "warning");
                     return;
                 }
 
-                byte[] bytes = Convert.FromBase64String(b64);
-                using (var ms = new System.IO.MemoryStream(bytes))
+                try
                 {
-                    var bmp = new BitmapImage();
-                    bmp.BeginInit();
-                    bmp.StreamSource = ms;
-                    bmp.CacheOption = BitmapCacheOption.OnLoad;
-                    bmp.EndInit();
-                    imgSessionPhoto.Source = bmp;
+                    byte[] bytes = Convert.FromBase64String(b64);
+                    using (var ms = new System.IO.MemoryStream(bytes))
+                    {
+                        var bmp = new BitmapImage();
+                        bmp.BeginInit();
+                        bmp.StreamSource = ms;
+                        bmp.CacheOption = BitmapCacheOption.OnLoad;
+                        bmp.EndInit();
+                        imgSessionPhoto.Source = bmp;
+                    }
+                    lblImageTitle.Text = $"Session {session.SessionId} — {session.Username}";
+                    ImageViewerPanel.Visibility = Visibility.Visible;
                 }
-
-                lblImageTitle.Text = $"Session {selected.SessionId} — {selected.Username}";
-                ImageViewerPanel.Visibility = Visibility.Visible;
+                catch (Exception ex) { ShowToast($"Error decoding image: {ex.Message}", "error"); }
             }
-            catch (Exception ex)
+            finally
             {
-                MessageBox.Show($"Error loading image: {ex.Message}", "Error",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                btn.IsEnabled = true;
             }
         }
 
@@ -498,16 +759,17 @@ namespace SessionAdmin
                 {
                     _clients.Add(new ClientVM
                     {
-                        ClientId = c.ClientCode,
-                        MachineName = c.MachineName,
-                        IpAddress = c.IpAddress,
-                        MacAddress = c.MacAddress,
-                        Location = c.Location,
-                        IsActive = c.IsActive,
-                        ClientMachineStatus = c.IsActive ? "Active" : "Inactive",
-                        Status = c.Status,
-                        CurrentUser = c.CurrentUser ?? "—",
-                        LastActive = c.LastActiveTime?.ToString("yyyy-MM-dd HH:mm") ?? "Never"
+                        ClientId             = c.ClientCode,
+                        MachineName          = c.MachineName,
+                        IpAddress            = c.IpAddress,
+                        MacAddress           = c.MacAddress,
+                        Location             = c.Location,
+                        IsActive             = c.IsActive,
+                        ClientMachineStatus  = c.IsActive ? "Active" : "Inactive",
+                        Status               = c.Status,
+                        CurrentUser          = c.CurrentUser ?? "—",
+                        LastActive           = c.LastActiveTime?.ToString("MM/dd/yyyy hh:mm tt") ?? "Never",
+                        MissedHeartbeats     = c.MissedHeartbeats
                     });
                 }
                 kpiClients.Text = _clients.Count.ToString();
@@ -518,36 +780,62 @@ namespace SessionAdmin
             }
         }
 
-        private void btnEnableClient_Click(object sender, RoutedEventArgs e)
+        private async void btnEnableClient_Click(object sender, RoutedEventArgs e)
         {
-            var client = (sender as Button)?.DataContext as ClientVM;
+            var btn = sender as Button;
+            var client = btn?.DataContext as ClientVM;
             if (client == null) return;
+            if (btn != null) btn.IsEnabled = false;
             try
             {
-                if (_svc.UpdateClientMachineIsActive(client.ClientId, true))
-                    LoadClients();
-                else
-                    MessageBox.Show("Failed to enable client.", "Error",
-                        MessageBoxButton.OK, MessageBoxImage.Error);
+                bool ok = false; Exception err = null;
+                var svc = _svc; var id = client.ClientId;
+                (ok, err) = await Task.Run(() => { try { return (svc.UpdateClientMachineIsActive(id, true), (Exception)null); } catch (Exception ex) { return (false, ex); } });
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
+                if (ok) { LoadClients(); ShowToast($"Client '{id}' enabled."); }
+                else ShowToast($"Failed to enable client '{id}'.", "error");
             }
-            catch (Exception ex)
-            { MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error); }
+            finally { if (btn != null) btn.IsEnabled = true; }
         }
 
-        private void btnDisableClient_Click(object sender, RoutedEventArgs e)
+        private async void btnDisableClient_Click(object sender, RoutedEventArgs e)
+        {
+            var btn = sender as Button;
+            var client = btn?.DataContext as ClientVM;
+            if (client == null) return;
+            if (btn != null) btn.IsEnabled = false;
+            try
+            {
+                bool ok = false; Exception err = null;
+                var svc = _svc; var id = client.ClientId;
+                (ok, err) = await Task.Run(() => { try { return (svc.UpdateClientMachineIsActive(id, false), (Exception)null); } catch (Exception ex) { return (false, ex); } });
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
+                if (ok) { LoadClients(); ShowToast($"Client '{id}' disabled.", "warning"); }
+                else ShowToast($"Failed to disable client '{id}'.", "error");
+            }
+            finally { if (btn != null) btn.IsEnabled = true; }
+        }
+
+        /// <summary>
+        /// Opens EditMachineWindow with the selected machine's current name/location.
+        /// The WCF save call happens inside the window so it stays open on failure.
+        /// </summary>
+        private void btnEditMachine_Click(object sender, RoutedEventArgs e)
         {
             var client = (sender as Button)?.DataContext as ClientVM;
             if (client == null) return;
-            try
+
+            var win = new EditMachineWindow(client,
+                (name, location) => _svc.UpdateClientMachineInfo(client.ClientId, name, location))
             {
-                if (_svc.UpdateClientMachineIsActive(client.ClientId, false))
-                    LoadClients();
-                else
-                    MessageBox.Show("Failed to disable client.", "Error",
-                        MessageBoxButton.OK, MessageBoxImage.Error);
+                Owner = this
+            };
+
+            if (win.ShowDialog() == true)
+            {
+                LoadClients();
+                ShowToast($"Machine '{client.ClientId}' updated.");
             }
-            catch (Exception ex)
-            { MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error); }
         }
 
         #endregion
@@ -567,7 +855,7 @@ namespace SessionAdmin
                     _alerts.Add(new AlertVM
                     {
                         AlertId = a.AlertId,
-                        Timestamp = a.Timestamp.ToString("yyyy-MM-dd HH:mm:ss"),
+                        Timestamp = a.Timestamp.ToString("MM/dd/yyyy hh:mm tt"),
                         Severity = a.Severity,
                         ClientId = a.ClientCode ?? "—",
                         Username = a.Username ?? "—",
@@ -586,22 +874,45 @@ namespace SessionAdmin
             }
         }
 
-        private void btnAcknowledgeAlert_Click(object sender, RoutedEventArgs e)
+        private async void btnAcknowledgeAlert_Click(object sender, RoutedEventArgs e)
         {
-            var alert = (sender as Button)?.DataContext as AlertVM;
+            var btn = sender as Button;
+            var alert = btn?.DataContext as AlertVM;
             if (alert == null) return;
+            if (!AppDialog.Confirm(
+                    $"Acknowledge alert #{alert.AlertId}?\n\nType: {alert.AlertType}\nClient: {alert.ClientId}",
+                    "Confirm Acknowledge")) return;
+
+            if (btn != null) btn.IsEnabled = false;
             try
             {
-                bool ok = _svc.AcknowledgeAlert(alert.AlertId, _adminUserId);
+                bool ok = false;
+                Exception err = null;
+                var svc = _svc;
+                int alertId = alert.AlertId;
+                int adminId = _adminUserId;
+                (ok, err) = await Task.Run(() =>
+                {
+                    try   { return (svc.AcknowledgeAlert(alertId, adminId), (Exception)null); }
+                    catch (Exception ex) { return (false, ex); }
+                });
+
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
+
                 if (ok)
                 {
                     _alerts.Remove(alert);
                     lblAlertCount.Text = $"{_alerts.Count} unresolved";
                     kpiAlerts.Text = _alerts.Count.ToString();
+                    ShowToast($"Alert #{alertId} acknowledged.");
                 }
+                else
+                    ShowToast("Failed to acknowledge alert.", "error");
             }
-            catch (Exception ex)
-            { MessageBox.Show($"Error: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error); }
+            finally
+            {
+                if (btn != null) btn.IsEnabled = true;
+            }
         }
 
         #endregion
@@ -611,49 +922,54 @@ namespace SessionAdmin
         // ═══════════════════════════════════════════════════════════
         #region Session Logs
 
-        private void btnLoadLogs_Click(object sender, RoutedEventArgs e)
+        private async void btnLoadLogs_Click(object sender, RoutedEventArgs e)
         {
             if (dpLogFrom.SelectedDate == null || dpLogTo.SelectedDate == null)
-            {
-                MessageBox.Show("Please select both From and To dates.", "Date Required",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
+            { ShowToast("Please select both From and To dates.", "warning"); return; }
 
             DateTime from = dpLogFrom.SelectedDate.Value;
-            DateTime to = dpLogTo.SelectedDate.Value;
+            DateTime to   = dpLogTo.SelectedDate.Value;
             if (from > to)
-            {
-                MessageBox.Show("From date cannot be after To date.", "Invalid Range",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
+            { ShowToast("From date cannot be after To date.", "warning"); return; }
 
             string cat = (cboLogCategory.SelectedItem as ComboBoxItem)?.Content.ToString();
             if (cat == "All") cat = null;
 
+            btnLoadLogs.IsEnabled = false;
+            btnLoadLogs.Content   = "⏳ Loading…";
             try
             {
-                var logs = _svc.GetSystemLogs(from, to, cat);
+                SessionManagement.WCF.SystemLogInfo[] logs = null;
+                Exception err = null;
+                var svc = _svc;
+                (logs, err) = await Task.Run(() =>
+                {
+                    try   { return (svc.GetSystemLogs(from, to, cat), (Exception)null); }
+                    catch (Exception ex) { return ((SessionManagement.WCF.SystemLogInfo[])null, ex); }
+                });
+
+                if (err != null) { ShowToast($"Error loading logs: {err.Message}", "error"); return; }
+
                 _logs.Clear();
                 foreach (var log in logs)
                 {
                     _logs.Add(new LogVM
                     {
-                        LogTime = log.LoggedAt.ToString("yyyy-MM-dd HH:mm:ss"),
-                        Category = log.Category,
-                        LogType = log.Type,
-                        Source = log.Source ?? "—",
+                        LogTime    = log.LoggedAt.ToString("MM/dd/yyyy hh:mm tt"),
+                        Category   = log.Category,
+                        LogType    = log.Type,
+                        Source     = log.Source    ?? "—",
                         ClientCode = log.ClientCode ?? "—",
-                        Username = log.Username ?? "—",
-                        Message = log.Message
+                        Username   = log.Username   ?? "—",
+                        Message    = log.Message
                     });
                 }
+                ShowToast($"{_logs.Count} log entr{(_logs.Count == 1 ? "y" : "ies")} loaded.");
             }
-            catch (Exception ex)
+            finally
             {
-                MessageBox.Show($"Error loading logs: {ex.Message}", "Error",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                btnLoadLogs.IsEnabled = true;
+                btnLoadLogs.Content   = "⊳ Load Logs";
             }
         }
 
@@ -664,29 +980,71 @@ namespace SessionAdmin
         // ═══════════════════════════════════════════════════════════
         #region Reports
 
-        private void btnGenerateReport_Click(object sender, RoutedEventArgs e)
+        private async void btnGenerateReport_Click(object sender, RoutedEventArgs e)
         {
             if (dpFromDate.SelectedDate == null || dpToDate.SelectedDate == null)
-            {
-                MessageBox.Show("Please select From and To dates.", "Date Required",
-                    MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
+            { ShowToast("Please select From and To dates.", "warning"); return; }
 
             DateTime from = dpFromDate.SelectedDate.Value;
-            DateTime to = dpToDate.SelectedDate.Value;
+            DateTime to   = dpToDate.SelectedDate.Value;
+            string type   = (cboReportType.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "Session Usage";
 
-            string type = (cboReportType.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "Session Usage";
-
+            btnGenerateReport.IsEnabled = false;
+            btnGenerateReport.Content   = "⏳ Generating…";
             try
             {
-                var data = _svc.GetSessionReport(from, to);
-                txtReportOutput.Text = BuildReportText(type, data, from, to);
+                ReportData data = null;
+                Exception err = null;
+                var svc = _svc;
+                (data, err) = await Task.Run(() =>
+                {
+                    try   { return (svc.GetSessionReport(from, to), (Exception)null); }
+                    catch (Exception ex) { return ((ReportData)null, ex); }
+                });
+
+                if (err != null) { ShowToast($"Error generating report: {err.Message}", "error"); return; }
+
+                _lastReportData = data;
+                _lastReportType = type;
+                _lastReportFrom = from;
+                _lastReportTo   = to;
+
+                if (type == "Session Usage")
+                {
+                    lblRptSessions.Text = data.TotalSessions.ToString();
+                    lblRptHours.Text    = $"{data.TotalHours:F2}";
+                    lblRptRevenue.Text  = $"${data.TotalRevenue:F2}";
+
+                    _reportSessions.Clear();
+                    foreach (var s in data.Sessions ?? Array.Empty<SessionInfo>())
+                        _reportSessions.Add(new ReportSessionVM
+                        {
+                            Username    = s.Username,
+                            FullName    = s.FullName,
+                            ClientCode  = s.ClientCode,
+                            MachineName = s.MachineName,
+                            StartTime   = s.StartTime.ToString("MM/dd/yyyy hh:mm tt"),
+                            ActualMin   = s.SelectedDuration.ToString(),
+                            Billing     = $"${s.CurrentBilling:F2}",
+                            Status      = s.SessionStatus
+                        });
+
+                    pnlSessionUsage.Visibility = Visibility.Visible;
+                    pnlTextReport.Visibility   = Visibility.Collapsed;
+                    ShowToast($"Report ready — {data.TotalSessions} session(s).");
+                }
+                else
+                {
+                    txtReportOutput.Text = BuildReportText(type, data, from, to);
+                    pnlTextReport.Visibility   = Visibility.Visible;
+                    pnlSessionUsage.Visibility = Visibility.Collapsed;
+                    ShowToast("Report generated.");
+                }
             }
-            catch (Exception ex)
+            finally
             {
-                MessageBox.Show($"Error generating report: {ex.Message}", "Error",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
+                btnGenerateReport.IsEnabled = true;
+                btnGenerateReport.Content   = "⊳ Generate";
             }
         }
 
@@ -696,7 +1054,7 @@ namespace SessionAdmin
             sb.AppendLine($"{'═',-72}");
             sb.AppendLine($"  {type.ToUpper()} REPORT");
             sb.AppendLine($"  Period  : {from:yyyy-MM-dd}  →  {to:yyyy-MM-dd}");
-            sb.AppendLine($"  Generated : {DateTime.Now:yyyy-MM-dd HH:mm:ss}  by  {_adminUsername}");
+            sb.AppendLine($"  Generated : {DateTime.Now:MM/dd/yyyy hh:mm:ss tt}  by  {_adminUsername}");
             sb.AppendLine($"{'═',-72}");
             sb.AppendLine();
 
@@ -707,10 +1065,10 @@ namespace SessionAdmin
                     sb.AppendLine($"  Total Hours      : {data.TotalHours:F2}");
                     sb.AppendLine($"  Total Revenue    : ${data.TotalRevenue:F2}");
                     sb.AppendLine();
-                    sb.AppendLine($"  {"User",-18} {"Client",-12} {"Duration",8}  {"Billing",10}  Status");
-                    sb.AppendLine(new string('─', 70));
+                    sb.AppendLine($"  {"User",-14} {"Full Name",-20} {"Client",-16} {"Machine",-16} {"Start Time",-20} {"Actual",6}  {"Billing",9}  Status");
+                    sb.AppendLine(new string('─', 115));
                     foreach (var s in data.Sessions ?? Array.Empty<SessionInfo>())
-                        sb.AppendLine($"  {s.Username,-18} {s.ClientCode,-12} {s.SelectedDuration,6}min  ${s.CurrentBilling,8:F2}  {s.SessionStatus}");
+                        sb.AppendLine($"  {s.Username,-14} {s.FullName,-20} {s.ClientCode,-16} {s.MachineName,-16} {s.StartTime:MM/dd/yyyy hh:mm tt}  {s.SelectedDuration,4}min  ${s.CurrentBilling,7:F2}  {s.SessionStatus}");
                     break;
 
                 case "Billing Summary":
@@ -723,12 +1081,12 @@ namespace SessionAdmin
 
                 case "Security Alerts":
                     var al = _svc.GetUnacknowledgedAlerts()
-                        .Where(a => a.Timestamp >= from && a.Timestamp <= to.AddDays(1)).ToArray();
+                        .Where(a => a.Timestamp >= from && a.Timestamp <= to.AddDays(1).AddSeconds(-1)).ToArray();
                     sb.AppendLine($"  Unresolved Alerts : {al.Length}");
                     sb.AppendLine();
                     foreach (var a in al.OrderByDescending(x => x.Timestamp))
                     {
-                        sb.AppendLine($"  {a.Timestamp:yyyy-MM-dd HH:mm}  [{a.Severity}]  {a.AlertType}");
+                        sb.AppendLine($"  {a.Timestamp:MM/dd/yyyy hh:mm tt}  [{a.Severity}]  {a.AlertType}");
                         sb.AppendLine($"    {a.Description}");
                     }
                     break;
@@ -738,13 +1096,11 @@ namespace SessionAdmin
 
         private void btnExportReport_Click(object sender, RoutedEventArgs e)
         {
-            string text = txtReportOutput.Text;
-            if (string.IsNullOrWhiteSpace(text) || text.StartsWith("Generate"))
-            {
-                MessageBox.Show("Generate a report first.", "Nothing to export",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
+            if (_lastReportData == null)
+            { ShowToast("Generate a report first before exporting.", "warning"); return; }
+
+            string text = BuildReportText(_lastReportType, _lastReportData, _lastReportFrom, _lastReportTo);
+
             var dlg = new Microsoft.Win32.SaveFileDialog
             {
                 Filter = "Text files (*.txt)|*.txt",
@@ -752,9 +1108,12 @@ namespace SessionAdmin
             };
             if (dlg.ShowDialog() == true)
             {
-                File.WriteAllText(dlg.FileName, text);
-                MessageBox.Show($"Exported to:\n{dlg.FileName}", "Exported",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
+                try
+                {
+                    File.WriteAllText(dlg.FileName, text);
+                    ShowToast($"Report exported to: {System.IO.Path.GetFileName(dlg.FileName)}");
+                }
+                catch (Exception ex) { ShowToast($"Export failed: {ex.Message}", "error"); }
             }
         }
 
@@ -775,14 +1134,15 @@ namespace SessionAdmin
                 {
                     _users.Add(new UserVM
                     {
-                        UserId = u.UserId,
-                        Username = u.Username,
-                        FullName = u.FullName,
-                        Phone = u.Phone,
-                        Address = u.Address,
-                        Status = u.Status,
-                        CreatedAt = u.CreatedAt.ToString("yyyy-MM-dd HH:mm"),
-                        LastLogin = u.LastLoginAt?.ToString("yyyy-MM-dd HH:mm") ?? "Never"
+                        UserId               = u.UserId,
+                        Username             = u.Username,
+                        FullName             = u.FullName,
+                        Phone                = u.Phone,
+                        Address              = u.Address,
+                        Status               = u.Status,
+                        CreatedAt            = u.CreatedAt.ToString("MM/dd/yyyy hh:mm tt"),
+                        LastLogin            = u.LastLoginAt?.ToString("MM/dd/yyyy hh:mm tt") ?? "Never",
+                        ProfilePictureBase64 = u.ProfilePictureBase64
                     });
                 }
                 lblUserCount.Text = _users.Count.ToString();
@@ -793,156 +1153,121 @@ namespace SessionAdmin
             }
         }
 
-        private void btnRegisterUser_Click(object sender, RoutedEventArgs e)
+        private async void btnRefreshUsers_Click(object sender, RoutedEventArgs e)
         {
-            string username = txtUsername.Text.Trim();
-            string fullName = txtFullName.Text.Trim();
-            string password = txtPassword.Password;
-            string phone = txtPhone.Text.Trim();
-            string address = txtAddress.Text.Trim();
-
-            HideUserFormMessages();
-
-            if (string.IsNullOrEmpty(username) || string.IsNullOrEmpty(password))
-            {
-                ShowRegError("Username and password are required.");
-                return;
-            }
-
-            btnRegisterUser.IsEnabled = false;
-            btnRegisterUser.Content = "Registering…";
+            btnRefreshUsers.IsEnabled = false;
+            var saved = btnRefreshUsers.Content;
+            btnRefreshUsers.Content = "⏳";
             try
             {
-                var resp = _svc.RegisterClientUser(username, fullName, password, phone, address, _adminUserId);
-                if (!resp.Success)
-                { ShowRegError(resp.ErrorMessage ?? "Registration failed."); return; }
-
-                ShowRegSuccess($"✓ User '{username}' registered successfully (ID: {resp.UserId})");
-                ClearRegistrationForm();
-                LoadClientUsers();
+                UserInfo[] list = null; Exception err = null;
+                var svc = _svc;
+                (list, err) = await Task.Run(() => { try { return (svc.GetAllClientUsers(), (Exception)null); } catch (Exception ex) { return (null, ex); } });
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
+                _users.Clear();
+                foreach (var u in list)
+                    _users.Add(new UserVM { UserId = u.UserId, Username = u.Username, FullName = u.FullName, Phone = u.Phone, Address = u.Address, Status = u.Status, CreatedAt = u.CreatedAt.ToString("MM/dd/yyyy hh:mm tt"), LastLogin = u.LastLoginAt?.ToString("MM/dd/yyyy hh:mm tt") ?? "Never", ProfilePictureBase64 = u.ProfilePictureBase64 });
+                lblUserCount.Text = _users.Count.ToString();
+                ShowToast($"{_users.Count} user(s) loaded.");
             }
-            catch (Exception ex)
-            { ShowRegError($"Connection error: {ex.Message}"); }
-            finally
-            {
-                btnRegisterUser.IsEnabled = true;
-                btnRegisterUser.Content = "+ Register User";
-            }
+            finally { btnRefreshUsers.IsEnabled = true; btnRefreshUsers.Content = saved; }
         }
 
-        private void btnClearForm_Click(object sender, RoutedEventArgs e) => ClearRegistrationForm();
-
-        private void btnGeneratePassword_Click(object sender, RoutedEventArgs e)
+        private void btnAddNewUser_Click(object sender, RoutedEventArgs e)
         {
-            txtPassword.Password = "User@123456";
-            MessageBox.Show("Default password set: User@123456", "Default Password",
-                MessageBoxButton.OK, MessageBoxImage.Information);
-        }
+            var win = new UserFormWindow(
+                form =>
+                {
+                    var resp = _svc.RegisterClientUser(form.Username, form.FullName, form.Password,
+                        form.Phone, form.Address, _adminUserId, form.ProfilePictureBase64);
+                    return resp.Success ? null : (resp.ErrorMessage ?? "Registration failed.");
+                },
+                msg => ShowToast(msg))
+            { Owner = this };
 
-        private void btnRefreshUsers_Click(object sender, RoutedEventArgs e) => LoadClientUsers();
-
-        private void ClearRegistrationForm()
-        {
-            txtUsername.Clear();
-            txtFullName.Clear();
-            txtPassword.Clear();
-            txtPhone.Clear();
-            txtAddress.Clear();
-            HideUserFormMessages();
-        }
-
-        private void ShowRegError(string msg)
-        {
-            lblRegError.Text = msg;
-            regErrorBorder.Visibility = Visibility.Visible;
-            regSuccessBorder.Visibility = Visibility.Collapsed;
-        }
-
-        private void ShowRegSuccess(string msg)
-        {
-            lblRegSuccess.Text = msg;
-            regSuccessBorder.Visibility = Visibility.Visible;
-            regErrorBorder.Visibility = Visibility.Collapsed;
-        }
-
-        private void HideUserFormMessages()
-        {
-            regErrorBorder.Visibility = Visibility.Collapsed;
-            regSuccessBorder.Visibility = Visibility.Collapsed;
+            if (win.ShowDialog() == true) LoadClientUsers();
         }
 
         // Inline actions
         private void btnEditUserInline_Click(object sender, RoutedEventArgs e)
         {
             var selected = (sender as Button)?.DataContext as UserVM;
-            if (selected == null) { ShowUserActionError("Unable to get user data."); return; }
+            if (selected == null) { ShowToast("Unable to get user data.", "error"); return; }
 
-            var editWindow = new EditUserWindow(selected);
-            if (editWindow.ShowDialog() == true)
-            {
-                try
+            var win = new UserFormWindow(selected,
+                form =>
                 {
-                    var resp = _svc.UpdateClientUser(selected.UserId, editWindow.FullName,
-                        editWindow.Phone, editWindow.Address, _adminUserId);
-                    if (!resp.Success) { ShowUserActionError(resp.ErrorMessage ?? "Update failed."); return; }
-                    ShowUserActionSuccess($"✓ User '{selected.Username}' updated successfully.");
-                    LoadClientUsers();
-                }
-                catch (Exception ex) { ShowUserActionError($"Error: {ex.Message}"); }
-            }
+                    var resp = _svc.UpdateClientUser(selected.UserId, form.FullName,
+                        form.Phone, form.Address, _adminUserId, form.ProfilePictureBase64);
+                    return resp.Success ? null : (resp.ErrorMessage ?? "Update failed.");
+                },
+                msg => ShowToast(msg))
+            { Owner = this };
+
+            if (win.ShowDialog() == true) LoadClientUsers();
         }
 
         private void btnResetPasswordInline_Click(object sender, RoutedEventArgs e)
         {
             var selected = (sender as Button)?.DataContext as UserVM;
-            if (selected == null) { ShowUserActionError("Unable to get user data."); return; }
+            if (selected == null) { ShowToast("Unable to get user data.", "error"); return; }
 
-            var resetWindow = new ResetPasswordWindow(selected.Username);
-            if (resetWindow.ShowDialog() == true)
-            {
-                try
+            var win = new ResetPasswordWindow(selected.Username,
+                pwd =>
                 {
-                    var resp = _svc.ResetClientUserPassword(selected.UserId, resetWindow.NewPassword, _adminUserId);
-                    if (!resp.Success) { ShowUserActionError(resp.ErrorMessage ?? "Reset failed."); return; }
-                    ShowUserActionSuccess($"✓ Password for '{selected.Username}' reset successfully.");
-                }
-                catch (Exception ex) { ShowUserActionError($"Error: {ex.Message}"); }
-            }
+                    var resp = _svc.ResetClientUserPassword(selected.UserId, pwd, _adminUserId);
+                    return resp.Success ? null : (resp.ErrorMessage ?? "Reset failed.");
+                },
+                msg => ShowToast(msg))
+            { Owner = this };
+
+            win.ShowDialog();
         }
 
-        private void btnToggleStatusInline_Click(object sender, RoutedEventArgs e)
+        private async void btnDeleteUserInline_Click(object sender, RoutedEventArgs e)
         {
-            var selected = (sender as Button)?.DataContext as UserVM;
-            if (selected == null) { ShowUserActionError("Unable to get user data."); return; }
+            var btn = sender as Button;
+            var selected = btn?.DataContext as UserVM;
+            if (selected == null) { ShowToast("Unable to get user data.", "error"); return; }
 
-            string newStatus = selected.Status == "Active" ? "Disabled" : "Active";
-            var result = MessageBox.Show(
-                $"Change '{selected.Username}' status from {selected.Status} to {newStatus}?",
-                "Confirm", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (result != MessageBoxResult.Yes) return;
+            if (!AppDialog.Confirm($"Permanently delete '{selected.Username}'? This cannot be undone.")) return;
 
+            if (btn != null) btn.IsEnabled = false;
             try
             {
-                var resp = _svc.ToggleUserStatus(selected.UserId, _adminUserId);
-                if (!resp.Success) { ShowUserActionError(resp.ErrorMessage ?? "Toggle failed."); return; }
-                ShowUserActionSuccess($"✓ '{selected.Username}' is now {resp.NewStatus}.");
+                UserDeleteResponse resp = null; Exception err = null;
+                var svc = _svc; int uid = selected.UserId; int aid = _adminUserId;
+                (resp, err) = await Task.Run(() => { try { return (svc.DeleteClientUser(uid, aid), (Exception)null); } catch (Exception ex) { return (null, ex); } });
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
+                if (!resp.Success) { ShowToast(resp.ErrorMessage ?? "Delete failed.", "error"); return; }
+                ShowToast($"User '{selected.Username}' deleted.");
                 LoadClientUsers();
             }
-            catch (Exception ex) { ShowUserActionError($"Error: {ex.Message}"); }
+            finally { if (btn != null) btn.IsEnabled = true; }
         }
 
-        private void ShowUserActionError(string msg)
+        private async void btnToggleStatusInline_Click(object sender, RoutedEventArgs e)
         {
-            lblUserActionError.Text = msg;
-            lblUserActionError.Visibility = Visibility.Visible;
-            lblUserActionSuccess.Visibility = Visibility.Collapsed;
-        }
+            var btn = sender as Button;
+            var selected = btn?.DataContext as UserVM;
+            if (selected == null) { ShowToast("Unable to get user data.", "error"); return; }
 
-        private void ShowUserActionSuccess(string msg)
-        {
-            lblUserActionSuccess.Text = msg;
-            lblUserActionSuccess.Visibility = Visibility.Visible;
-            lblUserActionError.Visibility = Visibility.Collapsed;
+            string newStatus = selected.Status == "Active" ? "Disabled" : "Active";
+            if (!AppDialog.Confirm($"Change '{selected.Username}' status from {selected.Status} to {newStatus}?")) return;
+
+            if (btn != null) btn.IsEnabled = false;
+            try
+            {
+                UserStatusToggleResponse resp = null; Exception err = null;
+                var svc = _svc; int uid = selected.UserId; int aid = _adminUserId;
+                (resp, err) = await Task.Run(() => { try { return (svc.ToggleUserStatus(uid, aid), (Exception)null); } catch (Exception ex) { return (null, ex); } });
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
+                if (!resp.Success) { ShowToast(resp.ErrorMessage ?? "Toggle failed.", "error"); return; }
+                string toastType = resp.NewStatus == "Active" ? "success" : "warning";
+                ShowToast($"'{selected.Username}' is now {resp.NewStatus}.", toastType);
+                LoadClientUsers();
+            }
+            finally { if (btn != null) btn.IsEnabled = true; }
         }
 
         #endregion
@@ -982,30 +1307,42 @@ namespace SessionAdmin
             }
         }
 
-        private void btnRefreshBillingRates_Click(object sender, RoutedEventArgs e) => LoadBillingRates();
-
-        private void btnAddBillingRate_Click(object sender, RoutedEventArgs e)
+        private async void btnRefreshBillingRates_Click(object sender, RoutedEventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(txtRateName.Text))
-            { ShowBillingRateError("Rate name is required."); return; }
-            if (!decimal.TryParse(txtRatePerMinute.Text, out decimal rate) || rate < 0)
-            { ShowBillingRateError("Rate must be a valid positive number."); return; }
-
-            btnAddBillingRate.IsEnabled = false;
+            btnRefreshBillingRates.IsEnabled = false;
+            var saved = btnRefreshBillingRates.Content;
+            btnRefreshBillingRates.Content = "⏳";
             try
             {
-                string currency = (cboCurrency.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "USD";
-                int newId = _svc.InsertBillingRate(txtRateName.Text.Trim(), rate, currency,
-                    dpEffectiveFrom.SelectedDate, dpEffectiveTo.SelectedDate,
-                    chkIsDefault.IsChecked ?? false, _adminUserId, txtNotes.Text.Trim());
-
-                if (newId <= 0) { ShowBillingRateError("Failed to insert billing rate."); return; }
-                ShowBillingRateSuccess($"✓ Rate '{txtRateName.Text}' added (ID: {newId})");
-                ClearBillingRateForm();
-                LoadBillingRates();
+                BillingRateInfo[] rates = null; Exception err = null;
+                var svc = _svc;
+                (rates, err) = await Task.Run(() => { try { return (svc.GetAllBillingRates(), (Exception)null); } catch (Exception ex) { return (null, ex); } });
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
+                _billingRates.Clear();
+                foreach (var rate in rates)
+                    _billingRates.Add(new BillingRateVM { BillingRateId = rate.BillingRateId, Name = rate.Name, RatePerMinute = rate.RatePerMinute, Currency = rate.Currency, EffectiveFrom = rate.EffectiveFrom, EffectiveTo = rate.EffectiveTo, IsActive = rate.IsActive ? 1 : 0, IsDefault = rate.IsDefault ? 1 : 0, CreatedAt = rate.CreatedAt, Notes = rate.Notes });
+                lblBillingRateCount.Text = _billingRates.Count.ToString();
+                ShowToast($"{_billingRates.Count} rate(s) loaded.");
             }
-            catch (Exception ex) { ShowBillingRateError($"Error: {ex.Message}"); }
-            finally { btnAddBillingRate.IsEnabled = true; }
+            finally { btnRefreshBillingRates.IsEnabled = true; btnRefreshBillingRates.Content = saved; }
+        }
+
+        private void btnAddNewRate_Click(object sender, RoutedEventArgs e)
+        {
+            var win = new BillingRateFormWindow(
+                form =>
+                {
+                    int newId = _svc.InsertBillingRate(form.RateName, form.RatePerMinute, form.Currency,
+                        form.EffectiveFrom, form.EffectiveTo, form.IsDefault, _adminUserId, form.Notes);
+                    if (newId == -2) return "A billing rate with that name already exists.";
+                    if (newId == -3) return "Date range overlaps an existing active rate for the same currency.";
+                    if (newId <= 0)  return "Failed to insert billing rate.";
+                    return null;
+                },
+                msg => ShowToast(msg))
+            { Owner = this };
+
+            if (win.ShowDialog() == true) LoadBillingRates();
         }
 
         private void btnEditBillingRate_Click(object sender, RoutedEventArgs e)
@@ -1013,116 +1350,138 @@ namespace SessionAdmin
             var rate = (sender as Button)?.DataContext as BillingRateVM;
             if (rate == null) return;
 
-            _selectedBillingRateId = rate.BillingRateId;
-            txtRateName.Text = rate.Name;
-            txtRatePerMinute.Text = rate.RatePerMinute.ToString();
-            cboCurrency.SelectedItem = cboCurrency.Items.Cast<ComboBoxItem>()
-                .FirstOrDefault(x => x.Content.ToString() == rate.Currency) ?? cboCurrency.Items[0];
-            dpEffectiveFrom.SelectedDate = rate.EffectiveFrom;
-            dpEffectiveTo.SelectedDate = rate.EffectiveTo;
-            chkIsActive.IsChecked = rate.IsActive == 1;
-            chkIsDefault.IsChecked = rate.IsDefault == 1;
-            txtNotes.Text = rate.Notes ?? "";
-            btnAddBillingRate.Visibility = Visibility.Collapsed;
-            btnUpdateBillingRate.Visibility = Visibility.Visible;
+            var win = new BillingRateFormWindow(rate,
+                form =>
+                {
+                    bool ok = _svc.UpdateBillingRate(rate.BillingRateId, form.RateName, form.RatePerMinute,
+                        form.Currency, form.EffectiveFrom, form.EffectiveTo, form.IsActive, form.IsDefault, form.Notes);
+                    return ok ? null : "Update failed — check for duplicate name or overlapping date range.";
+                },
+                msg => ShowToast(msg))
+            { Owner = this };
+
+            if (win.ShowDialog() == true) LoadBillingRates();
         }
 
-        private void btnUpdateBillingRate_Click(object sender, RoutedEventArgs e)
+        private async void btnSetDefaultBillingRate_Click(object sender, RoutedEventArgs e)
         {
-            if (!_selectedBillingRateId.HasValue) { ShowBillingRateError("No rate selected."); return; }
-            if (string.IsNullOrWhiteSpace(txtRateName.Text)) { ShowBillingRateError("Rate name required."); return; }
-            if (!decimal.TryParse(txtRatePerMinute.Text, out decimal rate) || rate < 0)
-            { ShowBillingRateError("Invalid rate value."); return; }
-
-            btnUpdateBillingRate.IsEnabled = false;
-            try
-            {
-                string currency = (cboCurrency.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "USD";
-                bool success = _svc.UpdateBillingRate(_selectedBillingRateId.Value, txtRateName.Text.Trim(),
-                    rate, currency, dpEffectiveFrom.SelectedDate, dpEffectiveTo.SelectedDate,
-                    chkIsActive.IsChecked ?? true, chkIsDefault.IsChecked ?? false, txtNotes.Text.Trim());
-
-                if (!success) { ShowBillingRateError("Update failed."); return; }
-                ShowBillingRateSuccess($"✓ Rate '{txtRateName.Text}' updated.");
-                ClearBillingRateForm();
-                LoadBillingRates();
-            }
-            catch (Exception ex) { ShowBillingRateError($"Error: {ex.Message}"); }
-            finally
-            {
-                btnUpdateBillingRate.IsEnabled = true;
-                btnUpdateBillingRate.Visibility = Visibility.Collapsed;
-                btnAddBillingRate.Visibility = Visibility.Visible;
-            }
-        }
-
-        private void btnSetDefaultBillingRate_Click(object sender, RoutedEventArgs e)
-        {
-            var rate = (sender as Button)?.DataContext as BillingRateVM;
+            var btn = sender as Button;
+            var rate = btn?.DataContext as BillingRateVM;
             if (rate == null) return;
 
-            var result = MessageBox.Show($"Set '{rate.Name}' as the default rate?",
-                "Confirm", MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (result != MessageBoxResult.Yes) return;
+            if (!AppDialog.Confirm($"Set '{rate.Name}' as the default rate?")) return;
 
+            if (btn != null) btn.IsEnabled = false;
             try
             {
-                bool success = _svc.SetDefaultBillingRate(rate.BillingRateId);
-                if (success) { ShowBillingRateSuccess($"✓ '{rate.Name}' is now the default rate."); LoadBillingRates(); }
-                else ShowBillingRateError("Failed to set default rate.");
+                bool ok = false; Exception err = null;
+                var svc = _svc; int rid = rate.BillingRateId;
+                (ok, err) = await Task.Run(() => { try { return (svc.SetDefaultBillingRate(rid), (Exception)null); } catch (Exception ex) { return (false, ex); } });
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
+                if (ok) { ShowToast($"'{rate.Name}' is now the default rate."); LoadBillingRates(); }
+                else ShowToast("Failed to set default rate.", "error");
             }
-            catch (Exception ex) { ShowBillingRateError($"Error: {ex.Message}"); }
+            finally { if (btn != null) btn.IsEnabled = true; }
         }
 
-        private void btnDeleteBillingRate_Click(object sender, RoutedEventArgs e)
+        private async void btnDeleteBillingRate_Click(object sender, RoutedEventArgs e)
         {
-            var rate = (sender as Button)?.DataContext as BillingRateVM;
+            var btn = sender as Button;
+            var rate = btn?.DataContext as BillingRateVM;
             if (rate == null) return;
 
-            var result = MessageBox.Show($"Delete rate '{rate.Name}'? This cannot be undone.",
-                "Confirm Deletion", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (result != MessageBoxResult.Yes) return;
+            if (!AppDialog.Confirm($"Delete rate '{rate.Name}'? This cannot be undone.", "Confirm Deletion")) return;
 
+            if (btn != null) btn.IsEnabled = false;
             try
             {
-                bool success = _svc.DeleteBillingRate(rate.BillingRateId);
-                if (success) { ShowBillingRateSuccess($"✓ Rate '{rate.Name}' deleted."); LoadBillingRates(); }
-                else ShowBillingRateError("Cannot delete: at least one rate and one default must exist.");
+                bool ok = false; Exception err = null;
+                var svc = _svc; int rid = rate.BillingRateId;
+                (ok, err) = await Task.Run(() => { try { return (svc.DeleteBillingRate(rid), (Exception)null); } catch (Exception ex) { return (false, ex); } });
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
+                if (ok) { ShowToast($"Rate '{rate.Name}' deleted."); LoadBillingRates(); }
+                else ShowToast("Cannot delete: at least one rate and one default must exist.", "error");
             }
-            catch (Exception ex) { ShowBillingRateError($"Error: {ex.Message}"); }
+            finally { if (btn != null) btn.IsEnabled = true; }
         }
 
-        private void btnClearBillingRateForm_Click(object sender, RoutedEventArgs e) => ClearBillingRateForm();
-
-        private void ClearBillingRateForm()
+        private void LoadBillingRecords()
         {
-            txtRateName.Clear();
-            txtRatePerMinute.Clear();
-            cboCurrency.SelectedIndex = 0;
-            dpEffectiveFrom.SelectedDate = null;
-            dpEffectiveTo.SelectedDate = null;
-            chkIsActive.IsChecked = true;
-            chkIsDefault.IsChecked = false;
-            txtNotes.Clear();
-            _selectedBillingRateId = null;
-            btnAddBillingRate.Visibility = Visibility.Visible;
-            btnUpdateBillingRate.Visibility = Visibility.Collapsed;
-            billingErrorBorder.Visibility = Visibility.Collapsed;
-            billingSuccessBorder.Visibility = Visibility.Collapsed;
+            if (_svc == null) return;
+            try
+            {
+                bool unpaidOnly = chkUnpaidOnly.IsChecked == true;
+                var records = _svc.GetBillingRecords(unpaidOnly);
+                _billingRecords.Clear();
+                foreach (var r in records)
+                {
+                    _billingRecords.Add(new BillingRecordVM
+                    {
+                        BillingRecordId = r.BillingRecordId,
+                        SessionId       = r.SessionId,
+                        Username        = r.Username,
+                        MachineCode     = r.MachineCode,
+                        BillableMinutes = r.BillableMinutes,
+                        Amount          = r.Amount,
+                        Currency        = r.Currency,
+                        CalculatedAt    = r.CalculatedAt,
+                        IsPaid          = r.IsPaid,
+                        PaidAt          = r.PaidAt
+                    });
+                }
+                int unpaidCount = _billingRecords.Count(x => !x.IsPaid);
+                lblUnpaidCount.Text = unpaidCount.ToString();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[LoadBillingRecords] {ex.Message}");
+            }
         }
 
-        private void ShowBillingRateError(string msg)
+        private async void btnRefreshPayments_Click(object sender, RoutedEventArgs e)
         {
-            lblBillingRateError.Text = msg;
-            billingErrorBorder.Visibility = Visibility.Visible;
-            billingSuccessBorder.Visibility = Visibility.Collapsed;
+            btnRefreshPayments.IsEnabled = false;
+            var saved = btnRefreshPayments.Content;
+            btnRefreshPayments.Content = "⏳";
+            try
+            {
+                bool unpaidOnly = chkUnpaidOnly.IsChecked == true;
+                BillingRecordInfo[] records = null; Exception err = null;
+                var svc = _svc;
+                (records, err) = await Task.Run(() => { try { return (svc.GetBillingRecords(unpaidOnly), (Exception)null); } catch (Exception ex) { return (null, ex); } });
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
+                _billingRecords.Clear();
+                foreach (var r in records)
+                    _billingRecords.Add(new BillingRecordVM { BillingRecordId = r.BillingRecordId, SessionId = r.SessionId, Username = r.Username, MachineCode = r.MachineCode, BillableMinutes = r.BillableMinutes, Amount = r.Amount, Currency = r.Currency, CalculatedAt = r.CalculatedAt, IsPaid = r.IsPaid, PaidAt = r.PaidAt });
+                int unpaidCount = _billingRecords.Count(x => !x.IsPaid);
+                lblUnpaidCount.Text = unpaidCount.ToString();
+                ShowToast($"{_billingRecords.Count} payment record(s) loaded.");
+            }
+            finally { btnRefreshPayments.IsEnabled = true; btnRefreshPayments.Content = saved; }
         }
 
-        private void ShowBillingRateSuccess(string msg)
+        private void chkUnpaidOnly_Changed(object sender, RoutedEventArgs e) => LoadBillingRecords();
+
+        private async void btnMarkPaidInline_Click(object sender, RoutedEventArgs e)
         {
-            lblBillingRateSuccess.Text = msg;
-            billingSuccessBorder.Visibility = Visibility.Visible;
-            billingErrorBorder.Visibility = Visibility.Collapsed;
+            var btn = sender as Button;
+            var record = btn?.DataContext as BillingRecordVM;
+            if (record == null) return;
+            if (!AppDialog.Confirm(
+                    $"Mark session #{record.SessionId} as paid?\n\nUser: {record.Username}\nAmount: {record.AmountDisplay}",
+                    "Confirm Payment")) return;
+
+            if (btn != null) btn.IsEnabled = false;
+            try
+            {
+                bool ok = false; Exception err = null;
+                var svc = _svc; int rid = record.BillingRecordId; int aid = _adminUserId;
+                (ok, err) = await Task.Run(() => { try { return (svc.MarkBillingRecordPaid(rid, aid), (Exception)null); } catch (Exception ex) { return (false, ex); } });
+                if (err != null) { ShowToast($"Error: {err.Message}", "error"); return; }
+                if (ok) { ShowToast($"Session #{record.SessionId} marked as paid."); LoadBillingRecords(); }
+                else ShowToast("Could not mark as paid. Record may not exist or is already paid.", "error");
+            }
+            finally { if (btn != null) btn.IsEnabled = true; }
         }
 
         #endregion
@@ -1138,13 +1497,17 @@ namespace SessionAdmin
             LoadClients();
             LoadAlerts();
             if (_currentPage == "users") LoadClientUsers();
-            if (_currentPage == "billing") LoadBillingRates();
+            if (_currentPage == "billing") { LoadBillingRates(); LoadBillingRecords(); }
             UpdateKPIs();
             UpdateKanban();
         }
 
         private void AutoRefresh()
         {
+            // Skip when offline — prevents the 5-second DispatcherTimer from blocking the
+            // UI thread for up to SendTimeout (10s) when the server is unreachable.
+            if (_svc?.IsChannelReady != true) return;
+
             try
             {
                 LoadActiveSessions();
@@ -1165,16 +1528,123 @@ namespace SessionAdmin
                 try
                 {
                     string msg = e.Message ?? "";
-                    if (msg.IndexOf("ALERT", StringComparison.OrdinalIgnoreCase) >= 0)
+                    if (msg.StartsWith("SESSION_STARTED:"))
+                    {
+                        string info = msg.Substring("SESSION_STARTED:".Length);
+                        LoadActiveSessions();
+                        UpdateKPIs();
+                        if (_currentPage == "dashboard") UpdateKanban();
+                        SessionManagement.UI.ToastHelper.Show(
+                            SessionManagement.UI.ToastHelper.AdminAppId,
+                            "Session Started",
+                            info);
+                    }
+                    else if (msg.StartsWith("SESSION_ENDED:"))
+                    {
+                        string info = msg.Substring("SESSION_ENDED:".Length);
+                        LoadActiveSessions();
+                        UpdateKPIs();
+                        if (_currentPage == "dashboard") UpdateKanban();
+                        SessionManagement.UI.ToastHelper.Show(
+                            SessionManagement.UI.ToastHelper.AdminAppId,
+                            "Session Ended",
+                            info);
+                    }
+                    else if (msg.IndexOf("ALERT", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         LoadAlerts();
-                        lblLastUpdate.Text = $"Alert received {DateTime.Now:HH:mm:ss}";
+                        UpdateKPIs();
+                        lblLastUpdate.Text = $"Alert received {DateTime.Now:hh:mm:ss tt}";
+                        ShowToast("New security alert received!");
+                        SessionManagement.UI.ToastHelper.Show(
+                            SessionManagement.UI.ToastHelper.AdminAppId,
+                            "Security Alert",
+                            "A new security alert was detected. Check the Alerts tab.");
                     }
-                    if (msg.IndexOf("session", StringComparison.OrdinalIgnoreCase) >= 0)
+                    else if (msg.StartsWith("MACHINE_ONLINE:"))
+                    {
+                        string info = msg.Substring("MACHINE_ONLINE:".Length);
                         LoadActiveSessions();
+                        UpdateKPIs();
+                        if (_currentPage == "dashboard") UpdateKanban();
+                        ShowToast($"Machine back online: {info}");
+                        SessionManagement.UI.ToastHelper.Show(
+                            SessionManagement.UI.ToastHelper.AdminAppId,
+                            "Client Machine Online",
+                            $"{info}");
+                    }
+                    else if (msg.StartsWith("CLIENT_REGISTERED:"))
+                    {
+                        string info = msg.Substring("CLIENT_REGISTERED:".Length);
+                        LoadClients();
+                        UpdateKPIs();
+                        if (_currentPage == "dashboard") UpdateKanban();
+                        ShowToast($"New machine registered: {info}");
+                        SessionManagement.UI.ToastHelper.Show(
+                            SessionManagement.UI.ToastHelper.AdminAppId,
+                            "New Client Machine",
+                            $"{info} joined the network. Check the Clients tab.");
+                    }
+                    else if (msg.IndexOf("offline", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        LoadActiveSessions();
+                        UpdateKPIs();
+                        if (_currentPage == "dashboard") UpdateKanban();
+                        SessionManagement.UI.ToastHelper.Show(
+                            SessionManagement.UI.ToastHelper.AdminAppId,
+                            "Client Machine Offline",
+                            "One or more client machines stopped responding. Check the Clients tab.");
+                    }
                 }
-                catch { }
+                catch { /* UI refresh during server callback — swallow to prevent crashing the callback thread */ }
             }));
+        }
+
+        // type: "success" | "warning" | "error"
+        private void ShowToast(string message, string type = "success")
+        {
+            switch (type)
+            {
+                case "error":
+                    ToastPanel.Background   = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2D0A0A"));
+                    ToastPanel.BorderBrush  = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#7F1D1D"));
+                    lblToastIcon.Text       = "✕";
+                    lblToastIcon.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F87171"));
+                    lblToastMessage.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FCA5A5"));
+                    break;
+                case "warning":
+                    ToastPanel.Background   = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1A1200"));
+                    ToastPanel.BorderBrush  = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#854D0E"));
+                    lblToastIcon.Text       = "⚠";
+                    lblToastIcon.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FBBF24"));
+                    lblToastMessage.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FDE68A"));
+                    break;
+                default: // success
+                    ToastPanel.Background   = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0A2118"));
+                    ToastPanel.BorderBrush  = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#166534"));
+                    lblToastIcon.Text       = "✓";
+                    lblToastIcon.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#4ADE80"));
+                    lblToastMessage.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#BBF7D0"));
+                    break;
+            }
+
+            lblToastMessage.Text = message;
+            ToastPanel.Visibility = Visibility.Visible;
+
+            _toastTimer?.Stop();
+            _toastTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(5) };
+            _toastTimer.Tick += (_, __) =>
+            {
+                ToastPanel.Visibility = Visibility.Collapsed;
+                _toastTimer.Stop();
+            };
+            _toastTimer.Start();
+        }
+
+        private void btnDismissToast_Click(object sender, RoutedEventArgs e)
+        {
+            _toastTimer?.Stop();
+            ToastPanel.Visibility = Visibility.Collapsed;
         }
 
         #endregion
@@ -1186,20 +1656,20 @@ namespace SessionAdmin
 
         private void ShowDashboard()
         {
+            MainLayoutGrid.ColumnDefinitions[0].Width = new GridLength(220);
             LoginPanel.Visibility = Visibility.Collapsed;
             DashboardPanel.Visibility = Visibility.Visible;
             AdminHeaderPanel.Visibility = Visibility.Visible;
+            SidebarNav.Visibility = Visibility.Visible;
             NavigateTo("dashboard");
         }
 
         private void btnLogout_Click(object sender, RoutedEventArgs e)
         {
-            var r = MessageBox.Show("Sign out of admin console?", "Confirm Sign Out",
-                MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (r != MessageBoxResult.Yes) return;
+            if (!AppDialog.Confirm("Sign out of admin console?", "Confirm Sign Out")) return;
 
             _refreshTimer.Stop();
-            try { _svc?.UnsubscribeFromNotifications("ADMIN_" + _adminUserId); } catch { }
+            try { _svc?.UnsubscribeFromNotifications("ADMIN_" + _adminUserId); } catch { /* best-effort WCF unsubscribe on close */ }
 
             _sessions.Clear(); _clients.Clear(); _alerts.Clear(); _logs.Clear();
             txtAdminUsername.Clear();
@@ -1207,13 +1677,33 @@ namespace SessionAdmin
             txtAdminPasswordPlain.Clear();
             loginErrorBorder.Visibility = Visibility.Collapsed;
 
+            MainLayoutGrid.ColumnDefinitions[0].Width = new GridLength(0);
             DashboardPanel.Visibility = Visibility.Collapsed;
             AdminHeaderPanel.Visibility = Visibility.Collapsed;
+            SidebarNav.Visibility = Visibility.Collapsed;
             LoginPanel.Visibility = Visibility.Visible;
         }
 
         protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
         {
+            // Warn if any client sessions are still running.
+            try
+            {
+                if (_svc?.IsConnected == true)
+                {
+                    SessionInfo[] active = _svc.GetActiveSessions();
+                    if (active.Length > 0 &&
+                        !AppDialog.Confirm(
+                            $"{active.Length} session(s) are currently active.\nClose the admin console anyway?",
+                            "Sessions Active"))
+                    {
+                        e.Cancel = true;
+                        return;
+                    }
+                }
+            }
+            catch { /* GetActiveSessions may fail if server is down — allow close to proceed */ }
+
             _refreshTimer?.Stop();
             try
             {
@@ -1223,8 +1713,77 @@ namespace SessionAdmin
                     _svc.Disconnect();
                 }
             }
-            catch { }
+            catch { /* best-effort WCF cleanup on window close */ }
             base.OnClosing(e);
+        }
+
+        #endregion
+
+        // ═══════════════════════════════════════════════════════════
+        //  #region CUSTOM TITLE BAR
+        // ═══════════════════════════════════════════════════════════
+        #region Custom Title Bar
+
+        private void TitleBar_MouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            if (e.LeftButton == System.Windows.Input.MouseButtonState.Pressed)
+            {
+                if (e.ClickCount == 2)
+                    ToggleMaximize();
+                else if (!_isManuallyMaximized)
+                    DragMove();
+            }
+        }
+
+        private void btnMinimize_Click(object sender, RoutedEventArgs e)
+        {
+            WindowState = WindowState.Minimized;
+        }
+
+        private void btnMaximize_Click(object sender, RoutedEventArgs e)
+        {
+            ToggleMaximize();
+        }
+
+        private void ToggleMaximize()
+        {
+            if (_isManuallyMaximized)
+            {
+                // Restore the resize border first, then set bounds, to avoid a
+                // one-frame flash where the window briefly has no resize handles.
+                ResizeMode = ResizeMode.CanResize;
+                Left   = _normalBounds.Left;
+                Top    = _normalBounds.Top;
+                Width  = _normalBounds.Width;
+                Height = _normalBounds.Height;
+                _isManuallyMaximized = false;
+                btnMaximize.Content  = "□";
+            }
+            else
+            {
+                // Save current bounds so Restore works correctly.
+                _normalBounds = new Rect(Left, Top, Width, Height);
+
+                // NoResize removes WPF's invisible non-client resize border (~4-8 px each
+                // side with WindowStyle="None" + CanResize). Without this the border eats
+                // into the bounds, leaving a visible gap on all four edges when maximized.
+                ResizeMode = ResizeMode.NoResize;
+
+                // WorkArea excludes the taskbar; WindowState.Maximized with
+                // WindowStyle="None" would use the full screen rect and hide it.
+                var area = SystemParameters.WorkArea;
+                Left   = area.Left;
+                Top    = area.Top;
+                Width  = area.Width;
+                Height = area.Height;
+                _isManuallyMaximized = true;
+                btnMaximize.Content  = "❐";
+            }
+        }
+
+        private void btnWindowClose_Click(object sender, RoutedEventArgs e)
+        {
+            Close();
         }
 
         #endregion
@@ -1238,11 +1797,12 @@ namespace SessionAdmin
 
     public class ActiveSessionVM : System.ComponentModel.INotifyPropertyChanged
     {
-        public int SessionId { get; set; }
-        public string ClientId { get; set; }
-        public string Username { get; set; }
-        public string StartTime { get; set; }
-        public string Duration { get; set; }
+        public int      SessionId     { get; set; }
+        public string   ClientId      { get; set; }
+        public string   Username      { get; set; }
+        public string   FullName      { get; set; }
+        public string   StartTime     { get; set; }
+        public string   Duration      { get; set; }
 
         private string _remaining;
         public string RemainingTime
@@ -1265,6 +1825,35 @@ namespace SessionAdmin
             set { _status = value; PC(nameof(Status)); }
         }
 
+        private string _imagePath;
+        public string ImagePath
+        {
+            get => _imagePath;
+            set { _imagePath = value; PC(nameof(ImagePath)); PC(nameof(PhotoSource)); }
+        }
+
+        // Returns a BitmapImage when a file exists at ImagePath, otherwise null (cell stays empty).
+        public System.Windows.Media.ImageSource PhotoSource
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(_imagePath) || !System.IO.File.Exists(_imagePath))
+                    return null;
+                try
+                {
+                    var bmp = new System.Windows.Media.Imaging.BitmapImage();
+                    bmp.BeginInit();
+                    bmp.UriSource        = new Uri(_imagePath, UriKind.Absolute);
+                    bmp.CacheOption      = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                    bmp.DecodePixelWidth = 48;
+                    bmp.EndInit();
+                    bmp.Freeze();
+                    return bmp;
+                }
+                catch { return null; }
+            }
+        }
+
         public event System.ComponentModel.PropertyChangedEventHandler PropertyChanged;
         private void PC(string n) => PropertyChanged?.Invoke(this,
             new System.ComponentModel.PropertyChangedEventArgs(n));
@@ -1272,16 +1861,17 @@ namespace SessionAdmin
 
     public class ClientVM
     {
-        public string ClientId { get; set; }
-        public string MachineName { get; set; }
-        public string IpAddress { get; set; }
-        public string MacAddress { get; set; }
-        public string Location { get; set; }
-        public bool IsActive { get; set; }
+        public string ClientId            { get; set; }
+        public string MachineName         { get; set; }
+        public string IpAddress           { get; set; }
+        public string MacAddress          { get; set; }
+        public string Location            { get; set; }
+        public bool   IsActive            { get; set; }
         public string ClientMachineStatus { get; set; }
-        public string Status { get; set; }
-        public string CurrentUser { get; set; }
-        public string LastActive { get; set; }
+        public string Status              { get; set; }
+        public string CurrentUser         { get; set; }
+        public string LastActive          { get; set; }
+        public int    MissedHeartbeats    { get; set; }
     }
 
     public class AlertVM
@@ -1308,14 +1898,37 @@ namespace SessionAdmin
 
     public class UserVM
     {
-        public int UserId { get; set; }
-        public string Username { get; set; }
-        public string FullName { get; set; }
-        public string Phone { get; set; }
-        public string Address { get; set; }
-        public string Status { get; set; }
-        public string CreatedAt { get; set; }
-        public string LastLogin { get; set; }
+        public int    UserId               { get; set; }
+        public string Username             { get; set; }
+        public string FullName             { get; set; }
+        public string Phone                { get; set; }
+        public string Address              { get; set; }
+        public string Status               { get; set; }
+        public string CreatedAt            { get; set; }
+        public string LastLogin            { get; set; }
+        public string ProfilePictureBase64 { get; set; }
+
+        public System.Windows.Media.ImageSource AvatarSource
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(ProfilePictureBase64)) return null;
+                try
+                {
+                    var bytes = Convert.FromBase64String(ProfilePictureBase64);
+                    var bmp = new System.Windows.Media.Imaging.BitmapImage();
+                    using (var ms = new System.IO.MemoryStream(bytes))
+                    {
+                        bmp.BeginInit();
+                        bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                        bmp.StreamSource = ms;
+                        bmp.EndInit();
+                    }
+                    return bmp;
+                }
+                catch { return null; }
+            }
+        }
     }
 
     public class BillingRateVM
@@ -1330,6 +1943,39 @@ namespace SessionAdmin
         public int IsDefault { get; set; }
         public DateTime CreatedAt { get; set; }
         public string Notes { get; set; }
+    }
+
+    public class BillingRecordVM
+    {
+        public int       BillingRecordId { get; set; }
+        public int       SessionId       { get; set; }
+        public string    Username        { get; set; }
+        public string    MachineCode     { get; set; }
+        public int       BillableMinutes { get; set; }
+        public decimal   Amount          { get; set; }
+        public string    Currency        { get; set; }
+        public DateTime  CalculatedAt    { get; set; }
+        public bool      IsPaid          { get; set; }
+        public DateTime? PaidAt          { get; set; }
+
+        public string AmountDisplay     => $"{Currency} {Amount:F2}";
+        public string PaidAtDisplay     => PaidAt.HasValue ? PaidAt.Value.ToString("yyyy-MM-dd HH:mm") : "";
+        public string StatusLabel       => IsPaid ? "PAID" : "UNPAID";
+        public string StatusBackground  => IsPaid ? "#14532D" : "#4C0519";
+        public string StatusForeground  => IsPaid ? "#6EE7B7" : "#FCA5A5";
+        public Visibility MarkPaidVisibility => IsPaid ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    public class ReportSessionVM
+    {
+        public string Username    { get; set; }
+        public string FullName    { get; set; }
+        public string ClientCode  { get; set; }
+        public string MachineName { get; set; }
+        public string StartTime   { get; set; }
+        public string ActualMin   { get; set; }
+        public string Billing     { get; set; }
+        public string Status      { get; set; }
     }
 
     #endregion

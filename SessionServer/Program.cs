@@ -1,9 +1,11 @@
 using System;
 using System.Configuration;
+using System.IO;
+using System.Runtime.InteropServices;
 using System.ServiceModel;
 using System.ServiceModel.Description;
 using SessionManagement.WCF;
-using SessionManagement.Security;
+using static SessionManagement.WCF.ServiceConstants;
 
 /// <summary>
 /// SessionServer — WCF service host.
@@ -12,9 +14,21 @@ using SessionManagement.Security;
 /// </summary>
 class Program
 {
+    [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll")] static extern IntPtr LoadImage(IntPtr h, string name, uint type, int cx, int cy, uint load);
+    [DllImport("kernel32.dll")] static extern IntPtr GetConsoleWindow();
+
     static void Main(string[] args)
     {
         Console.Title = "Session Management Server";
+        string iconPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "app.ico");
+        if (File.Exists(iconPath))
+        {
+            IntPtr hwnd  = GetConsoleWindow();
+            IntPtr hIcon = LoadImage(IntPtr.Zero, iconPath, 1, 0, 0, 0x10);
+            SendMessage(hwnd, 0x0080, (IntPtr)1, hIcon);
+            SendMessage(hwnd, 0x0080, (IntPtr)0, hIcon);
+        }
         Console.ForegroundColor = ConsoleColor.Cyan;
         Console.WriteLine("============================================================");
         Console.WriteLine("  Intelligent Client-Server Session Management System");
@@ -25,30 +39,6 @@ class Program
         // ── Verify DB connection before opening WCF ───────────────
         try
         {
-            //var passwords = new[]
-            //{
-            //    new { Username = "admin", Password = "Admin@123456" },
-            //    new { Username = "user1", Password = "User1@123456" },
-            //    new { Username = "user2", Password = "User2@123456" },
-            //    new { Username = "user3", Password = "User3@123456" }
-            //};
-
-            //Console.WriteLine("Password Hash Generation for SessionManagement Database");
-            //Console.WriteLine("========================================================\n");
-
-            //foreach (var user in passwords)
-            //{
-            //    var hash = AuthenticationHelper.HashPassword(user.Password);
-            //    Console.WriteLine($"Username: {user.Username}");
-            //    Console.WriteLine($"Password: {user.Password}");
-            //    Console.WriteLine($"Hash: {hash}");
-            //    Console.WriteLine($"SQL: ('{user.Username}', '{hash}', ...)");
-            //    Console.WriteLine();
-            //}
-
-            //Console.WriteLine("\nCopy the hashes above and update the SQL seed data in SessionManagement.sql");
-            //Console.WriteLine("Press any key to exit...");
-            //Console.ReadKey();
             string cs = ConfigurationManager
                 .ConnectionStrings["SessionManagementDB"]?.ConnectionString
                 ?? throw new ConfigurationErrorsException(
@@ -73,17 +63,27 @@ class Program
         }
 
         // ── WCF Service Host ──────────────────────────────────────
-        var baseAddress = new Uri("net.tcp://localhost:8001/SessionService");
+        string listenHost = ConfigurationManager.AppSettings["ListenAddress"] ?? "localhost";
+        string listenPort = ConfigurationManager.AppSettings["ServerPort"]    ?? "8001";
+        var baseAddress = new Uri($"net.tcp://{listenHost}:{listenPort}/SessionService");
 
-        using (var host = new ServiceHost(typeof(SessionService), baseAddress))
+        // Create the singleton instance explicitly so we can call Dispose() after host.Close().
+        // ServiceHost(typeof(T)) creates the instance internally and never disposes it,
+        // leaving _sessionExpiryTimer and _clientOfflineTimer running after shutdown.
+        var service = new SessionService();
+        using (var host = new ServiceHost(service, baseAddress))
         {
             try
             {
                 // NetTcpBinding — required for duplex (callback) channels
+#if DEBUG
                 var binding = new NetTcpBinding(SecurityMode.None)
+#else
+                var binding = new NetTcpBinding(SecurityMode.Transport)
+#endif
                 {
-                    MaxReceivedMessageSize = 20_971_520,  // 20 MB (for image payloads)
-                    MaxBufferSize          = 20_971_520,
+                    MaxReceivedMessageSize = WcfMaxMessageBytes,
+                    MaxBufferSize          = WcfMaxMessageBytes,
                     ReceiveTimeout         = TimeSpan.FromMinutes(20),
                     SendTimeout            = TimeSpan.FromMinutes(20),
                     OpenTimeout            = TimeSpan.FromMinutes(1),
@@ -93,20 +93,25 @@ class Program
 
                 host.AddServiceEndpoint(typeof(ISessionService), binding, "");
 
-                // Enable detailed fault messages for development
                 var debug = host.Description.Behaviors.Find<ServiceDebugBehavior>()
                             ?? new ServiceDebugBehavior();
-                debug.IncludeExceptionDetailInFaults = true;
+#if DEBUG
+                debug.IncludeExceptionDetailInFaults = true;   // dev only — never expose in Release
+#else
+                debug.IncludeExceptionDetailInFaults = false;
+#endif
                 if (!host.Description.Behaviors.Contains(debug))
                     host.Description.Behaviors.Add(debug);
 
-                // Throttling: support up to 100 concurrent client connections
+                // Throttling is unconditional — resource limits apply in Debug and Release.
+                // ServiceDebugBehavior above is #if DEBUG because exposing fault details
+                // is dev-only; throttling is a correctness concern in both environments.
                 var throttle = host.Description.Behaviors
                                    .Find<ServiceThrottlingBehavior>()
                                ?? new ServiceThrottlingBehavior();
-                throttle.MaxConcurrentCalls     = 100;
-                throttle.MaxConcurrentInstances = 1;   // singleton
-                throttle.MaxConcurrentSessions  = 100;
+                throttle.MaxConcurrentCalls     = MaxConcurrentCalls;
+                throttle.MaxConcurrentInstances = 1;   // singleton service
+                throttle.MaxConcurrentSessions  = MaxConcurrentSessions;
                 if (!host.Description.Behaviors.Contains(throttle))
                     host.Description.Behaviors.Add(throttle);
 
@@ -116,12 +121,15 @@ class Program
                 Console.WriteLine($"[WCF] Service listening on: {baseAddress}");
                 Console.ResetColor();
                 Console.WriteLine();
-                Console.WriteLine("  Server is running.  Press Enter to stop.");
+                Console.WriteLine("  Server is running.  Press Ctrl+C to stop.");
                 Console.WriteLine();
 
-                Console.ReadLine();
+                var exit = new System.Threading.ManualResetEventSlim(false);
+                Console.CancelKeyPress += (s, e) => { e.Cancel = true; exit.Set(); };
+                exit.Wait();
 
                 host.Close();
+                service.Dispose();  // stops _sessionExpiryTimer and _clientOfflineTimer
                 Console.WriteLine("[WCF] Service stopped gracefully.");
             }
             catch (AddressAlreadyInUseException)
