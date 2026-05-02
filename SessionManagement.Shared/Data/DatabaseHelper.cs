@@ -1299,6 +1299,45 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("ResetUserPassword", ex); return false; }
         }
 
+        public string GetAdminPasswordHash(int adminUserId)
+        {
+            const string sql = @"
+                SELECT PasswordHash FROM dbo.tblUser
+                WHERE  UserId = @UserId AND Role = 'Admin'";
+            try
+            {
+                using (var c = Conn())
+                using (var cmd = new SqlCommand(sql, c))
+                {
+                    cmd.Parameters.AddWithValue("@UserId", adminUserId);
+                    c.Open();
+                    var result = cmd.ExecuteScalar();
+                    return result != null ? result.ToString() : null;
+                }
+            }
+            catch (Exception ex) { LogError("GetAdminPasswordHash", ex); return null; }
+        }
+
+        public bool ChangeAdminPassword(int adminUserId, string newPasswordHash)
+        {
+            const string sql = @"
+                UPDATE dbo.tblUser
+                SET    PasswordHash = @PasswordHash
+                WHERE  UserId = @UserId AND Role = 'Admin'";
+            try
+            {
+                using (var c = Conn())
+                using (var cmd = new SqlCommand(sql, c))
+                {
+                    cmd.Parameters.AddWithValue("@UserId", adminUserId);
+                    cmd.Parameters.AddWithValue("@PasswordHash", newPasswordHash);
+                    c.Open();
+                    return cmd.ExecuteNonQuery() > 0;
+                }
+            }
+            catch (Exception ex) { LogError("ChangeAdminPassword", ex); return false; }
+        }
+
         /// <summary>
         /// Update user account status (Active, Blocked, Disabled).
         /// </summary>

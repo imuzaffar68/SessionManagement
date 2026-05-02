@@ -1264,6 +1264,38 @@ GO
 PRINT 'SP dbo.sp_PurgeOldLogs created/updated.';
 GO
 
+-- ── 5.21  sp_ChangeAdminPassword ─────────────────────────────────────────────
+CREATE OR ALTER PROCEDURE dbo.sp_ChangeAdminPassword
+    @AdminUserId     INT,
+    @NewPasswordHash NVARCHAR(255)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        UPDATE dbo.tblUser
+        SET    PasswordHash = @NewPasswordHash
+        WHERE  UserId = @AdminUserId AND Role = 'Admin';
+
+        IF @@ROWCOUNT = 0
+            RAISERROR('Admin user not found.', 16, 1);
+
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source, UserId)
+        VALUES ('Auth', 'AdminPasswordChanged',
+                'Admin password changed for UserId ' + CAST(@AdminUserId AS VARCHAR(10)),
+                'Server', @AdminUserId);
+
+        SELECT 1 AS Result;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'Error', 'sp_ChangeAdminPassword: ' + ERROR_MESSAGE(), 'Server');
+        SELECT 0 AS Result;
+    END CATCH
+END;
+GO
+PRINT 'SP dbo.sp_ChangeAdminPassword created/updated.';
+GO
+
 -- ════════════════════════════════════════════════════════════
 --  SECTION 7 ─ VERIFICATION
 --  Run this block to confirm the setup is complete.
@@ -1329,6 +1361,7 @@ DROP PROCEDURE IF EXISTS dbo.sp_DeleteBillingRate;
 DROP PROCEDURE IF EXISTS dbo.sp_GetAllBillingRates;
 DROP PROCEDURE IF EXISTS dbo.sp_SetDefaultBillingRate;
 DROP PROCEDURE IF EXISTS dbo.sp_UpsertActivityType;
+DROP PROCEDURE IF EXISTS dbo.sp_ChangeAdminPassword;
 GO
 
 -- Drop views

@@ -130,6 +130,10 @@ namespace SessionManagement.WCF
         [OperationContract]
         PasswordResetResponse ResetClientUserPassword(int userId, string newPassword, int adminUserId);
 
+        /// <summary>Change the logged-in admin's own password (verifies current password first).</summary>
+        [OperationContract]
+        AdminPasswordChangeResponse ChangeAdminPassword(int adminUserId, string currentPassword, string newPassword);
+
         /// <summary>Toggle ClientUser account status (Active ↔ Disabled).</summary>
         [OperationContract]
         UserStatusToggleResponse ToggleUserStatus(int userId, int adminUserId);
@@ -448,6 +452,13 @@ namespace SessionManagement.WCF
     {
         [DataMember] public bool   Success      { get; set; }
         [DataMember] public int    UserId       { get; set; }
+        [DataMember] public string ErrorMessage { get; set; }
+    }
+
+    [DataContract]
+    public class AdminPasswordChangeResponse
+    {
+        [DataMember] public bool   Success      { get; set; }
         [DataMember] public string ErrorMessage { get; set; }
     }
 

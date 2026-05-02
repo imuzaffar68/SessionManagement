@@ -290,6 +290,11 @@
                                 <TextBlock Text="Administrator" FontSize="10" Foreground="#475569"/>
                             </StackPanel>
                         </StackPanel>
+                        <Button x:Name="btnChangePassword" Content="🔐  Change Password"
+                                Style="{StaticResource BtnGhost}"
+                                Height="34" FontSize="11" Padding="14,0"
+                                Margin="0,0,8,0"
+                                Click="btnChangePassword_Click"/>
                         <Button x:Name="btnLogout" Content="⎋  Sign Out"
                                 Style="{StaticResource BtnDanger}"
                                 Height="34" FontSize="12" Padding="0,0"

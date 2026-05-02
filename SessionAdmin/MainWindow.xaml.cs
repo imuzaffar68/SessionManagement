@@ -1664,6 +1664,19 @@ namespace SessionAdmin
             NavigateTo("dashboard");
         }
 
+        private void btnChangePassword_Click(object sender, RoutedEventArgs e)
+        {
+            var win = new ChangePasswordWindow(_adminUsername,
+                (currentPwd, newPwd) =>
+                {
+                    var resp = _svc.ChangeAdminPassword(_adminUserId, currentPwd, newPwd);
+                    return resp.Success ? null : (resp.ErrorMessage ?? "Change failed.");
+                },
+                msg => ShowToast(msg))
+            { Owner = this };
+            win.ShowDialog();
+        }
+
         private void btnLogout_Click(object sender, RoutedEventArgs e)
         {
             if (!AppDialog.Confirm("Sign out of admin console?", "Confirm Sign Out")) return;

@@ -1426,6 +1426,40 @@ namespace SessionManagement.WCF
             }
         }
 
+        public AdminPasswordChangeResponse ChangeAdminPassword(int adminUserId,
+            string currentPassword, string newPassword)
+        {
+            try
+            {
+                string currentHash = _db.GetAdminPasswordHash(adminUserId);
+                if (currentHash == null)
+                    return new AdminPasswordChangeResponse
+                    { Success = false, ErrorMessage = "Admin account not found." };
+
+                if (!AuthenticationHelper.VerifyPassword(currentPassword, currentHash))
+                    return new AdminPasswordChangeResponse
+                    { Success = false, ErrorMessage = "Current password is incorrect." };
+
+                string newHash = AuthenticationHelper.HashPassword(newPassword);
+                bool ok = _db.ChangeAdminPassword(adminUserId, newHash);
+                if (!ok)
+                    return new AdminPasswordChangeResponse
+                    { Success = false, ErrorMessage = "Failed to update password." };
+
+                _db.WriteSystemLog(null, adminUserId, null, adminUserId,
+                    "Auth", "AdminPasswordChanged",
+                    $"Admin {adminUserId} changed their password", "Server");
+
+                return new AdminPasswordChangeResponse { Success = true };
+            }
+            catch (Exception ex)
+            {
+                _db.LogSystemEvent(null, null, null, "ChangeAdminPasswordErr", ex.Message, "Error");
+                return new AdminPasswordChangeResponse
+                { Success = false, ErrorMessage = "Server error. Please try again." };
+            }
+        }
+
         public UserStatusToggleResponse ToggleUserStatus(int userId, int adminUserId)
         {
             try

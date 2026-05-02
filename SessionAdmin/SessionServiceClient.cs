@@ -54,6 +54,19 @@ namespace SessionManagement.Client
               { Success = false, ErrorMessage = $"Connection error: {ex.Message}" }; }
         }
 
+        public AdminPasswordChangeResponse ChangeAdminPassword(int adminUserId,
+            string currentPassword, string newPassword)
+        {
+            if (!EnsureConnection())
+                return new AdminPasswordChangeResponse
+                { Success = false, ErrorMessage = "Not connected to server." };
+            try { return _proxy.ChangeAdminPassword(adminUserId, currentPassword, newPassword); }
+            catch (Exception ex)
+            { Log($"ChangeAdminPassword: {ex.Message}");
+              return new AdminPasswordChangeResponse
+              { Success = false, ErrorMessage = $"Connection error: {ex.Message}" }; }
+        }
+
         public UserStatusToggleResponse ToggleUserStatus(int userId, int adminUserId)
         {
             if (!EnsureConnection())
