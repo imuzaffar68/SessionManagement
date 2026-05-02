@@ -67,7 +67,8 @@
       "Bash(git *)",
       "Bash(xargs ls *)",
       "Bash(grep -i \"User@123456\" ClientAdmin/SessionAdmin.exe.config)",
-      "Bash(grep -i \"User@123456\" SessionAdmin/App.config)"
+      "Bash(grep -i \"User@123456\" SessionAdmin/App.config)",
+      "PowerShell(Test-Path *)"
     ]
   }
 }

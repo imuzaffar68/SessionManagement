@@ -985,7 +985,7 @@ BEGIN
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
-        VALUES ('Billing', 'Error', 'sp_InsertBillingRate: ' + ERROR_MESSAGE(), 'Admin');
+        VALUES ('Billing', 'Error', 'sp_InsertBillingRate: ' + ERROR_MESSAGE(), 'Server');
         SELECT -1 AS BillingRateId;
     END CATCH
 END;
@@ -1054,7 +1054,7 @@ BEGIN
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
-        VALUES ('Billing', 'Error', 'sp_UpdateBillingRate: ' + ERROR_MESSAGE(), 'Admin');
+        VALUES ('Billing', 'Error', 'sp_UpdateBillingRate: ' + ERROR_MESSAGE(), 'Server');
         SELECT 0 AS Result;
     END CATCH
 END;
@@ -1092,7 +1092,7 @@ BEGIN
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
-        VALUES ('Billing', 'Error', 'sp_DeleteBillingRate: ' + ERROR_MESSAGE(), 'Admin');
+        VALUES ('Billing', 'Error', 'sp_DeleteBillingRate: ' + ERROR_MESSAGE(), 'Server');
         SELECT 0 AS Result;
     END CATCH
 END;
@@ -1114,7 +1114,7 @@ BEGIN
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
-        VALUES ('Billing', 'Error', 'sp_GetAllBillingRates: ' + ERROR_MESSAGE(), 'Admin');
+        VALUES ('Billing', 'Error', 'sp_GetAllBillingRates: ' + ERROR_MESSAGE(), 'Server');
     END CATCH
 END;
 GO
@@ -1138,7 +1138,7 @@ BEGIN
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
-        VALUES ('Billing', 'Error', 'sp_SetDefaultBillingRate: ' + ERROR_MESSAGE(), 'Admin');
+        VALUES ('Billing', 'Error', 'sp_SetDefaultBillingRate: ' + ERROR_MESSAGE(), 'Server');
         SELECT 0 AS Result;
     END CATCH
 END;
@@ -1361,6 +1361,7 @@ DROP PROCEDURE IF EXISTS dbo.sp_DeleteBillingRate;
 DROP PROCEDURE IF EXISTS dbo.sp_GetAllBillingRates;
 DROP PROCEDURE IF EXISTS dbo.sp_SetDefaultBillingRate;
 DROP PROCEDURE IF EXISTS dbo.sp_UpsertActivityType;
+DROP PROCEDURE IF EXISTS dbo.sp_PurgeOldLogs;
 DROP PROCEDURE IF EXISTS dbo.sp_ChangeAdminPassword;
 GO
 

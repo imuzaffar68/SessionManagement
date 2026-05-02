@@ -203,3 +203,43 @@ Run this checklist after first setup:
 | `AddressAlreadyInUseException` on port 8001 | Another app using the port | Change `ServerPort` in App.config and update firewall rule |
 | Client gets `EndpointNotFoundException` | Firewall blocking port 8001 | Re-run netsh command in Step 4 |
 | `System.UriFormatException` | `ListenAddress` set to `"+"` | Keep `ListenAddress=localhost` — do not change it |
+
+---
+
+## Admin Password Recovery (Locked-Out)
+
+If the admin forgets their password and cannot log in to `SessionAdmin`, the only
+recovery path is a direct database update via SSMS or sqlcmd.
+
+### Step 1 — Open SSMS and connect
+
+Connect to `localhost\SQLEXPRESS` using Windows Authentication.
+
+### Step 2 — Reset to the factory default password
+
+Run the following query to restore the password to `Admin@123`:
+
+```sql
+USE ClientServerSessionDB;
+
+UPDATE dbo.tblUser
+SET    PasswordHash = '$2a$12$cidj..ohW.bgKXVPBdVyH.VbvmIrOxVmFGqV3Y/lZDGC0utA685vm'
+WHERE  Username = 'Admin' AND Role = 'Admin';
+```
+
+> This hash is the BCrypt (work factor 12) hash of `Admin@123` — the same value
+> seeded by `SessionManagement_Setup.sql` on first install.
+
+### Step 3 — Log in and change immediately
+
+1. Open `SessionAdmin.exe` and log in with `Admin` / `Admin@123`
+2. Click **🔐 Change Password** in the title bar
+3. Set a new strong password and confirm
+
+### Notes
+
+- Never leave the default password `Admin@123` in production — change it immediately after recovery
+- If sqlcmd is available, the same UPDATE can be run from the command line:
+  ```bat
+  sqlcmd -S localhost\SQLEXPRESS -E -d ClientServerSessionDB -Q "UPDATE dbo.tblUser SET PasswordHash='$2a$12$cidj..ohW.bgKXVPBdVyH.VbvmIrOxVmFGqV3Y/lZDGC0utA685vm' WHERE Username='Admin' AND Role='Admin'"
+  ```
