@@ -34,6 +34,7 @@ WizardStyle=modern
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
 SetupIconFile=SessionClient\app.ico
+LicenseFile=LICENSE.txt
 
 ; ── Profile presets ─────────────────────────────────────────────────────────
 [Types]
@@ -72,8 +73,10 @@ Source: "SessionManagement.Shared\bin\Release\System.Buffers.dll";           Des
 Source: "SessionManagement.Shared\bin\Release\System.Memory.dll";            DestDir: "{app}"; Flags: ignoreversion; Components: server_svc admin_ui client_ui
 Source: "SessionManagement.Shared\bin\Release\System.Runtime.CompilerServices.Unsafe.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: server_svc admin_ui client_ui
 
-; ── Server-only DLL ──────────────────────────────────────────────────────────
-Source: "SessionServer\bin\Release\System.Numerics.Vectors.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: server_svc
+; ── Server-only DLLs ─────────────────────────────────────────────────────────
+Source: "SessionServer\bin\Release\System.Numerics.Vectors.dll";           DestDir: "{app}"; Flags: ignoreversion; Components: server_svc
+Source: "SessionManagement.Shared\bin\Release\System.Data.SqlClient.dll";  DestDir: "{app}"; Flags: ignoreversion; Components: server_svc
+Source: "SessionManagement.Shared\bin\Release\System.Drawing.Common.dll";  DestDir: "{app}"; Flags: ignoreversion; Components: server_svc
 
 ; ── Admin + Client DLL ───────────────────────────────────────────────────────
 Source: "SessionAdmin\bin\Release\System.Configuration.ConfigurationManager.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: admin_ui client_ui

@@ -1,219 +1,246 @@
-# Billing Rate Management - Quick Reference
+# Billing Rate Management — Admin Guide
 
-## Admin Dashboard - Billing Rates Tab
+## Overview
 
-### How to Add a New Rate
+The **Billing Rates** tab in the Admin Dashboard provides full CRUD management of billing rates used to calculate session costs. All changes are logged automatically.
 
-1. Navigate to **Billing Rates** tab in Admin Dashboard
+---
+
+## First-Time Setup
+
+### Add Your First Rate
+
+1. Click the **Billing Rates** tab in Admin Dashboard
 2. Fill the form:
-   - **Rate Name**: Short description (e.g., "Standard", "Premium")
-   - **Rate/Min**: Cost per minute (e.g., 0.50)
-   - **Currency**: Select USD, EUR, GBP, or INR
-   - **Effective From**: (Optional) Start date for the rate
-   - **Effective To**: (Optional) End date for the rate
-   - **Active**: Check to activate, uncheck to deactivate
-   - **Set as Default**: Check to make this the default rate
-   - **Notes**: Optional notes for future reference
+   - Rate Name: `Standard`
+   - Rate/Min: `0.50`
+   - Currency: `USD`
+   - Check **Active**
+   - Check **Set as Default**
+3. Click **Add Rate**
+4. Rate appears in the grid — Default column shows `1`
+
+### Verify It Works
+
+- Grid shows your rate with correct values
+- Default column = `1` (true)
+- Add a second rate — both appear in grid
+- Click **Refresh** — both rates persist
+
+---
+
+## How to Use Each Feature
+
+### Add a New Rate
+
+1. Navigate to **Billing Rates** tab
+2. Fill the form:
+   - **Rate Name** — short description (e.g., "Standard", "Premium")
+   - **Rate/Min** — cost per minute (e.g., 0.50)
+   - **Currency** — USD, EUR, GBP, or INR
+   - **Effective From** — (optional) start date for the rate
+   - **Effective To** — (optional) expiry date
+   - **Active** — check to activate
+   - **Set as Default** — check to make this the default rate
+   - **Notes** — optional notes
 3. Click **Add Rate**
 4. Success message appears, form clears, grid updates
 
-### How to Edit an Existing Rate
-
-1. Find the rate in the grid below the form
-2. Click **✎ Edit** button
-3. Form auto-populates with current values
-4. Modify any values
-5. Click **Update Rate** button
-6. Success message appears, grid updates
-7. Form clears automatically (ready for new entry)
-
-### How to Set as Default Rate
-
-1. Find the desired rate in the grid
-2. Click **★ Default** button (only visible if not already default)
-3. Confirm the action
-4. The new rate becomes default:
-   - "Default" column shows TRUE
-   - **★ Default** button disappears from this rate
-   - **★ Default** button reappears on previously default rate
-
-### How to Delete a Rate
+### Edit an Existing Rate
 
 1. Find the rate in the grid
-2. Click **🗑 Delete** button
-3. Confirm deletion in popup dialog
-4. Rate is deleted and grid updates
+2. Click **✎ Edit**
+3. Form auto-populates with current values
+4. Modify values as needed
+5. Click **Update Rate**
+6. Form clears automatically
 
-**Note**: You cannot delete if:
-- It's the only rate in the system
-- It's the only default rate
+### Set as Default Rate
 
-An error message will explain why the deletion was prevented.
+1. Find the desired rate in the grid
+2. Click **★ Default** (only visible if not already default)
+3. Confirm the action
+4. Previous default's button reappears; new default button disappears
 
----
+### Delete a Rate
 
-## Important Rules
+1. Find the rate in the grid
+2. Click **🗑 Delete**
+3. Confirm in the popup dialog
 
-⚠️ **System Constraints** (Always enforced):
-- **At least one rate must exist** - You cannot delete the last rate
-- **At least one default rate must exist** - You cannot delete or unset the only default
-- **Rates cannot be negative** - The form will reject negative amounts
-- **Name is required** - Cannot save without a rate name
-
-✅ **Automatic Behaviors**:
-- When you set a rate as default, the previous default is automatically updated
-- When you add a rate as default, it automatically becomes the only default
-- All changes are logged to the system log (Category: Billing)
+> Cannot delete if it is the only rate or the only default rate — an error message will explain.
 
 ---
 
-## Form Fields Explained
+## Common Tasks
+
+### Change the Default Rate
+1. Find the new rate in the grid → click **★ Default** → confirm. Done.
+
+### Update a Rate Amount
+1. Click **✎ Edit** → change Rate/Min → click **Update Rate**.
+
+### Create a Seasonal Rate
+1. Fill form with name, rate, **Effective From / To** dates
+2. Do **not** check Set as Default (keep it optional)
+3. Click **Add Rate** — rate is available but not the default
+4. After the dates pass, deactivate or delete
+
+### Temporarily Disable a Rate
+1. Click **✎ Edit** → uncheck **Active** → click **Update Rate**
+2. Rate is excluded from billing calculations but data is preserved
+
+---
+
+## Integration with Session Billing
+
+When a new session starts the system looks up the current default billing rate:
+
+```
+Monday:   default = "Standard"  (0.50/min) → sessions use 0.50/min
+Tuesday:  change default = "Premium" (1.00/min) → new sessions use 1.00/min
+          Monday's sessions are unchanged — history preserved
+```
+
+Changing the default only affects **new** sessions. Completed sessions keep their original rate.
+
+---
+
+## Form Fields Reference
 
 | Field | Type | Required | Notes |
-|-------|------|----------|-------|
-| Rate Name | Text | Yes | Short description of the rate |
-| Rate/Min | Decimal | Yes | Cost per minute in selected currency |
+|---|---|---|---|
+| Rate Name | Text | Yes | Short description |
+| Rate/Min | Decimal | Yes | Cost per minute |
 | Currency | Dropdown | Yes | USD, EUR, GBP, INR |
-| Effective From | Date | No | When this rate becomes effective |
-| Effective To | Date | No | When this rate expires |
+| Effective From | Date | No | When rate becomes effective |
+| Effective To | Date | No | When rate expires |
 | Active | Checkbox | No | Uncheck to deactivate without deleting |
-| Set as Default | Checkbox | No | Check to make this the default rate |
-| Notes | Text | No | Any additional information |
+| Set as Default | Checkbox | No | Only one default allowed at a time |
+| Notes | Text | No | Additional information |
 
 ---
 
 ## Grid Columns
 
 | Column | Meaning |
-|--------|---------|
+|---|---|
 | ID | System ID (auto-generated) |
 | Name | Rate name/description |
 | Rate/Min | Cost per minute |
 | Currency | Currency code |
-| Effective From | Rate start date |
-| Effective To | Rate end date |
-| Active | 1=active, 0=inactive |
-| Default | 1=default, 0=not default |
+| Effective From / To | Date range (optional) |
+| Active | 1 = active, 0 = inactive |
+| Default | 1 = default, 0 = not default |
 | Created | When the rate was created |
 | Notes | Optional notes |
-| Actions | Edit, Set Default, Delete buttons |
+| Actions | ✎ Edit, ★ Default, 🗑 Delete |
 
 ---
 
-## Typical Workflows
+## System Rules
 
-### Scenario 1: New Service Launch
-1. Admin creates new rate: "Premium Support" @ 2.00 USD/min
-2. Admin DOES NOT set as default initially (leave unchecked)
-3. Admin tests with a few sessions using the new rate
-4. Once verified, admin clicks **★ Default** to make it the default
+⚠️ **Always enforced:**
+- At least one rate must exist — cannot delete the last rate
+- At least one default rate must exist — cannot delete or unset the only default
+- Rates cannot be negative
+- Rate name is required
 
-### Scenario 2: Seasonal Rate Change
-1. Admin creates new rate: "Holiday Rate" @ 1.50 USD/min
-2. Admin sets **Effective From**: Dec 15, **Effective To**: Jan 2
-3. Admin checks **Set as Default**
-4. The rate is immediately available but only shows when selected
-5. After the dates pass, can deactivate or delete
-
-### Scenario 3: Rate Adjustment
-1. Admin finds "Standard Rate" in grid
-2. Clicks **✎ Edit**
-3. Changes rate from 0.50 to 0.55 USD/min
-4. Adds note: "Increased due to inflation"
-5. Clicks **Update Rate**
-6. All future sessions use 0.55; history preserved
+✅ **Automatic behaviors:**
+- Setting a new default automatically unsets the previous default
+- All changes are logged to System Logs (Category: Billing)
+- Form clears after each successful Add
 
 ---
 
 ## Status Messages
 
-### ✅ Success Messages (Green)
-- "Billing rate 'Standard Rate' added successfully (ID: 5)"
-- "Billing rate 'Premium Rate' updated successfully."
-- "'Standard Rate' is now the default rate."
-- "Billing rate 'Old Rate' deleted successfully."
+**Success (green):**
+- `"Billing rate 'Standard Rate' added successfully (ID: 5)"`
+- `"Billing rate 'Premium Rate' updated successfully."`
+- `"'Standard Rate' is now the default rate."`
+- `"Billing rate 'Old Rate' deleted successfully."`
 
-### ❌ Error Messages (Red)
-- "Rate name is required."
-- "Rate must be a valid positive number."
-- "Cannot delete the last billing rate. At least one rate must exist."
-- "Cannot delete the only default rate. At least one default rate must exist."
-- "Failed to insert billing rate. Please try again."
+**Error (red):**
+- `"Rate name is required."`
+- `"Rate must be a valid positive number."`
+- `"Cannot delete the last billing rate. At least one rate must exist."`
+- `"Cannot delete the only default rate. At least one default rate must exist."`
 
 ---
 
 ## Audit Trail
 
-All billing rate changes are automatically logged to the **Session Logs** tab:
-- Category: "Billing"
-- Type: "RateCreated", "RateUpdated", "RateDeleted", or "DefaultRateSet"
-- Shows which admin made the change
+All billing rate changes are logged to the **Session Logs** tab:
+- Category: `Billing`
+- Type: `RateCreated`, `RateUpdated`, `RateDeleted`, or `DefaultRateSet`
+- Includes which admin made the change
 
 To view history:
-1. Go to **Session Logs** tab
-2. Set Category filter to "Billing"
-3. Set date range
-4. Click **Load Logs**
+1. Go to **Session Logs** tab → set Category to `Billing` → set date range → click **Load Logs**
+
+---
+
+## FAQ
+
+**Q: Can I have multiple default rates?**
+A: No. Only one default at a time — setting a new default auto-unsets the old one.
+
+**Q: Can I delete the current default?**
+A: No. Change the default first, then delete.
+
+**Q: Do old sessions get the new rate if I change the default?**
+A: No. Completed sessions keep their original rate. Only new sessions use the new default.
+
+**Q: Can I undo a deletion?**
+A: No. Use deactivate (uncheck Active) instead of delete if you are unsure.
+
+**Q: What if I accidentally delete all rates?**
+A: Technically impossible — the system prevents deletion of the last rate.
+
+**Q: Can two rates have the same name?**
+A: Yes, but not recommended. Use unique names to avoid confusion.
+
+**Q: What is the maximum rate value?**
+A: `DECIMAL(10,2)` supports up to 99,999,999.99 per minute.
+
+**Q: Can I create a rate for future dates?**
+A: Yes. Set **Effective From** to a future date — the rate will be available immediately but you control when to activate it as default.
 
 ---
 
 ## Common Issues & Solutions
 
 | Issue | Solution |
-|-------|----------|
-| Can't delete a rate | Ensure at least 2 rates exist and 2 defaults don't exist. You need at least 1 default. |
-| Can't unset as default | There must be at least one other default before unsetting. Create another default first. |
-| Effective dates not working | Dates are optional. Leave blank if rate should apply always. |
-| Form won't save | Check that Rate Name and Rate/Min are filled in with valid values. |
-| Changes not visible | Click **Refresh** button to reload from database. |
+|---|---|
+| Can't delete a rate | Ensure at least 2 rates exist and the one being deleted is not the only default |
+| Can't unset as default | Create or set another rate as default first |
+| Changes not visible | Click **Refresh** to reload from database |
+| Form won't save | Check that Rate Name and Rate/Min are filled with valid values |
 
 ---
 
 ## Keyboard Shortcuts
 
-- **Tab** - Move between form fields
-- **Enter** - Submit form (Add/Update)
-- **Escape** - Clear form
+| Key | Action |
+|---|---|
+| Tab | Move between form fields |
+| Enter | Submit form (Add / Update) |
+| Escape | Clear form |
 
 ---
 
-## Permission Notes
+## Permissions
 
-Only **Admin** users can:
-- View the Billing Rates tab
-- Add rates
-- Edit rates
-- Delete rates
-- Set default rate
-
-Regular **Client Users** can:
-- View their current session billing based on the default rate
-- Cannot access the Billing Rates tab
+Only **Admin** users can view the Billing Rates tab and manage rates. Client Users see their session billing based on the current default rate but cannot access this tab.
 
 ---
 
 ## Best Practices
 
-1. **Always maintain a simple default rate** - Keep at least one straightforward rate as the system default
-2. **Use effective dates for temporary rates** - Instead of deleting, set an end date
-3. **Document rate changes** - Use the Notes field to explain rate changes
-4. **Review logs monthly** - Check Session Logs > Billing category for audit trail
-5. **Test before activating** - Create a rate as inactive first, test it, then activate
-6. **Keep currency consistent** - Don't mix currencies; use the same currency for all rates
-7. **Never have zero rates** - The system requires at least one rate to function
-
----
-
-## Support
-
-If you encounter issues:
-1. Check the error message carefully
-2. Review the Common Issues table above
-3. Look at Session Logs for audit trail
-4. Contact system administrator if needed
-
----
-
-**Last Updated**: $(date)
-**Version**: 1.0
-**Status**: Production Ready
+1. Keep at least one simple default rate at all times
+2. Use Effective Dates for temporary rates instead of deleting them
+3. Use the Notes field to explain why a rate was changed
+4. Create a rate as inactive first, test it, then activate
+5. Keep all rates in the same currency — do not mix currencies
+6. Review Session Logs → Billing monthly for audit trail

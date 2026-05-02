@@ -1,0 +1,35 @@
+INTELLIGENT CLIENT-SERVER SESSION MANAGEMENT SYSTEM
+Academic Final Year Project — Virtual University of Pakistan
+
+Student   : Muzaffar Iqbal (BC240212887)
+Group ID  : F25PROJECT8E326
+Supervisor: Asim Mehmood (asimmehmood@vu.edu.pk)
+Session   : Spring 2026
+
+========================================================
+TERMS OF USE
+========================================================
+
+This software is developed as a Final Year Project submission
+for the Bachelor of Science in Computer Science degree at the
+Virtual University of Pakistan.
+
+1. PERMITTED USE
+   This software may be used, copied, and run for:
+   - Academic evaluation and demonstration purposes
+   - Personal learning and reference
+   - Non-commercial deployment in internet cafe / kiosk environments
+
+2. RESTRICTIONS
+   You may not:
+   - Sell or distribute this software for commercial gain
+   - Claim authorship of this work
+   - Remove or alter this license notice
+
+3. DISCLAIMER
+   This software is provided "as is" without warranty of any kind.
+   The author is not liable for any damages arising from its use.
+
+========================================================
+Copyright (c) 2026 Muzaffar Iqbal — All Rights Reserved
+========================================================
