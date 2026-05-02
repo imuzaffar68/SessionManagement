@@ -151,6 +151,10 @@ namespace SessionManagement.WCF
         [OperationContract]
         AlertInfo[] GetUnacknowledgedAlerts();
 
+        /// <summary>UC-18: All alerts (acknowledged + unacknowledged) within a date range for reports.</summary>
+        [OperationContract]
+        AlertInfo[] GetAllAlertsForDateRange(DateTime from, DateTime to);
+
         /// <summary>SEQ-17: Admin acknowledges; writes AcknowledgedByAdminUserId.</summary>
         [OperationContract]
         bool AcknowledgeAlert(int alertId, int adminUserId);
@@ -339,14 +343,15 @@ namespace SessionManagement.WCF
     [DataContract]
     public class AlertInfo
     {
-        [DataMember] public int      AlertId     { get; set; }
-        [DataMember] public int?     SessionId   { get; set; }
-        [DataMember] public string   Username    { get; set; }
-        [DataMember] public string   ClientCode  { get; set; }
-        [DataMember] public string   AlertType   { get; set; }
-        [DataMember] public string   Description { get; set; }
-        [DataMember] public DateTime Timestamp   { get; set; }
-        [DataMember] public string   Severity    { get; set; }
+        [DataMember] public int      AlertId        { get; set; }
+        [DataMember] public int?     SessionId      { get; set; }
+        [DataMember] public string   Username       { get; set; }
+        [DataMember] public string   ClientCode     { get; set; }
+        [DataMember] public string   AlertType      { get; set; }
+        [DataMember] public string   Description    { get; set; }
+        [DataMember] public DateTime Timestamp      { get; set; }
+        [DataMember] public string   Severity       { get; set; }
+        [DataMember] public bool     IsAcknowledged { get; set; }
     }
 
     [DataContract]

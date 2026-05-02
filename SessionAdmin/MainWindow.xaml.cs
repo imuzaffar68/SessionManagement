@@ -42,11 +42,12 @@ namespace SessionAdmin
         private ObservableCollection<BillingRecordVM>  _billingRecords = new ObservableCollection<BillingRecordVM>();
         private ObservableCollection<ReportSessionVM> _reportSessions = new ObservableCollection<ReportSessionVM>();
 
-        // Cached last report data so export always works regardless of which panel is visible
-        private ReportData _lastReportData;
-        private string     _lastReportType;
-        private DateTime   _lastReportFrom;
-        private DateTime   _lastReportTo;
+        // Cached last report data so export/print always works regardless of which panel is visible
+        private ReportData  _lastReportData;
+        private string      _lastReportType;
+        private DateTime    _lastReportFrom;
+        private DateTime    _lastReportTo;
+        private AlertInfo[] _lastReportAlerts;
 
         // Current active nav page
         private string _currentPage = "dashboard";
@@ -1004,10 +1005,24 @@ namespace SessionAdmin
 
                 if (err != null) { ShowToast($"Error generating report: {err.Message}", "error"); return; }
 
-                _lastReportData = data;
-                _lastReportType = type;
-                _lastReportFrom = from;
-                _lastReportTo   = to;
+                _lastReportData   = data;
+                _lastReportType   = type;
+                _lastReportFrom   = from;
+                _lastReportTo     = to;
+                _lastReportAlerts = null;
+
+                if (type == "Security Alerts")
+                {
+                    AlertInfo[] alerts = null;
+                    Exception alertErr = null;
+                    (alerts, alertErr) = await Task.Run(() =>
+                    {
+                        try   { return (svc.GetAllAlertsForDateRange(from, to), (Exception)null); }
+                        catch (Exception ex) { return ((AlertInfo[])null, ex); }
+                    });
+                    if (alertErr != null) { ShowToast($"Error loading alerts: {alertErr.Message}", "error"); return; }
+                    _lastReportAlerts = alerts;
+                }
 
                 if (type == "Session Usage")
                 {
@@ -1080,14 +1095,19 @@ namespace SessionAdmin
                     break;
 
                 case "Security Alerts":
-                    var al = _svc.GetUnacknowledgedAlerts()
-                        .Where(a => a.Timestamp >= from && a.Timestamp <= to.AddDays(1).AddSeconds(-1)).ToArray();
-                    sb.AppendLine($"  Unresolved Alerts : {al.Length}");
+                    var al = (_lastReportAlerts ?? Array.Empty<AlertInfo>())
+                             .OrderByDescending(x => x.Timestamp).ToArray();
+                    int acked   = al.Count(a => a.IsAcknowledged);
+                    int pending = al.Length - acked;
+                    sb.AppendLine($"  Total Alerts  : {al.Length}");
+                    sb.AppendLine($"  Acknowledged  : {acked}");
+                    sb.AppendLine($"  Pending       : {pending}");
                     sb.AppendLine();
-                    foreach (var a in al.OrderByDescending(x => x.Timestamp))
+                    sb.AppendLine($"  {"Time",-22} {"Severity",-10} {"Type",-32} {"Client",-10} {"User",-14} Description");
+                    sb.AppendLine(new string('─', 115));
+                    foreach (var a in al)
                     {
-                        sb.AppendLine($"  {a.Timestamp:MM/dd/yyyy hh:mm tt}  [{a.Severity}]  {a.AlertType}");
-                        sb.AppendLine($"    {a.Description}");
+                        sb.AppendLine($"  {a.Timestamp:MM/dd/yyyy hh:mm tt}  [{a.Severity,-6}]  {a.AlertType,-32} {a.ClientCode ?? "—",-10} {a.Username ?? "—",-14} {a.Description}");
                     }
                     break;
             }
@@ -1114,6 +1134,36 @@ namespace SessionAdmin
                     ShowToast($"Report exported to: {System.IO.Path.GetFileName(dlg.FileName)}");
                 }
                 catch (Exception ex) { ShowToast($"Export failed: {ex.Message}", "error"); }
+            }
+        }
+
+        private void btnPrintReport_Click(object sender, RoutedEventArgs e)
+        {
+            if (_lastReportData == null)
+            { ShowToast("Generate a report first before printing.", "warning"); return; }
+
+            var pd = new System.Windows.Controls.PrintDialog();
+            if (pd.ShowDialog() != true) return;
+
+            if (_lastReportType == "Session Usage")
+            {
+                pd.PrintVisual(pnlSessionUsage, $"Session Usage Report — {_lastReportFrom:yyyy-MM-dd} to {_lastReportTo:yyyy-MM-dd}");
+            }
+            else
+            {
+                string text = BuildReportText(_lastReportType, _lastReportData, _lastReportFrom, _lastReportTo);
+                var doc = new System.Windows.Documents.FlowDocument(
+                    new System.Windows.Documents.Paragraph(
+                        new System.Windows.Documents.Run(text)))
+                {
+                    FontFamily = new System.Windows.Media.FontFamily("Courier New"),
+                    FontSize   = 11,
+                    PageWidth  = pd.PrintableAreaWidth,
+                    PagePadding = new Thickness(40)
+                };
+                var source = (System.Windows.Documents.IDocumentPaginatorSource)doc;
+                pd.PrintDocument(source.DocumentPaginator,
+                    $"{_lastReportType} Report — {_lastReportFrom:yyyy-MM-dd} to {_lastReportTo:yyyy-MM-dd}");
             }
         }
 

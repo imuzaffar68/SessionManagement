@@ -1,6 +1,7 @@
 using System.Configuration;
 using System.Windows;
 using System.Windows.Input;
+using SessionManagement.Security;
 
 namespace SessionAdmin
 {
@@ -22,8 +23,28 @@ namespace SessionAdmin
 
         private void Verify()
         {
-            string expected = ConfigurationManager.AppSettings["AdminSettingsPin"] ?? "1234";
-            if (txtPin.Password == expected) { DialogResult = true; Close(); }
+            string stored  = ConfigurationManager.AppSettings["AdminSettingsPin"] ?? "1234";
+            string entered = txtPin.Password;
+
+            bool match = (stored.StartsWith("$2a$") || stored.StartsWith("$2b$"))
+                ? AuthenticationHelper.VerifyPassword(entered, stored)
+                : entered == stored;
+
+            // Auto-upgrade plaintext PIN to BCrypt hash on first successful use.
+            if (match && !stored.StartsWith("$2"))
+            {
+                try
+                {
+                    var cfg = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.None);
+                    cfg.AppSettings.Settings["AdminSettingsPin"].Value =
+                        AuthenticationHelper.HashPassword(entered);
+                    cfg.Save(ConfigurationSaveMode.Modified);
+                    ConfigurationManager.RefreshSection("appSettings");
+                }
+                catch { /* best-effort upgrade — plaintext fallback remains safe via OS ACL */ }
+            }
+
+            if (match) { DialogResult = true; Close(); }
             else
             {
                 // Silent clear — no "wrong PIN" feedback to prevent brute-force guessing.

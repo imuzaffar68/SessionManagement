@@ -68,7 +68,8 @@
       "Bash(xargs ls *)",
       "Bash(grep -i \"User@123456\" ClientAdmin/SessionAdmin.exe.config)",
       "Bash(grep -i \"User@123456\" SessionAdmin/App.config)",
-      "PowerShell(Test-Path *)"
+      "PowerShell(Test-Path *)",
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\Muzaffar Iqbal\\\\Downloads\\\\FinalDeliverables\\\\Details\" -Recurse -ErrorAction SilentlyContinue | ForEach-Object { \"$\\($_.FullName\\) - $\\($_.Length\\) bytes\" })"
     ]
   }
 }

@@ -416,6 +416,14 @@ namespace SessionManagement.Client
             { Log($"GetSessionReport: {ex.Message}"); return new WCF.ReportData(); }
         }
 
+        public WCF.AlertInfo[] GetAllAlertsForDateRange(DateTime from, DateTime to)
+        {
+            if (!EnsureConnection()) return Array.Empty<WCF.AlertInfo>();
+            try { return _proxy.GetAllAlertsForDateRange(from, to); }
+            catch (Exception ex)
+            { Log($"GetAllAlertsForDateRange: {ex.Message}"); return Array.Empty<WCF.AlertInfo>(); }
+        }
+
 
         #endregion
 

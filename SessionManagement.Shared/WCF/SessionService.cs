@@ -735,10 +735,11 @@ namespace SessionManagement.WCF
                                       ? (int?)Convert.ToInt32(r["SessionId"]) : null,
                         Username    = r["Username"]?.ToString(),
                         ClientCode  = r["ClientCode"]?.ToString(),
-                        AlertType   = r["ActivityTypeName"].ToString(),
-                        Description = r["Details"].ToString(),
-                        Timestamp   = Convert.ToDateTime(r["DetectedAt"]),
-                        Severity    = r["Severity"].ToString()
+                        AlertType      = r["ActivityTypeName"].ToString(),
+                        Description    = r["Details"].ToString(),
+                        Timestamp      = Convert.ToDateTime(r["DetectedAt"]),
+                        Severity       = r["Severity"].ToString(),
+                        IsAcknowledged = r["IsAcknowledged"] != DBNull.Value && Convert.ToBoolean(r["IsAcknowledged"])
                     });
                 }
                 return list.ToArray();
@@ -746,6 +747,37 @@ namespace SessionManagement.WCF
             catch (Exception ex)
             {
                 _db.LogSystemEvent(null, null, null, "GetAlertsErr", ex.Message, "Error");
+                return Array.Empty<AlertInfo>();
+            }
+        }
+
+        public AlertInfo[] GetAllAlertsForDateRange(DateTime from, DateTime to)
+        {
+            try
+            {
+                DataTable dt   = _db.GetAlertsForDateRange(from, to);
+                var list = new List<AlertInfo>();
+                foreach (DataRow r in dt.Rows)
+                {
+                    list.Add(new AlertInfo
+                    {
+                        AlertId     = Convert.ToInt32(r["AlertId"]),
+                        SessionId   = r["SessionId"] != DBNull.Value
+                                      ? (int?)Convert.ToInt32(r["SessionId"]) : null,
+                        Username    = r["Username"]?.ToString(),
+                        ClientCode  = r["ClientCode"]?.ToString(),
+                        AlertType      = r["ActivityTypeName"].ToString(),
+                        Description    = r["Details"].ToString(),
+                        Timestamp      = Convert.ToDateTime(r["DetectedAt"]),
+                        Severity       = r["Severity"].ToString(),
+                        IsAcknowledged = r["IsAcknowledged"] != DBNull.Value && Convert.ToBoolean(r["IsAcknowledged"])
+                    });
+                }
+                return list.ToArray();
+            }
+            catch (Exception ex)
+            {
+                _db.LogSystemEvent(null, null, null, "GetAlertsRangeErr", ex.Message, "Error");
                 return Array.Empty<AlertInfo>();
             }
         }

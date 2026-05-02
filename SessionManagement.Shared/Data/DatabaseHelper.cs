@@ -1028,6 +1028,35 @@ namespace SessionManagement.Data
             catch (Exception ex) { LogError("GetUnacknowledgedAlerts", ex); return new DataTable(); }
         }
 
+        public DataTable GetAlertsForDateRange(DateTime from, DateTime to)
+        {
+            const string sql = @"
+                SELECT a.AlertId, a.SessionId, a.DetectedAt, a.Severity,
+                       a.Status,  a.Details, a.IsAcknowledged,
+                       at.Name    AS ActivityTypeName,
+                       u.Username,
+                       c.ClientCode
+                FROM   dbo.tblAlert        a
+                JOIN   dbo.tblActivityType at ON at.ActivityTypeId   = a.ActivityTypeId
+                LEFT JOIN dbo.tblUser        u ON u.UserId            = a.UserId
+                LEFT JOIN dbo.tblClientMachine c ON c.ClientMachineId = a.ClientMachineId
+                WHERE  a.DetectedAt >= @From AND a.DetectedAt < @To
+                ORDER  BY a.DetectedAt DESC";
+            try
+            {
+                using (var c = Conn()) using (var cmd = new SqlCommand(sql, c))
+                {
+                    cmd.Parameters.AddWithValue("@From", from.Date);
+                    cmd.Parameters.AddWithValue("@To",   to.Date.AddDays(1));
+                    c.Open();
+                    var dt = new DataTable();
+                    new SqlDataAdapter(cmd).Fill(dt);
+                    return dt;
+                }
+            }
+            catch (Exception ex) { LogError("GetAlertsForDateRange", ex); return new DataTable(); }
+        }
+
         /// <summary>UC-17: admin acknowledges an alert; sets AcknowledgedByAdminUserId.</summary>
         public bool AcknowledgeAlert(int alertId, int adminUserId)
         {

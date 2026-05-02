@@ -178,6 +178,20 @@ schtasks /create /tn "SessionServer" /tr "C:\Path\To\SessionServer.exe" ^
 
 Or use NSSM (Non-Sucking Service Manager) to wrap it as a proper Windows Service.
 
+### Auto-restart on crash (recommended for production)
+
+The scheduled task above starts the server on boot but does not restart it if it crashes.
+To configure automatic restart on failure via Task Scheduler:
+
+1. Open **Task Scheduler** (`taskschd.msc`)
+2. Find `NetCafe\SessionServer` under Task Scheduler Library
+3. Right-click → **Properties** → **Settings** tab
+4. Check **"If the task fails, restart every:"** → set to `1 minute`
+5. Set **"Attempt to restart up to:"** → `3 times`
+6. Click **OK**
+
+> This ensures the café stays operational even if the server process crashes unexpectedly.
+
 ---
 
 ## Step 6 — Verify Everything Works
@@ -190,6 +204,78 @@ Run this checklist after first setup:
 - [ ] Firewall rule for port 8001 is present
 - [ ] From a client PC, `SessionClient.exe` connects without error
 - [ ] Admin logs in via `SessionAdmin.exe` successfully
+
+---
+
+## Replacing the Server PC (Migrating Existing Data)
+
+If the server PC is being replaced but the café already has an existing database
+with user accounts, session history, and billing records, follow these steps to
+migrate the data to the new PC without losing anything.
+
+### Step 1 — Back up the database on the old PC
+
+Open SSMS on the **old** server PC and run:
+
+```sql
+BACKUP DATABASE ClientServerSessionDB
+TO DISK = 'C:\Backup\ClientServerSessionDB.bak'
+WITH FORMAT, INIT, NAME = 'NetCafe Full Backup';
+```
+
+Or via SSMS GUI: right-click `ClientServerSessionDB` → Tasks → Back Up → Full → OK.
+
+Copy `ClientServerSessionDB.bak` to a USB drive or network share.
+
+### Step 2 — Install on the new PC (skip database creation)
+
+Run the Inno Setup installer (`SessionManagement-Setup.exe`) on the new PC with
+the **Server PC** profile. On the **SQL Server Instance** wizard page:
+
+- Set the SQL Server instance name as normal
+- **Uncheck** "Create fresh database during installation"
+
+The installer will configure everything except the database — no empty database
+will be created.
+
+### Step 3 — Restore the backup on the new PC
+
+Open SSMS on the **new** server PC and run:
+
+```sql
+RESTORE DATABASE ClientServerSessionDB
+FROM DISK = 'C:\Backup\ClientServerSessionDB.bak'
+WITH MOVE 'ClientServerSessionDB'
+     TO 'C:\Program Files\Microsoft SQL Server\MSSQL15.SQLEXPRESS\MSSQL\DATA\ClientServerSessionDB.mdf',
+MOVE 'ClientServerSessionDB_log'
+     TO 'C:\Program Files\Microsoft SQL Server\MSSQL15.SQLEXPRESS\MSSQL\DATA\ClientServerSessionDB_log.ldf',
+REPLACE;
+```
+
+Or via SSMS GUI: right-click `Databases` → Restore Database → Device → select
+your `.bak` file → OK.
+
+### Step 4 — Update stored procedures (optional but recommended)
+
+Run the SQL setup script once to update all stored procedures to the latest
+version without touching any table data:
+
+```bat
+sqlcmd -S localhost\SQLEXPRESS -E -i "C:\NetCafe\SessionManagement\SessionManagement_Setup.sql"
+```
+
+Since all tables use `IF NOT EXISTS` guards and all procedures use
+`CREATE OR ALTER`, this is fully safe — **no data will be lost**.
+
+### Step 5 — Start the server
+
+Run `SessionServer.exe`. If the database is not yet restored when the server
+starts, it will display clear instructions and exit gracefully — no crash.
+
+### Step 6 — Update client PCs
+
+On each client PC, press `Ctrl+Alt+Shift+S` → enter IT admin PIN → update the
+**Server Address** to the new server PC's LAN IP → Save & Restart.
 
 ---
 

@@ -1688,6 +1688,10 @@
                                                 Style="{StaticResource BtnGhost}"
                                                 Height="38" Padding="16,0" FontSize="12"
                                                 Margin="8,0,0,0" Click="btnExportReport_Click"/>
+                                        <Button x:Name="btnPrintReport" Content="🖨 Print"
+                                                Style="{StaticResource BtnGhost}"
+                                                Height="38" Padding="16,0" FontSize="12"
+                                                Margin="8,0,0,0" Click="btnPrintReport_Click"/>
                                     </StackPanel>
                                 </StackPanel>
                             </Border>

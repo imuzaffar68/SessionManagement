@@ -109,12 +109,13 @@ Name: "{commondesktop}\Session Admin"; Filename: "{app}\SessionAdmin.exe"; Compo
 ; ── Post-install actions ────────────────────────────────────────────────────
 [Run]
 
-; 1. Create the database (server only)
+; 1. Create the database (server only, skipped if user unchecked "Create fresh database")
 Filename: "{sys}\cmd.exe";
   Parameters: "/c sqlcmd -S ""{code:GetSqlInstance}"" -E -i ""{app}\SessionManagement_Setup.sql"" > ""{app}\Logs\db_setup.log"" 2>&1";
   StatusMsg: "Creating database...";
   Components: server_svc;
-  Flags: runhidden waituntilterminated
+  Flags: runhidden waituntilterminated;
+  Check: ShouldCreateDatabase
 
 ; 2. Open firewall port (server only)
 Filename: "{sys}\netsh.exe";
@@ -152,6 +153,7 @@ var
   SqlInstancePage  : TInputQueryWizardPage;
   ServerPortPage   : TInputQueryWizardPage;
   AdminPinPageSrv  : TInputQueryWizardPage;
+  CreateDbCheckBox : TNewCheckBox;
 
   { Client wizard pages }
   ServerAddrPage   : TInputQueryWizardPage;
@@ -161,6 +163,12 @@ var
 
 
 { ── Helpers ──────────────────────────────────────────────────────────────── }
+function ShouldCreateDatabase(): Boolean;
+begin
+  Result := IsServerComponentSelected() and
+            ((CreateDbCheckBox = nil) or CreateDbCheckBox.Checked);
+end;
+
 function GetSqlInstance(Param: String): String;
 begin
   if SqlInstancePage <> nil then
@@ -234,6 +242,18 @@ begin
     'Example: localhost\SQLEXPRESS  or  localhost  (for full SQL Server)');
   SqlInstancePage.Add('SQL Server instance:', False);
   SqlInstancePage.Values[0] := 'localhost\SQLEXPRESS';
+
+  { ── Create database checkbox ─────────────────────────────────────────────── }
+  CreateDbCheckBox := TNewCheckBox.Create(SqlInstancePage);
+  CreateDbCheckBox.Parent  := SqlInstancePage.Surface;
+  CreateDbCheckBox.Caption := 'Create fresh database during installation' + #13#10 +
+    'Uncheck if you are restoring an existing backup from your old server.';
+  CreateDbCheckBox.Checked := True;
+  CreateDbCheckBox.Left    := 0;
+  CreateDbCheckBox.Top     := SqlInstancePage.Edits[0].Top +
+                               SqlInstancePage.Edits[0].Height + 16;
+  CreateDbCheckBox.Width   := SqlInstancePage.SurfaceWidth;
+  CreateDbCheckBox.Height  := 40;
 
   ServerPortPage := CreateInputQueryPage(SqlInstancePage.ID,
     'WCF Service Port',
