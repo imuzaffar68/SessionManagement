@@ -1,4 +1,4 @@
-# Server Setup Guide — SessionManagement
+﻿# Server Setup Guide — SessionManagement
 
 Step-by-step instructions to get `SessionServer` running on a fresh Windows PC.
 Follow sections in order: Dependencies → Database → Configuration → Firewall → Run.
@@ -184,7 +184,7 @@ The scheduled task above starts the server on boot but does not restart it if it
 To configure automatic restart on failure via Task Scheduler:
 
 1. Open **Task Scheduler** (`taskschd.msc`)
-2. Find `NetCafe\SessionServer` under Task Scheduler Library
+2. Find `ICSSMS\SessionServer` under Task Scheduler Library
 3. Right-click → **Properties** → **Settings** tab
 4. Check **"If the task fails, restart every:"** → set to `1 minute`
 5. Set **"Attempt to restart up to:"** → `3 times`
@@ -220,7 +220,7 @@ Open SSMS on the **old** server PC and run:
 ```sql
 BACKUP DATABASE ClientServerSessionDB
 TO DISK = 'C:\Backup\ClientServerSessionDB.bak'
-WITH FORMAT, INIT, NAME = 'NetCafe Full Backup';
+WITH FORMAT, INIT, NAME = 'ICSSMS Full Backup';
 ```
 
 Or via SSMS GUI: right-click `ClientServerSessionDB` → Tasks → Back Up → Full → OK.
@@ -261,7 +261,7 @@ Run the SQL setup script once to update all stored procedures to the latest
 version without touching any table data:
 
 ```bat
-sqlcmd -S localhost\SQLEXPRESS -E -i "C:\NetCafe\SessionManagement\SessionManagement_Setup.sql"
+sqlcmd -S localhost\SQLEXPRESS -E -i "C:\ICSSMS\SessionManagement\SessionManagement_Setup.sql"
 ```
 
 Since all tables use `IF NOT EXISTS` guards and all procedures use
@@ -329,3 +329,5 @@ WHERE  Username = 'Admin' AND Role = 'Admin';
   ```bat
   sqlcmd -S localhost\SQLEXPRESS -E -d ClientServerSessionDB -Q "UPDATE dbo.tblUser SET PasswordHash='$2a$12$cidj..ohW.bgKXVPBdVyH.VbvmIrOxVmFGqV3Y/lZDGC0utA685vm' WHERE Username='Admin' AND Role='Admin'"
   ```
+
+

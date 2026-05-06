@@ -1,4 +1,4 @@
-; ============================================================
+﻿; ============================================================
 ;  SessionManagement — Hybrid Inno Setup Installer
 ;  Version : 1.0
 ;
@@ -14,10 +14,10 @@
 ;    3. Run this script from the solution root folder
 ; ============================================================
 
-#define AppName    "NetCafe Session Management"
+#define AppName    "Intelligent Client-Server Session Management System"
 #define AppVersion "1.0"
-#define AppPublisher "BC240212887"
-#define InstallDir "C:\NetCafe\SessionManagement"
+#define AppPublisher "Muzaffar Iqbal (BC240212887) — Virtual University of Pakistan"
+#define InstallDir "C:\\ICSSMS"
 
 [Setup]
 AppName={#AppName}
@@ -25,7 +25,7 @@ AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
 AppId={{F25PROJECT8E326-CAFE-0001-0000-000000000001}
 DefaultDirName={#InstallDir}
-DefaultGroupName=NetCafe
+DefaultGroupName=ICSSMS
 OutputDir=Output
 OutputBaseFilename=SessionManagement-Setup-v{#AppVersion}
 Compression=lzma2/ultra64
@@ -119,14 +119,14 @@ Filename: "{sys}\cmd.exe";
 
 ; 2. Open firewall port (server only)
 Filename: "{sys}\netsh.exe";
-  Parameters: "advfirewall firewall add rule name=""NetCafe SessionService"" dir=in action=allow protocol=TCP localport={code:GetServerPort}";
+  Parameters: "advfirewall firewall add rule name=""ICSSMS SessionService"" dir=in action=allow protocol=TCP localport={code:GetServerPort}";
   StatusMsg: "Configuring firewall...";
   Components: server_svc;
   Flags: runhidden
 
 ; 3. Register SessionServer as a scheduled task for auto-start (server only)
 Filename: "{sys}\schtasks.exe";
-  Parameters: "/create /tn ""NetCafe\SessionServer"" /tr ""{app}\SessionServer.exe"" /sc onstart /ru SYSTEM /rl HIGHEST /f";
+  Parameters: "/create /tn ""ICSSMS\\SessionServer"" /tr ""{app}\SessionServer.exe"" /sc onstart /ru SYSTEM /rl HIGHEST /f";
   StatusMsg: "Registering auto-start...";
   Components: server_svc;
   Flags: runhidden
@@ -480,3 +480,4 @@ begin
       SetIniValue(ClientConfig, 'appSettings', 'AdminSettingsPin', Pin);
   end;
 end;
+

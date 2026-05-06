@@ -69,7 +69,12 @@
       "Bash(grep -i \"User@123456\" ClientAdmin/SessionAdmin.exe.config)",
       "Bash(grep -i \"User@123456\" SessionAdmin/App.config)",
       "PowerShell(Test-Path *)",
-      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\Muzaffar Iqbal\\\\Downloads\\\\FinalDeliverables\\\\Details\" -Recurse -ErrorAction SilentlyContinue | ForEach-Object { \"$\\($_.FullName\\) - $\\($_.Length\\) bytes\" })"
+      "PowerShell(Get-ChildItem \"C:\\\\Users\\\\Muzaffar Iqbal\\\\Downloads\\\\FinalDeliverables\\\\Details\" -Recurse -ErrorAction SilentlyContinue | ForEach-Object { \"$\\($_.FullName\\) - $\\($_.Length\\) bytes\" })",
+      "Bash(findstr *)",
+      "Bash(Get-Content \"C:\\\\Users\\\\Muzaffar Iqbal\\\\Downloads\\\\FinalDeliverables\\\\Final_Report.html\")",
+      "Bash(Select-String -Pattern \"CHAPTER 2|CHAPTER 3\" -Context 5)",
+      "PowerShell($content = Get-Content \"C:\\\\Users\\\\Muzaffar Iqbal\\\\Downloads\\\\FinalDeliverables\\\\Final_Report.html\" -Raw; $ch2Start = $content.IndexOf\\(\"CHAPTER 2\"\\); $ch3Start = $content.IndexOf\\(\"CHAPTER 3\"\\); if \\($ch2Start -ge 0 -and $ch3Start -ge 0\\) { $ch2Content = $content.Substring\\($ch2Start, $ch3Start - $ch2Start\\); Write-Output $ch2Content.Length; Write-Output \"Chapter 2 found, length: $\\($ch2Content.Length\\) characters\" } else { Write-Output \"Chapter 2 or 3 not found\" })",
+      "PowerShell($content = Get-Content \"C:\\\\Users\\\\Muzaffar Iqbal\\\\Downloads\\\\FinalDeliverables\\\\Final_Report.html\" -Raw; $ch2Start = $content.IndexOf\\(\"CHAPTER 2\"\\); $ch3Start = $content.IndexOf\\(\"CHAPTER 3\"\\); $ch2Content = $content.Substring\\($ch2Start, $ch3Start - $ch2Start\\); Write-Output $ch2Content)"
     ]
   }
 }
