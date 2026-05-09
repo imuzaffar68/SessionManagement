@@ -1734,6 +1734,10 @@ namespace SessionClient
 
         private void OnClosingHandler(object sender, System.ComponentModel.CancelEventArgs e)
         {
+            // Block ALL close attempts in kiosk mode unless admin-authorized.
+            // Covers right-click "Close window", Alt+F4 fallthrough, and any other close source.
+            if (_kioskMode && !_adminCloseAuthorized) { e.Cancel = true; return; }
+
             if (_sessionActive)
             {
                 if (!AppDialog.Confirm("End session and exit?", "Confirm Exit")) { e.Cancel = true; return; }
@@ -1745,13 +1749,6 @@ namespace SessionClient
                     AppDialog.ShowInfo(
                         $"Session ended.\nDuration: {elapsed} min\nCharged: {FormatAmount(amount)}",
                         "Session Summary");
-            }
-            else
-            {
-                // Kiosk: silently block close on the login/idle screen — no dialog.
-                // Exception: admin-authorized close via Ctrl+Alt+Shift+Q + PIN.
-                // Non-kiosk: allow close via the custom title bar ✕ button.
-                if (_kioskMode && !_adminCloseAuthorized) { e.Cancel = true; return; }
             }
 
             Microsoft.Win32.SystemEvents.SessionEnding -= OnSystemSessionEnding;

@@ -1128,28 +1128,25 @@ GO
 /* ============================================================
    PART 5: INSERT SEED DATA
    ============================================================ */
-   -- Admin User
--- Password: Admin@123456
--- Client Users
--- Password: User1@123456
--- Password: User2@123456
--- Password: User3@123456
--- Hash generated with: BCrypt.Net-Next (WorkFactor=12)
+   -- Admin User (default password set during installation — see SERVER_SETUP_GUIDE.md for reset procedure)
+-- Sample Client Users (passwords are BCrypt hashes — reset via SessionAdmin after first login)
+-- Hash algorithm: BCrypt.Net-Next, WorkFactor=12
 
 -- Admin User
 INSERT INTO dbo.tblUser
     (Username, PasswordHash, FullName, Role, Status, Phone, Address, CreatedAt)
 VALUES
-    ('Admin', '$2a$12$cidj..ohW.bgKXVPBdVyH.VbvmIrOxVmFGqV3Y/lZDGC0utA685vm', 'System Administrator', 'Admin', 'Active', '1234567890', 'Admin Office', GETDATE());
+    ('Admin', '$2a$12$cidj..ohW.bgKXVPBdVyH.VbvmIrOxVmFGqV3Y/lZDGC0utA685vm', 'Muzaffar Iqbal', 'Admin', 'Active', NULL, NULL, GETDATE());
 GO
 
 -- Sample Users
 INSERT INTO dbo.tblUser
     (Username, PasswordHash, FullName, Role, Status, Phone, Address, CreatedAt)
 VALUES
-    ('User1', '$2a$12$NS2X3ReuBdhFzxdrmy03XuTNUhu.nNyOsgWEL4eAVH3bC46Ua2rWW', 'John Doe', 'ClientUser', 'Active', '1111111111', '123 Main St', GETDATE()),
-    ('User2', '$2a$12$Y69.hwCn9FHHa8lHLyI.XOxPzCd8YdJY1vSchS9U7k10N5/bdpAYC', 'Jane Smith', 'ClientUser', 'Active', '2222222222', '456 Oak Ave', GETDATE()),
-    ('User3', '$2a$12$5nX6ETKBzk9d8yHfJMN65uNr6Gk4lhxr4siODdQxbj42/Ewpgn9k6', 'Bob Johnson', 'ClientUser', 'Active', '3333333333', '789 Pine Rd', GETDATE());
+    ('sukaina', '$2a$12$sLpL9P0AB8oK4X4gS3fpueOzyh375YcBvRVxFbDa/D/rByaHGAIfW', 'Sukaina Muzaffar', 'ClientUser', 'Active', '0345-6123797', 'Phalia City, Mandi Bahauddin District, Punjab, Pakistan', GETDATE()),
+    ('bisma',   '$2a$12$0HhdqUIbMpWt8XQId5NnE.LIctuW3B9TPeiGVqObcaiL8Mvhm9Ss.', 'Bisma Noor',       'ClientUser', 'Active', '0345-6123797', 'Phalia City, Mandi Bahauddin District, Punjab, Pakistan', GETDATE()),
+    ('jannat',  '$2a$12$pdhZ0ZnEuHxYMjl7q7gMtusj.zwNwZ/D.ZySpHBBr0X7HGF/Di42i', 'Jannat Fatima',    'ClientUser', 'Active', '0345-6123797', 'Phalia City, Mandi Bahauddin District, Punjab, Pakistan', GETDATE()),
+    ('adan',    '$2a$12$JLG7bJcbkZmYA8enTXgpgObHejQFDSCvydum.sEUJBRLHNpsYcsay', 'Adan Fatima',      'ClientUser', 'Active', '0345-6123797', 'Phalia City, Mandi Bahauddin District, Punjab, Pakistan', GETDATE());
 GO
 
 -- Client Machines

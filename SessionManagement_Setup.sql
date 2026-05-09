@@ -1184,11 +1184,70 @@ BEGIN
     VALUES
         ('Admin',
          '$2a$12$cidj..ohW.bgKXVPBdVyH.VbvmIrOxVmFGqV3Y/lZDGC0utA685vm',
-         'System Administrator', 'Admin', 'Active', NULL, NULL, GETDATE());
+         'Muzaffar Iqbal', 'Admin', 'Active', NULL, NULL, GETDATE());
     PRINT 'Seed: Admin user inserted.';
 END
 ELSE
     PRINT 'Seed: Admin user already exists — skipped.';
+GO
+
+-- ── 6.1b  Sample client users (for quick-start testing) ──────────────────────
+-- Passwords: Sukaina@123 / Bisma@123 / Jannat@123 / Adan@123  (BCrypt WF=12)
+-- Change via SessionAdmin → User Management → Reset Password after first login.
+IF NOT EXISTS (SELECT 1 FROM dbo.tblUser WHERE Username = 'sukaina')
+BEGIN
+    INSERT INTO dbo.tblUser
+        (Username, PasswordHash, FullName, Role, Status, Phone, Address, CreatedAt)
+    VALUES
+        ('sukaina', '$2a$12$sLpL9P0AB8oK4X4gS3fpueOzyh375YcBvRVxFbDa/D/rByaHGAIfW',
+         'Sukaina Muzaffar', 'ClientUser', 'Active',
+         '0345-6123797', 'Phalia City, Mandi Bahauddin District, Punjab, Pakistan', GETDATE());
+    PRINT 'Seed: sukaina inserted.';
+END
+ELSE
+    PRINT 'Seed: sukaina already exists — skipped.';
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.tblUser WHERE Username = 'bisma')
+BEGIN
+    INSERT INTO dbo.tblUser
+        (Username, PasswordHash, FullName, Role, Status, Phone, Address, CreatedAt)
+    VALUES
+        ('bisma', '$2a$12$0HhdqUIbMpWt8XQId5NnE.LIctuW3B9TPeiGVqObcaiL8Mvhm9Ss.',
+         'Bisma Noor', 'ClientUser', 'Active',
+         '0345-6123797', 'Phalia City, Mandi Bahauddin District, Punjab, Pakistan', GETDATE());
+    PRINT 'Seed: bisma inserted.';
+END
+ELSE
+    PRINT 'Seed: bisma already exists — skipped.';
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.tblUser WHERE Username = 'jannat')
+BEGIN
+    INSERT INTO dbo.tblUser
+        (Username, PasswordHash, FullName, Role, Status, Phone, Address, CreatedAt)
+    VALUES
+        ('jannat', '$2a$12$pdhZ0ZnEuHxYMjl7q7gMtusj.zwNwZ/D.ZySpHBBr0X7HGF/Di42i',
+         'Jannat Fatima', 'ClientUser', 'Active',
+         '0345-6123797', 'Phalia City, Mandi Bahauddin District, Punjab, Pakistan', GETDATE());
+    PRINT 'Seed: jannat inserted.';
+END
+ELSE
+    PRINT 'Seed: jannat already exists — skipped.';
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.tblUser WHERE Username = 'adan')
+BEGIN
+    INSERT INTO dbo.tblUser
+        (Username, PasswordHash, FullName, Role, Status, Phone, Address, CreatedAt)
+    VALUES
+        ('adan', '$2a$12$JLG7bJcbkZmYA8enTXgpgObHejQFDSCvydum.sEUJBRLHNpsYcsay',
+         'Adan Fatima', 'ClientUser', 'Active',
+         '0345-6123797', 'Phalia City, Mandi Bahauddin District, Punjab, Pakistan', GETDATE());
+    PRINT 'Seed: adan inserted.';
+END
+ELSE
+    PRINT 'Seed: adan already exists — skipped.';
 GO
 
 -- ── 6.2  Default billing rate ─────────────────────────────────────────────────

@@ -42,8 +42,8 @@ All operations require admin login and are logged to `tblSystemLog`.
 ### Giving Credentials to the User
 
 ```
-Username: john.doe
-Password: User@123456  (or the custom password you set)
+Username: sukaina
+Password: Sukaina@123  (or the custom password you set)
 ```
 
 User opens SessionClient → enters credentials → selects duration → starts session.

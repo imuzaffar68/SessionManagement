@@ -45,7 +45,7 @@
             <TextBlock Text="FULL NAME" FontSize="10" FontWeight="SemiBold"
                        Foreground="#475569" Margin="0,0,0,6"/>
             <TextBox x:Name="txtFullName" Style="{StaticResource ModernInput}"
-                     Tag="e.g. John Doe" Height="40" Margin="0,0,0,14"/>
+                     Tag="e.g. Sukaina Muzaffar" Height="40" Margin="0,0,0,14"/>
 
             <!-- Phone -->
             <TextBlock Text="PHONE" FontSize="10" FontWeight="SemiBold"

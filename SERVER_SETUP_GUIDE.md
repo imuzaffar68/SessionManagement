@@ -18,7 +18,7 @@ Install these on the **server PC only** before doing anything else.
 | SQL Server Standard / Enterprise | Paid | Large deployment | — |
 
 > **Recommended for this project:** SQL Server Express 2019 — free, no licence,
-> sufficient for a cyber café with tens of machines and months of billing data.
+> sufficient for a shared computer environment with tens of machines and months of billing data.
 
 During installation:
 - Choose **"New SQL Server stand-alone installation"**
@@ -50,14 +50,14 @@ Value `461808` or higher = 4.7.2 or later. ✓
 
 ## Step 2 — Create the Database
 
-The file `SessionManagement.sql` (project root) creates the database, all
-tables, stored procedures, and seed data from scratch. It is safe to re-run —
-it drops and recreates everything.
+The file `SessionManagement_Setup.sql` (project root) creates the database,
+all tables, stored procedures, and seed data. It is safe to re-run — all
+statements use `IF NOT EXISTS` guards so existing data is never lost.
 
 ### Option A — SSMS (recommended)
 
 1. Open SSMS → connect to `localhost\SQLEXPRESS` using Windows Authentication.
-2. File → Open → `SessionManagement.sql`.
+2. File → Open → `SessionManagement_Setup.sql`.
 3. Click **Execute** (or press `F5`).
 4. Confirm the Messages pane shows no errors.
 5. In Object Explorer refresh and verify `ClientServerSessionDB` appears.
@@ -65,7 +65,7 @@ it drops and recreates everything.
 ### Option B — Command line (sqlcmd)
 
 ```bat
-sqlcmd -S localhost\SQLEXPRESS -E -i "C:\Path\To\SessionManagement.sql"
+sqlcmd -S localhost\SQLEXPRESS -E -i "C:\Path\To\SessionManagement_Setup.sql"
 ```
 
 `-E` = Windows Authentication (no username/password needed).
@@ -230,7 +230,7 @@ Copy `ClientServerSessionDB.bak` to a USB drive or network share.
 ### Step 2 — Install on the new PC (skip database creation)
 
 Run the Inno Setup installer (`SessionManagement-Setup.exe`) on the new PC with
-the **Server PC** profile. On the **SQL Server Instance** wizard page:
+the **Server PC** profile. On the **Session Server — Database & Port** wizard page:
 
 - Set the SQL Server instance name as normal
 - **Uncheck** "Create fresh database during installation"
@@ -283,7 +283,7 @@ On each client PC, press `Ctrl+Alt+Shift+S` → enter IT admin PIN → update th
 
 | Error | Likely cause | Fix |
 |---|---|---|
-| `Cannot open database "ClientServerSessionDB"` | SQL script not run | Run `SessionManagement.sql` (Step 2) |
+| `Cannot open database "ClientServerSessionDB"` | SQL script not run | Run `SessionManagement_Setup.sql` (Step 2) |
 | `A network-related error occurred` | Wrong instance name in connection string | Check `Data Source=` (Step 3) |
 | `Login failed for user 'NT AUTHORITY\SYSTEM'` | Service account has no SQL access | Grant login in SSMS → Security → Logins |
 | `AddressAlreadyInUseException` on port 8001 | Another app using the port | Change `ServerPort` in App.config and update firewall rule |

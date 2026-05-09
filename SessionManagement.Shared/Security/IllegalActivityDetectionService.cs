@@ -513,7 +513,7 @@ namespace SessionManagement.Security
         // ═════════════════════════════════════════════════════════════════════
         //  Rule 6 — Network type switching (Ethernet ↔ WiFi ↔ Hotspot)
         //
-        //  The expected usage environment is a wired LAN (internet cafe).
+        //  The expected usage environment is a wired LAN (shared computer environment — ICSSMS).
         //  Switching to WiFi or hotspot mid-session is suspicious.
         //  We record the primary interface type at first scan and alert on change.
         // ═════════════════════════════════════════════════════════════════════
