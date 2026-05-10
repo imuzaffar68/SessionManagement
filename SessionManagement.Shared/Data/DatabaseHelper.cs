@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Configuration;
 using System.Data;
 using System.Data.SqlClient;
@@ -191,7 +191,7 @@ namespace SessionManagement.Data
 
         #region UC-02  —  START SESSION
         /// <summary>
-        /// SEQ-02: calls sp_StartSession → inserts tblSession (Status=Active) + logs.
+        /// SEQ-02: calls usp_StartSession → inserts tblSession (Status=Active) + logs.
         /// Returns new SessionId (0 on failure).
         /// </summary>
         public int StartSession(int userId, int clientMachineId, int durationMinutes)
@@ -199,7 +199,7 @@ namespace SessionManagement.Data
             try
             {
                 using (var c = Conn())
-                using (var cmd = new SqlCommand("sp_StartSession", c)
+                using (var cmd = new SqlCommand("usp_StartSession", c)
                 { CommandType = CommandType.StoredProcedure })
                 {
                     cmd.Parameters.AddWithValue("@UserId", userId);
@@ -218,7 +218,7 @@ namespace SessionManagement.Data
 
         #region UC-07 / UC-08 / UC-14  —  END SESSION
         /// <summary>
-        /// Atomically: sp_EndSession → sp_CalculateSessionBilling → sp_FinalizeSessionBilling.
+        /// Atomically: usp_EndSession → usp_CalculateSessionBilling → usp_FinalizeSessionBilling.
         /// NFR-14: all three in one transaction — partial writes not allowed.
         /// </summary>
         public bool EndSession(int sessionId, string terminationReason)
@@ -232,14 +232,14 @@ namespace SessionManagement.Data
                     {
                         try
                         {
-                            ExecSP(c, tx, "sp_EndSession",
+                            ExecSP(c, tx, "usp_EndSession",
                                 P("@SessionId", sessionId),
                                 P("@TerminationReason", terminationReason));
 
-                            ExecSP(c, tx, "sp_CalculateSessionBilling",
+                            ExecSP(c, tx, "usp_CalculateSessionBilling",
                                 P("@SessionId", sessionId));
 
-                            ExecSP(c, tx, "sp_FinalizeSessionBilling",
+                            ExecSP(c, tx, "usp_FinalizeSessionBilling",
                                 P("@SessionId", sessionId));
 
                             tx.Commit();
@@ -342,7 +342,7 @@ namespace SessionManagement.Data
         }
 
         /// <summary>
-        /// UC-10: sp_GetActiveSessions — returns all active sessions
+        /// UC-10: usp_GetActiveSessions — returns all active sessions
         /// with real-time RemainingMinutes and CurrentBilling.
         /// </summary>
         public DataTable GetActiveSessions()
@@ -350,7 +350,7 @@ namespace SessionManagement.Data
             try
             {
                 using (var c = Conn())
-                using (var cmd = new SqlCommand("sp_GetActiveSessions", c)
+                using (var cmd = new SqlCommand("usp_GetActiveSessions", c)
                 { CommandType = CommandType.StoredProcedure })
                 {
                     c.Open();
@@ -454,11 +454,11 @@ namespace SessionManagement.Data
                                     cmd.ExecuteNonQuery();
                                 }
 
-                                // Bill using EndedAt (sp_CalculateSessionBilling now uses
+                                // Bill using EndedAt (usp_CalculateSessionBilling now uses
                                 // COALESCE(EndedAt, GETDATE()) after the SQL patch).
-                                ExecSP(c, tx, "sp_CalculateSessionBilling",
+                                ExecSP(c, tx, "usp_CalculateSessionBilling",
                                     P("@SessionId", sessionId));
-                                ExecSP(c, tx, "sp_FinalizeSessionBilling",
+                                ExecSP(c, tx, "usp_FinalizeSessionBilling",
                                     P("@SessionId", sessionId));
 
                                 tx.Commit();
@@ -537,13 +537,13 @@ namespace SessionManagement.Data
         #endregion
 
         #region UC-07 / UC-13  —  BILLING
-        /// <summary>Calls sp_CalculateSessionBilling; returns running amount.</summary>
+        /// <summary>Calls usp_CalculateSessionBilling; returns running amount.</summary>
         public decimal CalculateRunningBilling(int sessionId)
         {
             try
             {
                 using (var c = Conn())
-                using (var cmd = new SqlCommand("sp_CalculateSessionBilling", c)
+                using (var cmd = new SqlCommand("usp_CalculateSessionBilling", c)
                 { CommandType = CommandType.StoredProcedure })
                 {
                     cmd.Parameters.AddWithValue("@SessionId", sessionId);
@@ -631,7 +631,7 @@ namespace SessionManagement.Data
             try
             {
                 using (var c = Conn())
-                using (var cmd = new SqlCommand("dbo.sp_GetBillingRecords", c))
+                using (var cmd = new SqlCommand("dbo.usp_GetBillingRecords", c))
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
                     cmd.Parameters.AddWithValue("@UnpaidOnly", unpaidOnly ? 1 : 0);
@@ -650,7 +650,7 @@ namespace SessionManagement.Data
             try
             {
                 using (var c = Conn())
-                using (var cmd = new SqlCommand("dbo.sp_MarkBillingRecordPaid", c))
+                using (var cmd = new SqlCommand("dbo.usp_MarkBillingRecordPaid", c))
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
                     cmd.Parameters.AddWithValue("@BillingRecordId", billingRecordId);
@@ -703,7 +703,7 @@ namespace SessionManagement.Data
         }
 
         /// <summary>
-        /// sp_RegisterClient: registers a new machine (INSERT) or refreshes its
+        /// usp_RegisterClient: registers a new machine (INSERT) or refreshes its
         /// network identity on reconnect (UPDATE — IPAddress/MACAddress/LastSeenAt only).
         /// MachineName and Location are written once on first INSERT and are never
         /// overwritten by subsequent reconnects; admin edits survive reboots.
@@ -719,7 +719,7 @@ namespace SessionManagement.Data
             try
             {
                 using (var c = Conn())
-                using (var cmd = new SqlCommand("sp_RegisterClient", c)
+                using (var cmd = new SqlCommand("usp_RegisterClient", c)
                 { CommandType = CommandType.StoredProcedure })
                 {
                     cmd.Parameters.AddWithValue("@ClientCode",  clientCode);
@@ -729,7 +729,7 @@ namespace SessionManagement.Data
                     // Location is NULL on reconnect — SP ignores it for existing rows
                     cmd.Parameters.AddWithValue("@Location",    (object)location   ?? DBNull.Value);
                     c.Open();
-                    var result = cmd.ExecuteScalar();   // sp_RegisterClient SELECTs the id — capture it
+                    var result = cmd.ExecuteScalar();   // usp_RegisterClient SELECTs the id — capture it
                     return result != null && result != DBNull.Value ? Convert.ToInt32(result) : 0;
                 }
             }
@@ -737,9 +737,9 @@ namespace SessionManagement.Data
         }
 
         /// <summary>
-        /// sp_UpdateClientMachineInfo: admin-only rename/relocate.
+        /// usp_UpdateClientMachineInfo: admin-only rename/relocate.
         /// This is the ONLY path that may change MachineName or Location on an
-        /// existing row; sp_RegisterClient deliberately skips them on reconnect.
+        /// existing row; usp_RegisterClient deliberately skips them on reconnect.
         /// Called from SessionAdmin via ISessionService.UpdateClientMachineInfo().
         /// </summary>
         public bool UpdateClientMachineInfo(string clientCode, string machineName, string location)
@@ -747,7 +747,7 @@ namespace SessionManagement.Data
             try
             {
                 using (var c = Conn())
-                using (var cmd = new SqlCommand("sp_UpdateClientMachineInfo", c)
+                using (var cmd = new SqlCommand("usp_UpdateClientMachineInfo", c)
                 { CommandType = CommandType.StoredProcedure })
                 {
                     cmd.Parameters.AddWithValue("@ClientCode",  clientCode);
@@ -951,7 +951,7 @@ namespace SessionManagement.Data
 
         #region UC-16 / UC-17  —  ALERTS
         /// <summary>
-        /// Calls sp_LogSecurityAlert → inserts tblAlert + tblSystemLog.
+        /// Calls usp_LogSecurityAlert → inserts tblAlert + tblSystemLog.
         /// Returns the new AlertId on success, -1 on failure.
         /// SEQ-16/17: alert generated, persisted, admin notified.
         /// </summary>
@@ -961,7 +961,7 @@ namespace SessionManagement.Data
             try
             {
                 using (var c = Conn())
-                using (var cmd = new SqlCommand("sp_LogSecurityAlert", c)
+                using (var cmd = new SqlCommand("usp_LogSecurityAlert", c)
                 { CommandType = CommandType.StoredProcedure })
                 {
                     cmd.Parameters.AddWithValue("@ActivityTypeName", activityTypeName);
@@ -1117,7 +1117,7 @@ namespace SessionManagement.Data
                     cmd.Parameters.AddWithValue("@SessionId",       (object)sessionId ?? DBNull.Value);
                     cmd.Parameters.AddWithValue("@UserId",          (object)userId ?? DBNull.Value);
                     // Treat 0 as NULL — 0 is never a valid FK value and causes a constraint
-                    // violation when the machine hasn't registered yet (e.g. sp_RegisterClient failed).
+                    // violation when the machine hasn't registered yet (e.g. usp_RegisterClient failed).
                     cmd.Parameters.AddWithValue("@ClientMachineId",
                         clientMachineId.HasValue && clientMachineId.Value > 0
                             ? (object)clientMachineId.Value : DBNull.Value);
@@ -1209,7 +1209,7 @@ namespace SessionManagement.Data
             try
             {
                 using (var c = Conn())
-                using (var cmd = new SqlCommand("dbo.sp_RegisterClientUser", c))
+                using (var cmd = new SqlCommand("dbo.usp_RegisterClientUser", c))
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
 
@@ -1267,7 +1267,7 @@ namespace SessionManagement.Data
             try
             {
                 using (var c = Conn())
-                using (var cmd = new SqlCommand("dbo.sp_UpdateClientUser", c))
+                using (var cmd = new SqlCommand("dbo.usp_UpdateClientUser", c))
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
                     cmd.Parameters.AddWithValue("@UserId", userId);
@@ -1292,7 +1292,7 @@ namespace SessionManagement.Data
             try
             {
                 using (var c = Conn())
-                using (var cmd = new SqlCommand("dbo.sp_DeleteClientUser", c))
+                using (var cmd = new SqlCommand("dbo.usp_DeleteClientUser", c))
                 {
                     cmd.CommandType = CommandType.StoredProcedure;
                     cmd.Parameters.AddWithValue("@UserId", userId);
@@ -1404,7 +1404,7 @@ namespace SessionManagement.Data
             try
             {
                 using (var c = Conn())
-                using (var cmd = new SqlCommand("sp_GetAllBillingRates", c)
+                using (var cmd = new SqlCommand("usp_GetAllBillingRates", c)
                 { CommandType = CommandType.StoredProcedure })
                 {
                     c.Open();
@@ -1446,7 +1446,7 @@ namespace SessionManagement.Data
             try
             {
                 using (var c = Conn())
-                using (var cmd = new SqlCommand("sp_InsertBillingRate", c)
+                using (var cmd = new SqlCommand("usp_InsertBillingRate", c)
                 { CommandType = CommandType.StoredProcedure })
                 {
                     cmd.Parameters.AddWithValue("@Name", name);
@@ -1484,7 +1484,7 @@ namespace SessionManagement.Data
             try
             {
                 using (var c = Conn())
-                using (var cmd = new SqlCommand("sp_UpdateBillingRate", c)
+                using (var cmd = new SqlCommand("usp_UpdateBillingRate", c)
                 { CommandType = CommandType.StoredProcedure })
                 {
                     cmd.Parameters.AddWithValue("@BillingRateId", billingRateId);
@@ -1516,7 +1516,7 @@ namespace SessionManagement.Data
             try
             {
                 using (var c = Conn())
-                using (var cmd = new SqlCommand("sp_DeleteBillingRate", c)
+                using (var cmd = new SqlCommand("usp_DeleteBillingRate", c)
                 { CommandType = CommandType.StoredProcedure })
                 {
                     cmd.Parameters.AddWithValue("@BillingRateId", billingRateId);
@@ -1538,7 +1538,7 @@ namespace SessionManagement.Data
             try
             {
                 using (var c = Conn())
-                using (var cmd = new SqlCommand("sp_SetDefaultBillingRate", c)
+                using (var cmd = new SqlCommand("usp_SetDefaultBillingRate", c)
                 { CommandType = CommandType.StoredProcedure })
                 {
                     cmd.Parameters.AddWithValue("@BillingRateId", billingRateId);
@@ -1565,7 +1565,7 @@ namespace SessionManagement.Data
             try
             {
                 using (var c = Conn())
-                using (var cmd = new SqlCommand("dbo.sp_PurgeOldLogs", c)
+                using (var cmd = new SqlCommand("dbo.usp_PurgeOldLogs", c)
                 { CommandType = System.Data.CommandType.StoredProcedure })
                 {
                     cmd.Parameters.AddWithValue("@RetentionDays", retentionDays);

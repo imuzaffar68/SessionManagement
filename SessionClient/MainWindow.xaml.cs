@@ -283,7 +283,12 @@ namespace SessionClient
                 // LastSeenAt = GETDATE(), which would overwrite the pre-crash timestamp
                 // that TerminateOrphanSession() uses to calculate billable elapsed time.
                 _svc.TerminateOrphanSession(_clientCode);
-                _svc.RegisterClient(_clientCode, machine, GetLocalIp(), GetMac(), location);
+                bool registered = _svc.RegisterClient(_clientCode, machine, GetLocalIp(), GetMac(), location);
+                if (!registered)
+                {
+                    lblLoginStatus.Text = "⚠ Machine registration failed. Please restart the application.";
+                    return;
+                }
                 _svc.SubscribeForNotifications(_clientCode);
                 _svc.UpdateClientStatus(_clientCode, "Idle");
             }
@@ -924,12 +929,51 @@ namespace SessionClient
             {
                 if (resp.ErrorMessage == "SESSION_TOKEN_EXPIRED")
                 {
-                    // Server restarted while user was on duration screen — token gone
                     _svc.SessionToken = null;
                     AppDialog.ShowWarning(
                         "Your login session expired. Please sign in again.", "Session Expired");
                     ShowPanel(LoginPanel);
                     ResetLoginFields();
+                }
+                else if (resp.ErrorMessage == "Client machine not registered.")
+                {
+                    // Machine not in DB — re-register and retry StartSession once automatically.
+                    string machine  = ConfigurationManager.AppSettings["ClientMachineName"] ?? Environment.MachineName;
+                    string location = ConfigurationManager.AppSettings["ClientLocation"] ?? "";
+                    bool reregistered = _svc.RegisterClient(_clientCode, machine, GetLocalIp(), GetMac(), location);
+                    if (!reregistered)
+                    {
+                        AppDialog.ShowError($"This machine ({_clientCode}) could not be registered with the server. Please restart the application.");
+                        return;
+                    }
+
+                    // Re-registration succeeded — retry StartSession immediately (token still valid).
+                    SessionStartResponse retry = null;
+                    await Task.Run(() =>
+                    {
+                        try
+                        {
+                            retry = _svc.StartSession(_userId, _clientCode, minutes);
+                            if (retry != null && retry.Success)
+                            {
+                                try { _svc.UpdateClientStatus(_clientCode, "Active"); } catch { }
+                            }
+                        }
+                        catch { retry = null; }
+                    });
+
+                    if (retry != null && retry.Success)
+                    {
+                        _sessionId = retry.SessionId;
+                        UnlockScreen(minutes);
+                        ShowPanel(SessionPanel);
+                        StartDetection();
+                        StartCountdown(minutes);
+                    }
+                    else
+                    {
+                        AppDialog.ShowError($"Machine re-registered but session could not start: {retry?.ErrorMessage ?? "unknown error"}. Please try again.");
+                    }
                 }
                 else
                 {

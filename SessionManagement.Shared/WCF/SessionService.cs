@@ -283,14 +283,10 @@ namespace SessionManagement.WCF
                 return new SessionStartResponse
                 { Success = false, ErrorMessage = "Invalid input." };
 
-            // Atomically validate + consume token — TryRemove prevents replay attacks
-            if (!_tokenStore.TryRemove(sessionToken ?? string.Empty, out int tokenUserId)
-                || tokenUserId != userId)
-                return new SessionStartResponse
-                { Success = false, ErrorMessage = "SESSION_TOKEN_EXPIRED" };
-
             try
             {
+                // Machine checks first — token is only consumed after these pass,
+                // so a failed machine lookup does not burn the one-shot token.
                 int machineId = _db.GetClientMachineIdByCode(clientCode);
                 if (machineId == 0)
                 {
@@ -310,6 +306,13 @@ namespace SessionManagement.WCF
                     return new SessionStartResponse
                     { Success = false, ErrorMessage = "This machine is not available for use. Please contact your administrator." };
                 }
+
+                // Atomically validate + consume token — only reached after machine checks pass.
+                // TryRemove prevents replay attacks.
+                if (!_tokenStore.TryRemove(sessionToken ?? string.Empty, out int tokenUserId)
+                    || tokenUserId != userId)
+                    return new SessionStartResponse
+                    { Success = false, ErrorMessage = "SESSION_TOKEN_EXPIRED" };
 
                 // SEQ-02 step 2: INSERT tblSession via sp_StartSession.
                 // SP returns: positive = new SessionId, -1 = user conflict, -2 = machine conflict, 0 = error.

@@ -11,6 +11,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
+using System.Configuration;
 using SessionManagement.Client;
 using SessionManagement.UI;
 using SessionManagement.WCF;
@@ -25,6 +26,7 @@ namespace SessionAdmin
         #region State Fields
 
         private SessionServiceClient _svc;
+        private readonly string _currency = ConfigurationManager.AppSettings["BillingCurrency"] ?? "PKR";
         private DispatcherTimer _refreshTimer;
         private DispatcherTimer _toastTimer;
 
@@ -575,11 +577,14 @@ namespace SessionAdmin
 
             decimal totalBilling = _sessions.Sum(s =>
             {
-                if (s.CurrentBilling != null && s.CurrentBilling.StartsWith("$"))
-                    return decimal.TryParse(s.CurrentBilling.Substring(1), out decimal val) ? val : 0m;
-                return 0m;
+                if (s.CurrentBilling != null && s.CurrentBilling.Contains(" "))
+                {
+                    var parts = s.CurrentBilling.Split(' ');
+                    return parts.Length > 1 && decimal.TryParse(parts[parts.Length - 1], out decimal val) ? val : 0m;
+                }
+                return decimal.TryParse(s.CurrentBilling, out decimal v) ? v : 0m;
             });
-            kpiRevenue.Text = $"${totalBilling:F2}";
+            kpiRevenue.Text = $"{_currency} {totalBilling:F2}";
 
             // Sidebar badges
             sidebarSessionCount.Text = _sessions.Count.ToString();
@@ -633,7 +638,7 @@ namespace SessionAdmin
                         StartTime      = s.StartTime.ToString("hh:mm:ss tt"),
                         Duration       = $"{s.SelectedDuration} min",
                         RemainingTime  = $"{s.RemainingMinutes} min",
-                        CurrentBilling = $"${s.CurrentBilling:F2}",
+                        CurrentBilling = $"{_currency} {s.CurrentBilling:F2}",
                         Status         = s.SessionStatus,
                         ImagePath      = s.ImagePath
                     });
@@ -647,9 +652,13 @@ namespace SessionAdmin
             }
         }
 
-        private void btnRefreshSessions_Click(object sender, RoutedEventArgs e)
+        private async void btnRefreshSessions_Click(object sender, RoutedEventArgs e)
         {
-            LoadAll();
+            var btn = sender as Button;
+            var saved = btn?.Content;
+            if (btn != null) { btn.IsEnabled = false; btn.Content = "↺ Refreshing…"; }
+            try   { await Task.Run(() => { }); LoadAll(); }
+            finally { if (btn != null) { btn.IsEnabled = true; btn.Content = saved; } }
         }
 
         private async void btnTerminateSession_Click(object sender, RoutedEventArgs e)
@@ -660,7 +669,8 @@ namespace SessionAdmin
 
             if (!AppDialog.Confirm($"Terminate session {session.SessionId} for '{session.Username}'?", "Confirm Termination")) return;
 
-            if (btn != null) btn.IsEnabled = false;
+            var savedContent = btn?.Content;
+            if (btn != null) { btn.IsEnabled = false; btn.Content = "⏳"; }
             try
             {
                 bool ok = false;
@@ -685,7 +695,7 @@ namespace SessionAdmin
             }
             finally
             {
-                if (btn != null) btn.IsEnabled = true;
+                if (btn != null) { btn.IsEnabled = true; btn.Content = savedContent; }
             }
         }
 
@@ -695,7 +705,8 @@ namespace SessionAdmin
             var session = btn.DataContext as ActiveSessionVM;
             if (session == null) return;
 
-            btn.IsEnabled = false;
+            var savedPhoto = btn.Content;
+            btn.IsEnabled = false; btn.Content = "⏳";
             try
             {
                 string b64 = null;
@@ -734,7 +745,7 @@ namespace SessionAdmin
             }
             finally
             {
-                btn.IsEnabled = true;
+                btn.IsEnabled = true; btn.Content = savedPhoto;
             }
         }
 
@@ -786,7 +797,8 @@ namespace SessionAdmin
             var btn = sender as Button;
             var client = btn?.DataContext as ClientVM;
             if (client == null) return;
-            if (btn != null) btn.IsEnabled = false;
+            var savedEnable = btn?.Content;
+            if (btn != null) { btn.IsEnabled = false; btn.Content = "⏳"; }
             try
             {
                 bool ok = false; Exception err = null;
@@ -796,7 +808,7 @@ namespace SessionAdmin
                 if (ok) { LoadClients(); ShowToast($"Client '{id}' enabled."); }
                 else ShowToast($"Failed to enable client '{id}'.", "error");
             }
-            finally { if (btn != null) btn.IsEnabled = true; }
+            finally { if (btn != null) { btn.IsEnabled = true; btn.Content = savedEnable; } }
         }
 
         private async void btnDisableClient_Click(object sender, RoutedEventArgs e)
@@ -804,7 +816,8 @@ namespace SessionAdmin
             var btn = sender as Button;
             var client = btn?.DataContext as ClientVM;
             if (client == null) return;
-            if (btn != null) btn.IsEnabled = false;
+            var savedDisable = btn?.Content;
+            if (btn != null) { btn.IsEnabled = false; btn.Content = "⏳"; }
             try
             {
                 bool ok = false; Exception err = null;
@@ -814,7 +827,7 @@ namespace SessionAdmin
                 if (ok) { LoadClients(); ShowToast($"Client '{id}' disabled.", "warning"); }
                 else ShowToast($"Failed to disable client '{id}'.", "error");
             }
-            finally { if (btn != null) btn.IsEnabled = true; }
+            finally { if (btn != null) { btn.IsEnabled = true; btn.Content = savedDisable; } }
         }
 
         /// <summary>
@@ -884,7 +897,8 @@ namespace SessionAdmin
                     $"Acknowledge alert #{alert.AlertId}?\n\nType: {alert.AlertType}\nClient: {alert.ClientId}",
                     "Confirm Acknowledge")) return;
 
-            if (btn != null) btn.IsEnabled = false;
+            var savedAck = btn?.Content;
+            if (btn != null) { btn.IsEnabled = false; btn.Content = "⏳"; }
             try
             {
                 bool ok = false;
@@ -912,7 +926,7 @@ namespace SessionAdmin
             }
             finally
             {
-                if (btn != null) btn.IsEnabled = true;
+                if (btn != null) { btn.IsEnabled = true; btn.Content = savedAck; }
             }
         }
 
@@ -1028,7 +1042,7 @@ namespace SessionAdmin
                 {
                     lblRptSessions.Text = data.TotalSessions.ToString();
                     lblRptHours.Text    = $"{data.TotalHours:F2}";
-                    lblRptRevenue.Text  = $"${data.TotalRevenue:F2}";
+                    lblRptRevenue.Text  = $"{_currency} {data.TotalRevenue:F2}";
 
                     _reportSessions.Clear();
                     foreach (var s in data.Sessions ?? Array.Empty<SessionInfo>())
@@ -1040,7 +1054,7 @@ namespace SessionAdmin
                             MachineName = s.MachineName,
                             StartTime   = s.StartTime.ToString("MM/dd/yyyy hh:mm tt"),
                             ActualMin   = s.SelectedDuration.ToString(),
-                            Billing     = $"${s.CurrentBilling:F2}",
+                            Billing     = $"{_currency} {s.CurrentBilling:F2}",
                             Status      = s.SessionStatus
                         });
 
@@ -1078,20 +1092,20 @@ namespace SessionAdmin
                 case "Session Usage":
                     sb.AppendLine($"  Total Sessions   : {data.TotalSessions}");
                     sb.AppendLine($"  Total Hours      : {data.TotalHours:F2}");
-                    sb.AppendLine($"  Total Revenue    : ${data.TotalRevenue:F2}");
+                    sb.AppendLine($"  Total Revenue    : {_currency} {data.TotalRevenue:F2}");
                     sb.AppendLine();
                     sb.AppendLine($"  {"User",-14} {"Full Name",-20} {"Client",-16} {"Machine",-16} {"Start Time",-20} {"Actual",6}  {"Billing",9}  Status");
                     sb.AppendLine(new string('─', 115));
                     foreach (var s in data.Sessions ?? Array.Empty<SessionInfo>())
-                        sb.AppendLine($"  {s.Username,-14} {s.FullName,-20} {s.ClientCode,-16} {s.MachineName,-16} {s.StartTime:MM/dd/yyyy hh:mm tt}  {s.SelectedDuration,4}min  ${s.CurrentBilling,7:F2}  {s.SessionStatus}");
+                        sb.AppendLine($"  {s.Username,-14} {s.FullName,-20} {s.ClientCode,-16} {s.MachineName,-16} {s.StartTime:MM/dd/yyyy hh:mm tt}  {s.SelectedDuration,4}min  {_currency} {s.CurrentBilling,7:F2}  {s.SessionStatus}");
                     break;
 
                 case "Billing Summary":
-                    sb.AppendLine($"  Total Revenue    : ${data.TotalRevenue:F2}");
+                    sb.AppendLine($"  Total Revenue    : {_currency} {data.TotalRevenue:F2}");
                     sb.AppendLine($"  Sessions Billed  : {data.TotalSessions}");
-                    sb.AppendLine($"  Avg/Session      : ${(data.TotalSessions > 0 ? data.TotalRevenue / data.TotalSessions : 0):F2}");
+                    sb.AppendLine($"  Avg/Session      : {_currency} {(data.TotalSessions > 0 ? data.TotalRevenue / data.TotalSessions : 0):F2}");
                     sb.AppendLine($"  Billable Hours   : {data.TotalHours:F2}");
-                    sb.AppendLine($"  Current Rate     : ${_svc.GetCurrentBillingRate():F2}/min");
+                    sb.AppendLine($"  Current Rate     : {_currency} {_svc.GetCurrentBillingRate():F2}/min");
                     break;
 
                 case "Security Alerts":
@@ -1282,7 +1296,8 @@ namespace SessionAdmin
 
             if (!AppDialog.Confirm($"Permanently delete '{selected.Username}'? This cannot be undone.")) return;
 
-            if (btn != null) btn.IsEnabled = false;
+            var savedDel = btn?.Content;
+            if (btn != null) { btn.IsEnabled = false; btn.Content = "⏳"; }
             try
             {
                 UserDeleteResponse resp = null; Exception err = null;
@@ -1293,7 +1308,7 @@ namespace SessionAdmin
                 ShowToast($"User '{selected.Username}' deleted.");
                 LoadClientUsers();
             }
-            finally { if (btn != null) btn.IsEnabled = true; }
+            finally { if (btn != null) { btn.IsEnabled = true; btn.Content = savedDel; } }
         }
 
         private async void btnToggleStatusInline_Click(object sender, RoutedEventArgs e)
@@ -1305,7 +1320,8 @@ namespace SessionAdmin
             string newStatus = selected.Status == "Active" ? "Disabled" : "Active";
             if (!AppDialog.Confirm($"Change '{selected.Username}' status from {selected.Status} to {newStatus}?")) return;
 
-            if (btn != null) btn.IsEnabled = false;
+            var savedToggle = btn?.Content;
+            if (btn != null) { btn.IsEnabled = false; btn.Content = "⏳"; }
             try
             {
                 UserStatusToggleResponse resp = null; Exception err = null;
@@ -1317,7 +1333,7 @@ namespace SessionAdmin
                 ShowToast($"'{selected.Username}' is now {resp.NewStatus}.", toastType);
                 LoadClientUsers();
             }
-            finally { if (btn != null) btn.IsEnabled = true; }
+            finally { if (btn != null) { btn.IsEnabled = true; btn.Content = savedToggle; } }
         }
 
         #endregion
@@ -1421,7 +1437,8 @@ namespace SessionAdmin
 
             if (!AppDialog.Confirm($"Set '{rate.Name}' as the default rate?")) return;
 
-            if (btn != null) btn.IsEnabled = false;
+            var savedDefault = btn?.Content;
+            if (btn != null) { btn.IsEnabled = false; btn.Content = "⏳"; }
             try
             {
                 bool ok = false; Exception err = null;
@@ -1431,7 +1448,7 @@ namespace SessionAdmin
                 if (ok) { ShowToast($"'{rate.Name}' is now the default rate."); LoadBillingRates(); }
                 else ShowToast("Failed to set default rate.", "error");
             }
-            finally { if (btn != null) btn.IsEnabled = true; }
+            finally { if (btn != null) { btn.IsEnabled = true; btn.Content = savedDefault; } }
         }
 
         private async void btnDeleteBillingRate_Click(object sender, RoutedEventArgs e)
@@ -1442,7 +1459,8 @@ namespace SessionAdmin
 
             if (!AppDialog.Confirm($"Delete rate '{rate.Name}'? This cannot be undone.", "Confirm Deletion")) return;
 
-            if (btn != null) btn.IsEnabled = false;
+            var savedDelRate = btn?.Content;
+            if (btn != null) { btn.IsEnabled = false; btn.Content = "⏳"; }
             try
             {
                 bool ok = false; Exception err = null;
@@ -1452,7 +1470,7 @@ namespace SessionAdmin
                 if (ok) { ShowToast($"Rate '{rate.Name}' deleted."); LoadBillingRates(); }
                 else ShowToast("Cannot delete: at least one rate and one default must exist.", "error");
             }
-            finally { if (btn != null) btn.IsEnabled = true; }
+            finally { if (btn != null) { btn.IsEnabled = true; btn.Content = savedDelRate; } }
         }
 
         private void LoadBillingRecords()
@@ -1521,7 +1539,8 @@ namespace SessionAdmin
                     $"Mark session #{record.SessionId} as paid?\n\nUser: {record.Username}\nAmount: {record.AmountDisplay}",
                     "Confirm Payment")) return;
 
-            if (btn != null) btn.IsEnabled = false;
+            var savedPaid = btn?.Content;
+            if (btn != null) { btn.IsEnabled = false; btn.Content = "⏳"; }
             try
             {
                 bool ok = false; Exception err = null;
@@ -1531,7 +1550,7 @@ namespace SessionAdmin
                 if (ok) { ShowToast($"Session #{record.SessionId} marked as paid."); LoadBillingRecords(); }
                 else ShowToast("Could not mark as paid. Record may not exist or is already paid.", "error");
             }
-            finally { if (btn != null) btn.IsEnabled = true; }
+            finally { if (btn != null) { btn.IsEnabled = true; btn.Content = savedPaid; } }
         }
 
         #endregion

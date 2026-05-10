@@ -115,8 +115,8 @@ Name: "{commondesktop}\Session Client"; Filename: "{app}\SessionClient.exe"; Com
 ; ── Post-install actions ────────────────────────────────────────────────────
 [Run]
 
-; 1. Create the database (server only, skipped if user unchecked "Create fresh database")
-Filename: "{sys}\cmd.exe"; Parameters: "/c sqlcmd -S ""{code:GetSqlInstance}"" -E -i ""{app}\SessionManagement_Setup.sql"" > ""{app}\Logs\db_setup.log"" 2>&1"; StatusMsg: "Creating database..."; Components: server_svc; Flags: runhidden waituntilterminated; Check: ShouldCreateDatabase
+; 1. Create database, tables, stored procedures, and seed data.
+Filename: "{sys}\cmd.exe"; Parameters: "/c sqlcmd -S ""{code:GetSqlInstance}"" -E -i ""{app}\SessionManagement_Setup.sql"" > ""{app}\Logs\db_setup.log"" 2>&1"; StatusMsg: "Setting up database..."; Components: server_svc; Flags: runhidden waituntilterminated; Check: ShouldCreateDatabase
 
 ; 2. Open firewall port (server only)
 Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""ICSSMS SessionService"" dir=in action=allow protocol=TCP localport={code:GetServerPort}"; StatusMsg: "Configuring firewall..."; Components: server_svc; Flags: runhidden
