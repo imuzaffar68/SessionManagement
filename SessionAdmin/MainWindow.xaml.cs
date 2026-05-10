@@ -797,6 +797,7 @@ namespace SessionAdmin
             var btn = sender as Button;
             var client = btn?.DataContext as ClientVM;
             if (client == null) return;
+            if (!AppDialog.Confirm($"Enable machine '{client.MachineName}'?\nIt will be available for new sessions.")) return;
             var savedEnable = btn?.Content;
             if (btn != null) { btn.IsEnabled = false; btn.Content = "⏳"; }
             try
@@ -816,6 +817,7 @@ namespace SessionAdmin
             var btn = sender as Button;
             var client = btn?.DataContext as ClientVM;
             if (client == null) return;
+            if (!AppDialog.Confirm($"Disable machine '{client.MachineName}'?\nUsers will not be able to start new sessions on this machine.", "Confirm Disable")) return;
             var savedDisable = btn?.Content;
             if (btn != null) { btn.IsEnabled = false; btn.Content = "⏳"; }
             try
@@ -1079,12 +1081,14 @@ namespace SessionAdmin
 
         private string BuildReportText(string type, ReportData data, DateTime from, DateTime to)
         {
+            string sep = new string('=', 72);
+            string rowSep = new string('-', 108);
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine($"{'═',-72}");
+            sb.AppendLine(sep);
             sb.AppendLine($"  {type.ToUpper()} REPORT");
-            sb.AppendLine($"  Period  : {from:yyyy-MM-dd}  →  {to:yyyy-MM-dd}");
+            sb.AppendLine($"  Period    : {from:yyyy-MM-dd} to {to:yyyy-MM-dd}");
             sb.AppendLine($"  Generated : {DateTime.Now:MM/dd/yyyy hh:mm:ss tt}  by  {_adminUsername}");
-            sb.AppendLine($"{'═',-72}");
+            sb.AppendLine(sep);
             sb.AppendLine();
 
             switch (type)
@@ -1094,10 +1098,10 @@ namespace SessionAdmin
                     sb.AppendLine($"  Total Hours      : {data.TotalHours:F2}");
                     sb.AppendLine($"  Total Revenue    : {_currency} {data.TotalRevenue:F2}");
                     sb.AppendLine();
-                    sb.AppendLine($"  {"User",-14} {"Full Name",-20} {"Client",-16} {"Machine",-16} {"Start Time",-20} {"Actual",6}  {"Billing",9}  Status");
-                    sb.AppendLine(new string('─', 115));
+                    sb.AppendLine($"  {"User",-12} {"Full Name",-16} {"Client",-16} {"Machine",-12} {"Start Time",-16} {"Min",4}  {"Billing",11}  Status");
+                    sb.AppendLine(rowSep);
                     foreach (var s in data.Sessions ?? Array.Empty<SessionInfo>())
-                        sb.AppendLine($"  {s.Username,-14} {s.FullName,-20} {s.ClientCode,-16} {s.MachineName,-16} {s.StartTime:MM/dd/yyyy hh:mm tt}  {s.SelectedDuration,4}min  {_currency} {s.CurrentBilling,7:F2}  {s.SessionStatus}");
+                        sb.AppendLine($"  {s.Username,-12} {s.FullName,-16} {s.ClientCode,-16} {s.MachineName,-12} {s.StartTime:MM/dd/yyyy HH:mm}  {s.SelectedDuration,4}  {_currency} {s.CurrentBilling,7:F2}  {s.SessionStatus}");
                     break;
 
                 case "Billing Summary":
@@ -1118,10 +1122,10 @@ namespace SessionAdmin
                     sb.AppendLine($"  Pending       : {pending}");
                     sb.AppendLine();
                     sb.AppendLine($"  {"Time",-22} {"Severity",-10} {"Type",-32} {"Client",-10} {"User",-14} Description");
-                    sb.AppendLine(new string('─', 115));
+                    sb.AppendLine(rowSep);
                     foreach (var a in al)
                     {
-                        sb.AppendLine($"  {a.Timestamp:MM/dd/yyyy hh:mm tt}  [{a.Severity,-6}]  {a.AlertType,-32} {a.ClientCode ?? "—",-10} {a.Username ?? "—",-14} {a.Description}");
+                        sb.AppendLine($"  {a.Timestamp:MM/dd/yyyy hh:mm tt}  [{a.Severity,-6}]  {a.AlertType,-32} {(a.ClientCode ?? "-"),-10} {(a.Username ?? "-"),-14} {a.Description}");
                     }
                     break;
             }
@@ -1138,7 +1142,7 @@ namespace SessionAdmin
             var dlg = new Microsoft.Win32.SaveFileDialog
             {
                 Filter = "Text files (*.txt)|*.txt",
-                FileName = $"Report_{DateTime.Now:yyyyMMdd_HHmmss}.txt"
+                FileName = $"{_lastReportType} Report {_lastReportFrom:yyyy-MM-dd} to {_lastReportTo:yyyy-MM-dd}.txt"
             };
             if (dlg.ShowDialog() == true)
             {
@@ -1159,26 +1163,41 @@ namespace SessionAdmin
             var pd = new System.Windows.Controls.PrintDialog();
             if (pd.ShowDialog() != true) return;
 
-            if (_lastReportType == "Session Usage")
+            string text = BuildReportText(_lastReportType, _lastReportData, _lastReportFrom, _lastReportTo);
+            string docName = $"{_lastReportType} Report {_lastReportFrom:yyyy-MM-dd} to {_lastReportTo:yyyy-MM-dd}";
+
+            // Use FixedDocument with a non-wrapping TextBlock so the monospace
+            // report layout is preserved exactly as in the TXT export.
+            // Letter page = 8.5" x 11" = 816 x 1056 WPF units at 96dpi.
+            const double pageW = 816;
+            const double pageH = 1056;
+            const double margin = 36;
+
+            var fixedDoc  = new System.Windows.Documents.FixedDocument();
+            var pageContent = new System.Windows.Documents.PageContent();
+            var fixedPage   = new System.Windows.Documents.FixedPage
             {
-                pd.PrintVisual(pnlSessionUsage, $"Session Usage Report — {_lastReportFrom:yyyy-MM-dd} to {_lastReportTo:yyyy-MM-dd}");
-            }
-            else
+                Width      = pageW,
+                Height     = pageH,
+                Background = System.Windows.Media.Brushes.White
+            };
+
+            var tb = new System.Windows.Controls.TextBlock
             {
-                string text = BuildReportText(_lastReportType, _lastReportData, _lastReportFrom, _lastReportTo);
-                var doc = new System.Windows.Documents.FlowDocument(
-                    new System.Windows.Documents.Paragraph(
-                        new System.Windows.Documents.Run(text)))
-                {
-                    FontFamily = new System.Windows.Media.FontFamily("Courier New"),
-                    FontSize   = 11,
-                    PageWidth  = pd.PrintableAreaWidth,
-                    PagePadding = new Thickness(40)
-                };
-                var source = (System.Windows.Documents.IDocumentPaginatorSource)doc;
-                pd.PrintDocument(source.DocumentPaginator,
-                    $"{_lastReportType} Report — {_lastReportFrom:yyyy-MM-dd} to {_lastReportTo:yyyy-MM-dd}");
-            }
+                Text        = text,
+                FontFamily  = new System.Windows.Media.FontFamily("Courier New"),
+                FontSize    = 8,
+                Foreground  = System.Windows.Media.Brushes.Black,
+                Background  = System.Windows.Media.Brushes.White,
+                TextWrapping = System.Windows.TextWrapping.NoWrap,
+                Margin       = new Thickness(margin)
+            };
+
+            fixedPage.Children.Add(tb);
+            ((System.Windows.Markup.IAddChild)pageContent).AddChild(fixedPage);
+            fixedDoc.Pages.Add(pageContent);
+
+            pd.PrintDocument(fixedDoc.DocumentPaginator, docName);
         }
 
         #endregion
