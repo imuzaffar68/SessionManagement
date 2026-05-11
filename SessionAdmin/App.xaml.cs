@@ -10,7 +10,7 @@ namespace SessionAdmin
     {
         private void OnStartup(object sender, StartupEventArgs e)
         {
-            string displayName = ConfigurationManager.AppSettings["AppDisplayName"] ?? "NetCafé Session Admin";
+            string displayName = ConfigurationManager.AppSettings["AppDisplayName"] ?? "Session Admin";
             ToastHelper.EnsureRegistered(ToastHelper.AdminAppId, displayName);
             // Dark calendar pop-up styling for every DatePicker in the app.
             EventManager.RegisterClassHandler(

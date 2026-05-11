@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:ui="clr-namespace:SessionManagement.UI;assembly=SessionManagement.Shared"
         Icon="app.ico"
-        Title="NetCafé Admin — Session Management"
+        Title="Session Admin — ICSSMS"
         Height="820" Width="1380"
         MinHeight="700" MinWidth="1100"
         WindowStartupLocation="CenterScreen"
@@ -30,7 +30,7 @@
                            Width="16" Height="16" Margin="0,0,8,0"
                            VerticalAlignment="Center"
                            RenderOptions.BitmapScalingMode="HighQuality"/>
-                    <TextBlock Text="NetCafé Admin — Session Management"
+                    <TextBlock Text="Session Admin — ICSSMS"
                                FontSize="12" FontWeight="SemiBold"
                                Foreground="#94A3B8" VerticalAlignment="Center"/>
                 </StackPanel>
@@ -134,7 +134,7 @@
                                            VerticalAlignment="Center"/>
                             </Border>
                             <StackPanel VerticalAlignment="Center">
-                                <TextBlock Text="NetCafé" FontSize="15" FontWeight="Bold"
+                                <TextBlock Text="ICSSMS" FontSize="15" FontWeight="Bold"
                                            Foreground="#F1F5F9"/>
                                 <TextBlock Text="Admin Console" FontSize="10"
                                            Foreground="#475569"/>
@@ -290,6 +290,11 @@
                                 <TextBlock Text="Administrator" FontSize="10" Foreground="#475569"/>
                             </StackPanel>
                         </StackPanel>
+                        <Button x:Name="btnChangePassword" Content="🔐  Change Password"
+                                Style="{StaticResource BtnGhost}"
+                                Height="34" FontSize="11" Padding="14,0"
+                                Margin="0,0,8,0"
+                                Click="btnChangePassword_Click"/>
                         <Button x:Name="btnLogout" Content="⎋  Sign Out"
                                 Style="{StaticResource BtnDanger}"
                                 Height="34" FontSize="12" Padding="0,0"
@@ -331,7 +336,7 @@
                             </Border>
                             <TextBlock Text="Admin Sign In" FontSize="22" FontWeight="Bold"
                                        HorizontalAlignment="Center" Foreground="#F1F5F9"/>
-                            <TextBlock Text="NetCafé Session Management Console"
+                            <TextBlock Text="Session Management Console"
                                        FontSize="12" Foreground="#475569"
                                        HorizontalAlignment="Center" Margin="0,4,0,0"/>
                         </StackPanel>
@@ -469,7 +474,7 @@
                                             <TextBlock Text="TODAY'S REVENUE" FontSize="10"
                                                        FontWeight="SemiBold" Foreground="#475569"
                                                        Margin="0,0,0,12"/>
-                                            <TextBlock x:Name="kpiRevenue" Text="$0.00"
+                                            <TextBlock x:Name="kpiRevenue" Text="0.00"
                                                        FontSize="36" FontWeight="Bold"
                                                        Foreground="#34D399"/>
                                             <TextBlock Text="Billing accumulated"
@@ -800,7 +805,7 @@
                                           ScrollViewer.VerticalScrollBarVisibility="Auto">
                                     <DataGrid.Columns>
                                         <DataGridTextColumn Header="SESSION ID" Binding="{Binding SessionId}" Width="90" MinWidth="90"/>
-                                        <DataGridTextColumn Header="CLIENT" Binding="{Binding ClientId}" Width="90" MinWidth="90"/>
+                                        <DataGridTextColumn Header="CLIENT" Binding="{Binding ClientId}" Width="160" MinWidth="160"/>
                                         <DataGridTextColumn Header="USERNAME" Binding="{Binding Username}" Width="140" MinWidth="140"/>
                                         <DataGridTextColumn Header="STARTED" Binding="{Binding StartTime}" Width="155" MinWidth="155"/>
                                         <DataGridTextColumn Header="DURATION" Binding="{Binding Duration}" Width="90" MinWidth="90"/>
@@ -818,7 +823,7 @@
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>
-                                        <DataGridTemplateColumn Header="ACTIONS" Width="100" MinWidth="100">
+                                        <DataGridTemplateColumn Header="ACTIONS" Width="*" MinWidth="100">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
                                                     <StackPanel Orientation="Horizontal" Margin="6,4">
@@ -905,7 +910,7 @@
                                           ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                           ScrollViewer.VerticalScrollBarVisibility="Auto">
                                     <DataGrid.Columns>
-                                        <DataGridTextColumn Header="CODE" Binding="{Binding ClientId}" Width="80" MinWidth="80"/>
+                                        <DataGridTextColumn Header="CODE" Binding="{Binding ClientId}" Width="160" MinWidth="160"/>
                                         <DataGridTextColumn Header="MACHINE" Binding="{Binding MachineName}" Width="160" MinWidth="160"/>
                                         <DataGridTextColumn Header="IP ADDRESS" Binding="{Binding IpAddress}" Width="130" MinWidth="130"/>
                                         <DataGridTextColumn Header="MAC" Binding="{Binding MacAddress}" Width="150" MinWidth="150"/>
@@ -1683,6 +1688,10 @@
                                                 Style="{StaticResource BtnGhost}"
                                                 Height="38" Padding="16,0" FontSize="12"
                                                 Margin="8,0,0,0" Click="btnExportReport_Click"/>
+                                        <Button x:Name="btnPrintReport" Content="🖨 Print"
+                                                Style="{StaticResource BtnGhost}"
+                                                Height="38" Padding="16,0" FontSize="12"
+                                                Margin="8,0,0,0" Click="btnPrintReport_Click"/>
                                     </StackPanel>
                                 </StackPanel>
                             </Border>

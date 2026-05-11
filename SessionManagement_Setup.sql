@@ -5,34 +5,34 @@
 -- ============================================================
 --
 --  USAGE GUIDE
---  ───────────────────────────────────────────────────────────
+--  -----------------------------------------------------------
 --  This script is SAFE to run multiple times.
 --
---  Level 1 — Fresh install (empty server or no database)
+--  Level 1 - Fresh install (empty server or no database)
 --    Run as-is.  Everything is created from scratch.
 --
---  Level 2 — Existing database with DATA (production update)
+--  Level 2 - Existing database with DATA (production update)
 --    Run as-is.  Tables with data are NEVER dropped.
 --    Stored procedures and views are updated (CREATE OR ALTER).
 --    Seed rows are only inserted if they do not already exist.
 --
---  Level 3 — Developer full reset (destroy all data)
+--  Level 3 - Developer full reset (destroy all data)
 --    Scroll to SECTION 8 at the bottom, uncomment the block,
 --    run SECTION 8 alone first, then re-run the full script.
 --
 --  HOW TO RUN
---    SSMS  : Open this file → Connect → F5
+--    SSMS  : Open this file -> Connect -> F5
 --    sqlcmd: sqlcmd -S localhost\SQLEXPRESS -E -i SessionManagement_Setup.sql
 --
---  ⚠  NEVER run Section 8 on a production database.
+--     NEVER run Section 8 on a production database.
 -- ============================================================
 
 USE master;
 GO
 
--- ════════════════════════════════════════════════════════════
---  SECTION 1 ─ DATABASE
--- ════════════════════════════════════════════════════════════
+-- ============================================================
+--  SECTION 1 - DATABASE
+-- ============================================================
 
 IF NOT EXISTS (SELECT 1 FROM sys.databases WHERE name = N'ClientServerSessionDB')
 BEGIN
@@ -40,19 +40,19 @@ BEGIN
     PRINT 'Database ClientServerSessionDB created.';
 END
 ELSE
-    PRINT 'Database ClientServerSessionDB already exists — skipped.';
+    PRINT 'Database ClientServerSessionDB already exists - skipped.';
 GO
 
 USE ClientServerSessionDB;
 GO
 
--- ════════════════════════════════════════════════════════════
---  SECTION 2 ─ TABLES
+-- ============================================================
+--  SECTION 2 - TABLES
 --  Safe: tables are created only if they do not exist.
 --  Tables that already contain data are never touched.
--- ════════════════════════════════════════════════════════════
+-- ============================================================
 
--- ── 2.1  tblUser ─────────────────────────────────────────────────────────────
+-- 2.1  tblUser
 IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'dbo.tblUser') AND type = 'U')
 BEGIN
     CREATE TABLE dbo.tblUser (
@@ -84,10 +84,10 @@ BEGIN
     PRINT 'Table dbo.tblUser created.';
 END
 ELSE
-    PRINT 'Table dbo.tblUser already exists — skipped.';
+    PRINT 'Table dbo.tblUser already exists - skipped.';
 GO
 
--- ── 2.2  tblClientMachine ────────────────────────────────────────────────────
+-- 2.2  tblClientMachine
 IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'dbo.tblClientMachine') AND type = 'U')
 BEGIN
     CREATE TABLE dbo.tblClientMachine (
@@ -109,10 +109,10 @@ BEGIN
     PRINT 'Table dbo.tblClientMachine created.';
 END
 ELSE
-    PRINT 'Table dbo.tblClientMachine already exists — skipped.';
+    PRINT 'Table dbo.tblClientMachine already exists - skipped.';
 GO
 
--- ── 2.3  tblSession ──────────────────────────────────────────────────────────
+-- 2.3  tblSession
 IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'dbo.tblSession') AND type = 'U')
 BEGIN
     CREATE TABLE dbo.tblSession (
@@ -143,10 +143,10 @@ BEGIN
     PRINT 'Table dbo.tblSession created.';
 END
 ELSE
-    PRINT 'Table dbo.tblSession already exists — skipped.';
+    PRINT 'Table dbo.tblSession already exists - skipped.';
 GO
 
--- ── 2.4  tblSessionImage ─────────────────────────────────────────────────────
+-- -- 2.4  tblSessionImage "-----------------------------------------------------------
 IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'dbo.tblSessionImage') AND type = 'U')
 BEGIN
     CREATE TABLE dbo.tblSessionImage (
@@ -167,10 +167,10 @@ BEGIN
     PRINT 'Table dbo.tblSessionImage created.';
 END
 ELSE
-    PRINT 'Table dbo.tblSessionImage already exists — skipped.';
+    PRINT 'Table dbo.tblSessionImage already exists - skipped.';
 GO
 
--- ── 2.5  tblBillingRate ──────────────────────────────────────────────────────
+-- -- 2.5  tblBillingRate "-----------------------------------------------------------
 IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'dbo.tblBillingRate') AND type = 'U')
 BEGIN
     CREATE TABLE dbo.tblBillingRate (
@@ -193,10 +193,10 @@ BEGIN
     PRINT 'Table dbo.tblBillingRate created.';
 END
 ELSE
-    PRINT 'Table dbo.tblBillingRate already exists — skipped.';
+    PRINT 'Table dbo.tblBillingRate already exists - skipped.';
 GO
 
--- ── 2.6  tblBillingRecord ────────────────────────────────────────────────────
+-- 2.6  tblBillingRecord
 IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'dbo.tblBillingRecord') AND type = 'U')
 BEGIN
     CREATE TABLE dbo.tblBillingRecord (
@@ -221,10 +221,10 @@ BEGIN
     PRINT 'Table dbo.tblBillingRecord created.';
 END
 ELSE
-    PRINT 'Table dbo.tblBillingRecord already exists — skipped.';
+    PRINT 'Table dbo.tblBillingRecord already exists - skipped.';
 GO
 
--- ── 2.7  tblActivityType ─────────────────────────────────────────────────────
+-- -- 2.7  tblActivityType "-------------------------------------------------------------------------------------------------------EUR
 IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'dbo.tblActivityType') AND type = 'U')
 BEGIN
     CREATE TABLE dbo.tblActivityType (
@@ -240,10 +240,10 @@ BEGIN
     PRINT 'Table dbo.tblActivityType created.';
 END
 ELSE
-    PRINT 'Table dbo.tblActivityType already exists — skipped.';
+    PRINT 'Table dbo.tblActivityType already exists - skipped.';
 GO
 
--- ── 2.8  tblAlert ────────────────────────────────────────────────────────────
+-- -- 2.8  tblAlert "-----------------------------------------------------------
 IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'dbo.tblAlert') AND type = 'U')
 BEGIN
     CREATE TABLE dbo.tblAlert (
@@ -273,10 +273,10 @@ BEGIN
     PRINT 'Table dbo.tblAlert created.';
 END
 ELSE
-    PRINT 'Table dbo.tblAlert already exists — skipped.';
+    PRINT 'Table dbo.tblAlert already exists - skipped.';
 GO
 
--- ── 2.9  tblLoginAttempt ─────────────────────────────────────────────────────
+-- -- 2.9  tblLoginAttempt "-----------------------------------------------------------
 IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'dbo.tblLoginAttempt') AND type = 'U')
 BEGIN
     CREATE TABLE dbo.tblLoginAttempt (
@@ -295,10 +295,10 @@ BEGIN
     PRINT 'Table dbo.tblLoginAttempt created.';
 END
 ELSE
-    PRINT 'Table dbo.tblLoginAttempt already exists — skipped.';
+    PRINT 'Table dbo.tblLoginAttempt already exists - skipped.';
 GO
 
--- ── 2.10  tblSystemLog ───────────────────────────────────────────────────────
+-- -- 2.10  tblSystemLog "-----------------------------------------------------------
 IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'dbo.tblSystemLog') AND type = 'U')
 BEGIN
     CREATE TABLE dbo.tblSystemLog (
@@ -324,13 +324,13 @@ BEGIN
     PRINT 'Table dbo.tblSystemLog created.';
 END
 ELSE
-    PRINT 'Table dbo.tblSystemLog already exists — skipped.';
+    PRINT 'Table dbo.tblSystemLog already exists - skipped.';
 GO
 
--- ════════════════════════════════════════════════════════════
---  SECTION 3 ─ INDEXES
+-- ============================================================
+--  SECTION 3 - INDEXES
 --  Safe: each index is created only if it does not exist.
--- ════════════════════════════════════════════════════════════
+-- ============================================================
 
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_tblClientMachine_ClientCode'   AND object_id = OBJECT_ID('dbo.tblClientMachine'))
     CREATE INDEX IX_tblClientMachine_ClientCode    ON dbo.tblClientMachine (ClientCode);
@@ -377,12 +377,12 @@ IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'IX_tblSystemLog_ClientMac
 PRINT 'Indexes verified / created.';
 GO
 
--- ════════════════════════════════════════════════════════════
---  SECTION 4 ─ VIEWS
---  CREATE OR ALTER — always safe, no data involved.
--- ════════════════════════════════════════════════════════════
+-- ============================================================
+--  SECTION 4 - VIEWS
+--  CREATE OR ALTER - always safe, no data involved.
+-- ============================================================
 
--- ── 4.1  vw_SessionReport ────────────────────────────────────────────────────
+-- 4.1  vw_SessionReport
 CREATE OR ALTER VIEW dbo.vw_SessionReport
 AS
 SELECT
@@ -413,7 +413,7 @@ GO
 PRINT 'View dbo.vw_SessionReport created/updated.';
 GO
 
--- ── 4.2  vw_ActiveSessionsSummary ────────────────────────────────────────────
+-- -- 4.2  vw_ActiveSessionsSummary "-----------------------------------------------------------
 CREATE OR ALTER VIEW dbo.vw_ActiveSessionsSummary
 AS
 SELECT
@@ -429,13 +429,13 @@ GO
 PRINT 'View dbo.vw_ActiveSessionsSummary created/updated.';
 GO
 
--- ════════════════════════════════════════════════════════════
---  SECTION 5 ─ STORED PROCEDURES
---  CREATE OR ALTER — always safe, always picks up latest code.
--- ════════════════════════════════════════════════════════════
+-- ============================================================
+--  SECTION 5 - STORED PROCEDURES
+--  CREATE OR ALTER - always safe, always picks up latest code.
+-- ============================================================
 
--- ── 5.1  sp_StartSession ─────────────────────────────────────────────────────
-CREATE OR ALTER PROCEDURE dbo.sp_StartSession
+-- -- 5.1  usp_StartSession "-----------------------------------------------------------
+CREATE OR ALTER PROCEDURE dbo.usp_StartSession
     @UserId                  INT,
     @ClientMachineId         INT,
     @SelectedDurationMinutes INT
@@ -466,16 +466,16 @@ BEGIN
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
-        VALUES ('System', 'Error', 'sp_StartSession: ' + ERROR_MESSAGE(), 'Server');
+        VALUES ('System', 'Error', 'usp_StartSession: ' + ERROR_MESSAGE(), 'Server');
         SELECT 0 AS SessionId;
     END CATCH
 END;
 GO
-PRINT 'SP dbo.sp_StartSession created/updated.';
+PRINT 'SP dbo.usp_StartSession created/updated.';
 GO
 
--- ── 5.2  sp_EndSession ───────────────────────────────────────────────────────
-CREATE OR ALTER PROCEDURE dbo.sp_EndSession
+-- -- 5.2  usp_EndSession "-----------------------------------------------------------
+CREATE OR ALTER PROCEDURE dbo.usp_EndSession
     @SessionId        INT,
     @TerminationReason NVARCHAR(30)
 AS
@@ -507,23 +507,23 @@ BEGIN
 
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source, SessionId, UserId, ClientMachineId)
         VALUES ('Session', 'SessionEnded',
-                'Session ' + CAST(@SessionId AS NVARCHAR(20)) + ' ended — ' + @TerminationReason,
+                'Session ' + CAST(@SessionId AS NVARCHAR(20)) + ' ended - ' + @TerminationReason,
                 'Server', @SessionId, @UserId, @MachineId);
 
         SELECT 1 AS Result;
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
-        VALUES ('System', 'Error', 'sp_EndSession: ' + ERROR_MESSAGE(), 'Server');
+        VALUES ('System', 'Error', 'usp_EndSession: ' + ERROR_MESSAGE(), 'Server');
         SELECT 0 AS Result;
     END CATCH
 END;
 GO
-PRINT 'SP dbo.sp_EndSession created/updated.';
+PRINT 'SP dbo.usp_EndSession created/updated.';
 GO
 
--- ── 5.3  sp_CalculateSessionBilling ──────────────────────────────────────────
-CREATE OR ALTER PROCEDURE dbo.sp_CalculateSessionBilling
+-- -- 5.3  usp_CalculateSessionBilling "-----------------------------------------------------------
+CREATE OR ALTER PROCEDURE dbo.usp_CalculateSessionBilling
     @SessionId INT
 AS
 BEGIN
@@ -567,16 +567,16 @@ BEGIN
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source, SessionId)
-        VALUES ('Billing', 'Error', 'sp_CalculateSessionBilling: ' + ERROR_MESSAGE(), 'Server', @SessionId);
+        VALUES ('Billing', 'Error', 'usp_CalculateSessionBilling: ' + ERROR_MESSAGE(), 'Server', @SessionId);
         SELECT 0 AS Amount;
     END CATCH
 END;
 GO
-PRINT 'SP dbo.sp_CalculateSessionBilling created/updated.';
+PRINT 'SP dbo.usp_CalculateSessionBilling created/updated.';
 GO
 
--- ── 5.4  sp_FinalizeSessionBilling ───────────────────────────────────────────
-CREATE OR ALTER PROCEDURE dbo.sp_FinalizeSessionBilling
+-- -- 5.4  usp_FinalizeSessionBilling "-----------------------------------------------------------
+CREATE OR ALTER PROCEDURE dbo.usp_FinalizeSessionBilling
     @SessionId INT
 AS
 BEGIN
@@ -593,16 +593,16 @@ BEGIN
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source, SessionId)
-        VALUES ('System', 'Error', 'sp_FinalizeSessionBilling: ' + ERROR_MESSAGE(), 'Server', @SessionId);
+        VALUES ('System', 'Error', 'usp_FinalizeSessionBilling: ' + ERROR_MESSAGE(), 'Server', @SessionId);
         SELECT 0 AS Result;
     END CATCH
 END;
 GO
-PRINT 'SP dbo.sp_FinalizeSessionBilling created/updated.';
+PRINT 'SP dbo.usp_FinalizeSessionBilling created/updated.';
 GO
 
--- ── 5.5  sp_GetActiveSessions ────────────────────────────────────────────────
-CREATE OR ALTER PROCEDURE dbo.sp_GetActiveSessions
+-- -- 5.5  usp_GetActiveSessions "-----------------------------------------------------------
+CREATE OR ALTER PROCEDURE dbo.usp_GetActiveSessions
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -633,11 +633,11 @@ BEGIN
     ORDER  BY s.StartedAt DESC;
 END;
 GO
-PRINT 'SP dbo.sp_GetActiveSessions created/updated.';
+PRINT 'SP dbo.usp_GetActiveSessions created/updated.';
 GO
 
--- ── 5.6  sp_GetBillingRecords ─────────────────────────────────────────────────
-CREATE OR ALTER PROCEDURE dbo.sp_GetBillingRecords
+-- -- 5.6  usp_GetBillingRecords "-----------------------------------------------------------
+CREATE OR ALTER PROCEDURE dbo.usp_GetBillingRecords
     @UnpaidOnly BIT = 0
 AS
 BEGIN
@@ -665,11 +665,11 @@ BEGIN
     ORDER  BY br.CalculatedAt DESC;
 END;
 GO
-PRINT 'SP dbo.sp_GetBillingRecords created/updated.';
+PRINT 'SP dbo.usp_GetBillingRecords created/updated.';
 GO
 
--- ── 5.7  sp_MarkBillingRecordPaid ────────────────────────────────────────────
-CREATE OR ALTER PROCEDURE dbo.sp_MarkBillingRecordPaid
+-- -- 5.7  usp_MarkBillingRecordPaid "-----------------------------------------------------------
+CREATE OR ALTER PROCEDURE dbo.usp_MarkBillingRecordPaid
     @BillingRecordId INT,
     @AdminUserId     INT
 AS
@@ -697,16 +697,16 @@ BEGIN
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
-        VALUES ('System', 'Error', 'sp_MarkBillingRecordPaid: ' + ERROR_MESSAGE(), 'Server');
+        VALUES ('System', 'Error', 'usp_MarkBillingRecordPaid: ' + ERROR_MESSAGE(), 'Server');
         SELECT 0 AS Result;
     END CATCH
 END;
 GO
-PRINT 'SP dbo.sp_MarkBillingRecordPaid created/updated.';
+PRINT 'SP dbo.usp_MarkBillingRecordPaid created/updated.';
 GO
 
--- ── 5.8  sp_LogSecurityAlert ─────────────────────────────────────────────────
-CREATE OR ALTER PROCEDURE dbo.sp_LogSecurityAlert
+-- -- 5.8  usp_LogSecurityAlert "-----------------------------------------------------------
+CREATE OR ALTER PROCEDURE dbo.usp_LogSecurityAlert
     @ActivityTypeName NVARCHAR(100),
     @SessionId        INT           = NULL,
     @ClientMachineId  INT           = NULL,
@@ -737,23 +737,23 @@ BEGIN
 
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source, SessionId, UserId, ClientMachineId)
         VALUES ('Security', 'Alert',
-                'Alert: ' + @ActivityTypeName + ' — ' + @Details,
+                'Alert: ' + @ActivityTypeName + ' - ' + @Details,
                 'Server', @SessionId, @UserId, @ClientMachineId);
 
         SELECT @AlertId AS AlertId;
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
-        VALUES ('System', 'Error', 'sp_LogSecurityAlert: ' + ERROR_MESSAGE(), 'Server');
+        VALUES ('System', 'Error', 'usp_LogSecurityAlert: ' + ERROR_MESSAGE(), 'Server');
         SELECT -1 AS AlertId;
     END CATCH
 END;
 GO
-PRINT 'SP dbo.sp_LogSecurityAlert created/updated.';
+PRINT 'SP dbo.usp_LogSecurityAlert created/updated.';
 GO
 
--- ── 5.9  sp_RegisterClient ───────────────────────────────────────────────────
-CREATE OR ALTER PROCEDURE dbo.sp_RegisterClient
+-- -- 5.9  usp_RegisterClient "-----------------------------------------------------------
+CREATE OR ALTER PROCEDURE dbo.usp_RegisterClient
     @ClientCode  NVARCHAR(50),
     @MachineName NVARCHAR(100),
     @IPAddress   NVARCHAR(45),
@@ -793,16 +793,16 @@ BEGIN
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
-        VALUES ('System', 'Error', 'sp_RegisterClient: ' + ERROR_MESSAGE(), 'Server');
+        VALUES ('System', 'Error', 'usp_RegisterClient: ' + ERROR_MESSAGE(), 'Server');
         SELECT 0 AS ClientMachineId;
     END CATCH
 END;
 GO
-PRINT 'SP dbo.sp_RegisterClient created/updated.';
+PRINT 'SP dbo.usp_RegisterClient created/updated.';
 GO
 
--- ── 5.10  sp_UpdateClientMachineInfo ─────────────────────────────────────────
-CREATE OR ALTER PROCEDURE dbo.sp_UpdateClientMachineInfo
+-- -- 5.10  usp_UpdateClientMachineInfo "-----------------------------------------------------------
+CREATE OR ALTER PROCEDURE dbo.usp_UpdateClientMachineInfo
     @ClientCode  NVARCHAR(50),
     @MachineName NVARCHAR(100),
     @Location    NVARCHAR(100) = NULL
@@ -829,16 +829,16 @@ BEGIN
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
-        VALUES ('System', 'Error', 'sp_UpdateClientMachineInfo: ' + ERROR_MESSAGE(), 'Server');
+        VALUES ('System', 'Error', 'usp_UpdateClientMachineInfo: ' + ERROR_MESSAGE(), 'Server');
         SELECT 0 AS Result;
     END CATCH
 END;
 GO
-PRINT 'SP dbo.sp_UpdateClientMachineInfo created/updated.';
+PRINT 'SP dbo.usp_UpdateClientMachineInfo created/updated.';
 GO
 
--- ── 5.11  sp_RegisterClientUser ──────────────────────────────────────────────
-CREATE OR ALTER PROCEDURE dbo.sp_RegisterClientUser
+-- -- 5.11  usp_RegisterClientUser "-----------------------------------------------------------
+CREATE OR ALTER PROCEDURE dbo.usp_RegisterClientUser
     @Username     NVARCHAR(50),
     @PasswordHash NVARCHAR(255),
     @FullName     NVARCHAR(100),
@@ -873,16 +873,16 @@ BEGIN
         BEGIN
             SELECT 0 AS UserId;
             INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
-            VALUES ('System', 'Error', 'sp_RegisterClientUser: ' + ERROR_MESSAGE(), 'Server');
+            VALUES ('System', 'Error', 'usp_RegisterClientUser: ' + ERROR_MESSAGE(), 'Server');
         END
     END CATCH
 END;
 GO
-PRINT 'SP dbo.sp_RegisterClientUser created/updated.';
+PRINT 'SP dbo.usp_RegisterClientUser created/updated.';
 GO
 
--- ── 5.12  sp_UpdateClientUser ────────────────────────────────────────────────
-CREATE OR ALTER PROCEDURE dbo.sp_UpdateClientUser
+-- -- 5.12  usp_UpdateClientUser "-----------------------------------------------------------
+CREATE OR ALTER PROCEDURE dbo.usp_UpdateClientUser
     @UserId             INT,
     @FullName           NVARCHAR(100),
     @Phone              NVARCHAR(30)  = NULL,
@@ -906,16 +906,16 @@ BEGIN
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
-        VALUES ('System', 'Error', 'sp_UpdateClientUser: ' + ERROR_MESSAGE(), 'Server');
+        VALUES ('System', 'Error', 'usp_UpdateClientUser: ' + ERROR_MESSAGE(), 'Server');
         THROW;
     END CATCH
 END;
 GO
-PRINT 'SP dbo.sp_UpdateClientUser created/updated.';
+PRINT 'SP dbo.usp_UpdateClientUser created/updated.';
 GO
 
--- ── 5.13  sp_DeleteClientUser ────────────────────────────────────────────────
-CREATE OR ALTER PROCEDURE dbo.sp_DeleteClientUser
+-- -- 5.13  usp_DeleteClientUser "-----------------------------------------------------------
+CREATE OR ALTER PROCEDURE dbo.usp_DeleteClientUser
     @UserId INT
 AS
 BEGIN
@@ -929,16 +929,16 @@ BEGIN
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
-        VALUES ('System', 'Error', 'sp_DeleteClientUser: ' + ERROR_MESSAGE(), 'Server');
+        VALUES ('System', 'Error', 'usp_DeleteClientUser: ' + ERROR_MESSAGE(), 'Server');
         SELECT 0 AS Result;
     END CATCH
 END;
 GO
-PRINT 'SP dbo.sp_DeleteClientUser created/updated.';
+PRINT 'SP dbo.usp_DeleteClientUser created/updated.';
 GO
 
--- ── 5.14  sp_InsertBillingRate ───────────────────────────────────────────────
-CREATE OR ALTER PROCEDURE dbo.sp_InsertBillingRate
+-- -- 5.14  usp_InsertBillingRate "-----------------------------------------------------------
+CREATE OR ALTER PROCEDURE dbo.usp_InsertBillingRate
     @Name             NVARCHAR(100),
     @RatePerMinute    DECIMAL(10,2),
     @Currency         NVARCHAR(10),
@@ -985,16 +985,16 @@ BEGIN
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
-        VALUES ('Billing', 'Error', 'sp_InsertBillingRate: ' + ERROR_MESSAGE(), 'Admin');
+        VALUES ('Billing', 'Error', 'usp_InsertBillingRate: ' + ERROR_MESSAGE(), 'Server');
         SELECT -1 AS BillingRateId;
     END CATCH
 END;
 GO
-PRINT 'SP dbo.sp_InsertBillingRate created/updated.';
+PRINT 'SP dbo.usp_InsertBillingRate created/updated.';
 GO
 
--- ── 5.15  sp_UpdateBillingRate ───────────────────────────────────────────────
-CREATE OR ALTER PROCEDURE dbo.sp_UpdateBillingRate
+-- -- 5.15  usp_UpdateBillingRate "-----------------------------------------------------------
+CREATE OR ALTER PROCEDURE dbo.usp_UpdateBillingRate
     @BillingRateId INT,
     @Name          NVARCHAR(100),
     @RatePerMinute DECIMAL(10,2),
@@ -1054,16 +1054,16 @@ BEGIN
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
-        VALUES ('Billing', 'Error', 'sp_UpdateBillingRate: ' + ERROR_MESSAGE(), 'Admin');
+        VALUES ('Billing', 'Error', 'usp_UpdateBillingRate: ' + ERROR_MESSAGE(), 'Server');
         SELECT 0 AS Result;
     END CATCH
 END;
 GO
-PRINT 'SP dbo.sp_UpdateBillingRate created/updated.';
+PRINT 'SP dbo.usp_UpdateBillingRate created/updated.';
 GO
 
--- ── 5.16  sp_DeleteBillingRate ───────────────────────────────────────────────
-CREATE OR ALTER PROCEDURE dbo.sp_DeleteBillingRate
+-- -- 5.16  usp_DeleteBillingRate "-----------------------------------------------------------
+CREATE OR ALTER PROCEDURE dbo.usp_DeleteBillingRate
     @BillingRateId INT
 AS
 BEGIN
@@ -1092,16 +1092,16 @@ BEGIN
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
-        VALUES ('Billing', 'Error', 'sp_DeleteBillingRate: ' + ERROR_MESSAGE(), 'Admin');
+        VALUES ('Billing', 'Error', 'usp_DeleteBillingRate: ' + ERROR_MESSAGE(), 'Server');
         SELECT 0 AS Result;
     END CATCH
 END;
 GO
-PRINT 'SP dbo.sp_DeleteBillingRate created/updated.';
+PRINT 'SP dbo.usp_DeleteBillingRate created/updated.';
 GO
 
--- ── 5.17  sp_GetAllBillingRates ──────────────────────────────────────────────
-CREATE OR ALTER PROCEDURE dbo.sp_GetAllBillingRates
+-- -- 5.17  usp_GetAllBillingRates "-----------------------------------------------------------
+CREATE OR ALTER PROCEDURE dbo.usp_GetAllBillingRates
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -1114,15 +1114,15 @@ BEGIN
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
-        VALUES ('Billing', 'Error', 'sp_GetAllBillingRates: ' + ERROR_MESSAGE(), 'Admin');
+        VALUES ('Billing', 'Error', 'usp_GetAllBillingRates: ' + ERROR_MESSAGE(), 'Server');
     END CATCH
 END;
 GO
-PRINT 'SP dbo.sp_GetAllBillingRates created/updated.';
+PRINT 'SP dbo.usp_GetAllBillingRates created/updated.';
 GO
 
--- ── 5.18  sp_SetDefaultBillingRate ───────────────────────────────────────────
-CREATE OR ALTER PROCEDURE dbo.sp_SetDefaultBillingRate
+-- -- 5.18  usp_SetDefaultBillingRate "-----------------------------------------------------------
+CREATE OR ALTER PROCEDURE dbo.usp_SetDefaultBillingRate
     @BillingRateId INT
 AS
 BEGIN
@@ -1138,16 +1138,16 @@ BEGIN
     END TRY
     BEGIN CATCH
         INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
-        VALUES ('Billing', 'Error', 'sp_SetDefaultBillingRate: ' + ERROR_MESSAGE(), 'Admin');
+        VALUES ('Billing', 'Error', 'usp_SetDefaultBillingRate: ' + ERROR_MESSAGE(), 'Server');
         SELECT 0 AS Result;
     END CATCH
 END;
 GO
-PRINT 'SP dbo.sp_SetDefaultBillingRate created/updated.';
+PRINT 'SP dbo.usp_SetDefaultBillingRate created/updated.';
 GO
 
--- ── 5.19  sp_UpsertActivityType ──────────────────────────────────────────────
-CREATE OR ALTER PROCEDURE dbo.sp_UpsertActivityType
+-- -- 5.19  usp_UpsertActivityType "-----------------------------------------------------------
+CREATE OR ALTER PROCEDURE dbo.usp_UpsertActivityType
     @Name            NVARCHAR(100),
     @Description     NVARCHAR(500),
     @DefaultSeverity NVARCHAR(10)
@@ -1165,16 +1165,16 @@ BEGIN
         VALUES (@Name, @Description, @DefaultSeverity, 1);
 END;
 GO
-PRINT 'SP dbo.sp_UpsertActivityType created/updated.';
+PRINT 'SP dbo.usp_UpsertActivityType created/updated.';
 GO
 
--- ════════════════════════════════════════════════════════════
---  SECTION 6 ─ SEED DATA
---  Each insert is guarded — rows are only added if absent.
+-- ============================================================
+--  SECTION 6 - SEED DATA
+--  Each insert is guarded - rows are only added if absent.
 --  Safe to re-run: existing rows are never duplicated.
--- ════════════════════════════════════════════════════════════
+-- ============================================================
 
--- ── 6.1  Admin user ──────────────────────────────────────────────────────────
+-- -- 6.1  Admin user -------------------------------------------------------------
 -- Default password: Admin@123  (BCrypt work factor 12)
 -- Change this immediately after first login via SessionAdmin.
 IF NOT EXISTS (SELECT 1 FROM dbo.tblUser WHERE Username = 'Admin' AND Role = 'Admin')
@@ -1184,14 +1184,73 @@ BEGIN
     VALUES
         ('Admin',
          '$2a$12$cidj..ohW.bgKXVPBdVyH.VbvmIrOxVmFGqV3Y/lZDGC0utA685vm',
-         'System Administrator', 'Admin', 'Active', NULL, NULL, GETDATE());
+         'Muzaffar Iqbal', 'Admin', 'Active', NULL, NULL, GETDATE());
     PRINT 'Seed: Admin user inserted.';
 END
 ELSE
-    PRINT 'Seed: Admin user already exists — skipped.';
+    PRINT 'Seed: Admin user already exists - skipped.';
 GO
 
--- ── 6.2  Default billing rate ─────────────────────────────────────────────────
+-- -- 6.1b  Sample client users (for quick-start testing) "------------------------------------------
+-- Passwords: Sukaina@123 / Bisma@123 / Jannat@123 / Adan@123  (BCrypt WF=12)
+-- Change via SessionAdmin -> User Management -> Reset Password after first login.
+IF NOT EXISTS (SELECT 1 FROM dbo.tblUser WHERE Username = 'sukaina')
+BEGIN
+    INSERT INTO dbo.tblUser
+        (Username, PasswordHash, FullName, Role, Status, Phone, Address, CreatedAt)
+    VALUES
+        ('sukaina', '$2a$12$sLpL9P0AB8oK4X4gS3fpueOzyh375YcBvRVxFbDa/D/rByaHGAIfW',
+         'Sukaina Muzaffar', 'ClientUser', 'Active',
+         '0345-6123797', 'Phalia City, Mandi Bahauddin District, Punjab, Pakistan', GETDATE());
+    PRINT 'Seed: sukaina inserted.';
+END
+ELSE
+    PRINT 'Seed: sukaina already exists - skipped.';
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.tblUser WHERE Username = 'bisma')
+BEGIN
+    INSERT INTO dbo.tblUser
+        (Username, PasswordHash, FullName, Role, Status, Phone, Address, CreatedAt)
+    VALUES
+        ('bisma', '$2a$12$0HhdqUIbMpWt8XQId5NnE.LIctuW3B9TPeiGVqObcaiL8Mvhm9Ss.',
+         'Bisma Noor', 'ClientUser', 'Active',
+         '0345-6123797', 'Phalia City, Mandi Bahauddin District, Punjab, Pakistan', GETDATE());
+    PRINT 'Seed: bisma inserted.';
+END
+ELSE
+    PRINT 'Seed: bisma already exists - skipped.';
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.tblUser WHERE Username = 'jannat')
+BEGIN
+    INSERT INTO dbo.tblUser
+        (Username, PasswordHash, FullName, Role, Status, Phone, Address, CreatedAt)
+    VALUES
+        ('jannat', '$2a$12$pdhZ0ZnEuHxYMjl7q7gMtusj.zwNwZ/D.ZySpHBBr0X7HGF/Di42i',
+         'Jannat Fatima', 'ClientUser', 'Active',
+         '0345-6123797', 'Phalia City, Mandi Bahauddin District, Punjab, Pakistan', GETDATE());
+    PRINT 'Seed: jannat inserted.';
+END
+ELSE
+    PRINT 'Seed: jannat already exists - skipped.';
+GO
+
+IF NOT EXISTS (SELECT 1 FROM dbo.tblUser WHERE Username = 'adan')
+BEGIN
+    INSERT INTO dbo.tblUser
+        (Username, PasswordHash, FullName, Role, Status, Phone, Address, CreatedAt)
+    VALUES
+        ('adan', '$2a$12$JLG7bJcbkZmYA8enTXgpgObHejQFDSCvydum.sEUJBRLHNpsYcsay',
+         'Adan Fatima', 'ClientUser', 'Active',
+         '0345-6123797', 'Phalia City, Mandi Bahauddin District, Punjab, Pakistan', GETDATE());
+    PRINT 'Seed: adan inserted.';
+END
+ELSE
+    PRINT 'Seed: adan already exists - skipped.';
+GO
+
+-- -- 6.2  Default billing rate "-----------------------------------------------------------
 IF NOT EXISTS (SELECT 1 FROM dbo.tblBillingRate WHERE IsDefault = 1)
 BEGIN
     INSERT INTO dbo.tblBillingRate
@@ -1201,10 +1260,10 @@ BEGIN
     PRINT 'Seed: Default billing rate (3 PKR/min) inserted.';
 END
 ELSE
-    PRINT 'Seed: Default billing rate already exists — skipped.';
+    PRINT 'Seed: Default billing rate already exists - skipped.';
 GO
 
--- ── 6.3  Security / activity types ───────────────────────────────────────────
+-- -- 6.3  Security / activity types "-----------------------------------------------------------
 DECLARE @types TABLE (Name NVARCHAR(100), Description NVARCHAR(500), Severity NVARCHAR(10));
 INSERT INTO @types VALUES
     ('ProxySettingsEnabled',          'System proxy settings were enabled during session',                'High'),
@@ -1238,8 +1297,8 @@ WHEN NOT MATCHED THEN
 PRINT 'Seed: Activity types merged (19 rows).';
 GO
 
--- ── 5.20  sp_PurgeOldLogs ────────────────────────────────────────────────────
-CREATE OR ALTER PROCEDURE dbo.sp_PurgeOldLogs
+-- 5.20  usp_PurgeOldLogs
+CREATE OR ALTER PROCEDURE dbo.usp_PurgeOldLogs
     @RetentionDays INT = 180
 AS
 BEGIN
@@ -1261,13 +1320,45 @@ BEGIN
                 'Server');
 END;
 GO
-PRINT 'SP dbo.sp_PurgeOldLogs created/updated.';
+PRINT 'SP dbo.usp_PurgeOldLogs created/updated.';
 GO
 
--- ════════════════════════════════════════════════════════════
---  SECTION 7 ─ VERIFICATION
+-- -- 5.21  usp_ChangeAdminPassword "-----------------------------------------------------------
+CREATE OR ALTER PROCEDURE dbo.usp_ChangeAdminPassword
+    @AdminUserId     INT,
+    @NewPasswordHash NVARCHAR(255)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        UPDATE dbo.tblUser
+        SET    PasswordHash = @NewPasswordHash
+        WHERE  UserId = @AdminUserId AND Role = 'Admin';
+
+        IF @@ROWCOUNT = 0
+            RAISERROR('Admin user not found.', 16, 1);
+
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source, UserId)
+        VALUES ('Auth', 'AdminPasswordChanged',
+                'Admin password changed for UserId ' + CAST(@AdminUserId AS VARCHAR(10)),
+                'Server', @AdminUserId);
+
+        SELECT 1 AS Result;
+    END TRY
+    BEGIN CATCH
+        INSERT INTO dbo.tblSystemLog (Category, Type, Message, Source)
+        VALUES ('System', 'Error', 'usp_ChangeAdminPassword: ' + ERROR_MESSAGE(), 'Server');
+        SELECT 0 AS Result;
+    END CATCH
+END;
+GO
+PRINT 'SP dbo.usp_ChangeAdminPassword created/updated.';
+GO
+
+-- ============================================================
+--  SECTION 7 - VERIFICATION
 --  Run this block to confirm the setup is complete.
--- ════════════════════════════════════════════════════════════
+-- ============================================================
 
 SELECT
     'Tables'           AS ObjectType,
@@ -1285,7 +1376,7 @@ FROM sys.indexes i
 INNER JOIN sys.objects o ON o.object_id = i.object_id
 WHERE o.schema_id = SCHEMA_ID('dbo') AND i.is_primary_key = 0 AND i.type > 0;
 
-SELECT 'Admin user exists' AS Check, CAST(COUNT(*) AS VARCHAR) AS Value
+SELECT 'Admin user exists' AS Verification, CAST(COUNT(*) AS VARCHAR) AS Value
 FROM dbo.tblUser WHERE Role = 'Admin'
 UNION ALL
 SELECT 'Default billing rate', CAST(COUNT(*) AS VARCHAR)
@@ -1297,38 +1388,40 @@ FROM dbo.tblActivityType;
 PRINT '=== Setup complete. See result sets above for counts. ===';
 GO
 
--- ════════════════════════════════════════════════════════════
---  SECTION 8 ─ DEVELOPER FULL RESET  ⚠ DESTRUCTIVE ⚠
+-- ============================================================
+--  SECTION 8 - DEVELOPER FULL RESET    DESTRUCTIVE  
 --  Drops ALL tables and ALL data.
 --  NEVER run this on a production database.
 --  To use: uncomment the entire block below, run ONLY this
 --          section, then re-run the full script from the top.
--- ════════════════════════════════════════════════════════════
+-- ============================================================
 
 /*
 USE ClientServerSessionDB;
 GO
 
 -- Drop stored procedures
-DROP PROCEDURE IF EXISTS dbo.sp_FinalizeSessionBilling;
-DROP PROCEDURE IF EXISTS dbo.sp_CalculateSessionBilling;
-DROP PROCEDURE IF EXISTS dbo.sp_EndSession;
-DROP PROCEDURE IF EXISTS dbo.sp_StartSession;
-DROP PROCEDURE IF EXISTS dbo.sp_GetActiveSessions;
-DROP PROCEDURE IF EXISTS dbo.sp_GetBillingRecords;
-DROP PROCEDURE IF EXISTS dbo.sp_MarkBillingRecordPaid;
-DROP PROCEDURE IF EXISTS dbo.sp_LogSecurityAlert;
-DROP PROCEDURE IF EXISTS dbo.sp_RegisterClient;
-DROP PROCEDURE IF EXISTS dbo.sp_UpdateClientMachineInfo;
-DROP PROCEDURE IF EXISTS dbo.sp_RegisterClientUser;
-DROP PROCEDURE IF EXISTS dbo.sp_UpdateClientUser;
-DROP PROCEDURE IF EXISTS dbo.sp_DeleteClientUser;
-DROP PROCEDURE IF EXISTS dbo.sp_InsertBillingRate;
-DROP PROCEDURE IF EXISTS dbo.sp_UpdateBillingRate;
-DROP PROCEDURE IF EXISTS dbo.sp_DeleteBillingRate;
-DROP PROCEDURE IF EXISTS dbo.sp_GetAllBillingRates;
-DROP PROCEDURE IF EXISTS dbo.sp_SetDefaultBillingRate;
-DROP PROCEDURE IF EXISTS dbo.sp_UpsertActivityType;
+DROP PROCEDURE IF EXISTS dbo.usp_FinalizeSessionBilling;
+DROP PROCEDURE IF EXISTS dbo.usp_CalculateSessionBilling;
+DROP PROCEDURE IF EXISTS dbo.usp_EndSession;
+DROP PROCEDURE IF EXISTS dbo.usp_StartSession;
+DROP PROCEDURE IF EXISTS dbo.usp_GetActiveSessions;
+DROP PROCEDURE IF EXISTS dbo.usp_GetBillingRecords;
+DROP PROCEDURE IF EXISTS dbo.usp_MarkBillingRecordPaid;
+DROP PROCEDURE IF EXISTS dbo.usp_LogSecurityAlert;
+DROP PROCEDURE IF EXISTS dbo.usp_RegisterClient;
+DROP PROCEDURE IF EXISTS dbo.usp_UpdateClientMachineInfo;
+DROP PROCEDURE IF EXISTS dbo.usp_RegisterClientUser;
+DROP PROCEDURE IF EXISTS dbo.usp_UpdateClientUser;
+DROP PROCEDURE IF EXISTS dbo.usp_DeleteClientUser;
+DROP PROCEDURE IF EXISTS dbo.usp_InsertBillingRate;
+DROP PROCEDURE IF EXISTS dbo.usp_UpdateBillingRate;
+DROP PROCEDURE IF EXISTS dbo.usp_DeleteBillingRate;
+DROP PROCEDURE IF EXISTS dbo.usp_GetAllBillingRates;
+DROP PROCEDURE IF EXISTS dbo.usp_SetDefaultBillingRate;
+DROP PROCEDURE IF EXISTS dbo.usp_UpsertActivityType;
+DROP PROCEDURE IF EXISTS dbo.usp_PurgeOldLogs;
+DROP PROCEDURE IF EXISTS dbo.usp_ChangeAdminPassword;
 GO
 
 -- Drop views

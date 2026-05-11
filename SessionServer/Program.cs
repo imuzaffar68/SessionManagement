@@ -36,6 +36,7 @@ class Program
         Console.WriteLine("============================================================");
         Console.ResetColor();
 
+
         // ── Verify DB connection before opening WCF ───────────────
         try
         {
@@ -57,6 +58,21 @@ class Program
             Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine($"[DB]  ERROR: {ex.Message}");
             Console.ResetColor();
+            Console.WriteLine();
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine("  Cannot connect to database 'ClientServerSessionDB'.");
+            Console.WriteLine();
+            Console.WriteLine("  ── Option A: Fresh installation (no existing data) ──");
+            Console.WriteLine("  Run this command to create the database from scratch:");
+            Console.WriteLine(@"  sqlcmd -S localhost\SQLEXPRESS -E -i ""SessionManagement_Setup.sql""");
+            Console.WriteLine();
+            Console.WriteLine("  ── Option B: Replacing server PC (migrate existing data) ──");
+            Console.WriteLine("  1. Copy your .bak backup file from the old server PC.");
+            Console.WriteLine("  2. Open SSMS → right-click Databases → Restore Database.");
+            Console.WriteLine("  3. Select your .bak file and click OK.");
+            Console.WriteLine("  4. Start SessionServer again once restore completes.");
+            Console.WriteLine();
+            Console.ResetColor();
             Console.WriteLine("Press Enter to exit.");
             Console.ReadLine();
             return;
@@ -75,12 +91,9 @@ class Program
         {
             try
             {
-                // NetTcpBinding — required for duplex (callback) channels
-#if DEBUG
+                // NetTcpBinding — required for duplex (callback) channels.
+                // SecurityMode.None: closed LAN system, no certificates/domain.
                 var binding = new NetTcpBinding(SecurityMode.None)
-#else
-                var binding = new NetTcpBinding(SecurityMode.Transport)
-#endif
                 {
                     MaxReceivedMessageSize = WcfMaxMessageBytes,
                     MaxBufferSize          = WcfMaxMessageBytes,

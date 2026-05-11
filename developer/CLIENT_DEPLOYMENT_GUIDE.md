@@ -1,4 +1,4 @@
-# Client PC Deployment Guide — SessionManagement
+﻿# Client PC Deployment Guide — SessionManagement
 
 Step-by-step instructions to set up a kiosk (client) PC from scratch.
 Follow sections in order. Repeat from **Step 3** for every additional client PC.
@@ -74,23 +74,34 @@ and password to use this computer"** → click OK → enter the KioskUser passwo
 1. Copy `SessionManagement-Setup.exe` to the client PC.
 2. Right-click → **Run as administrator**.
 3. Select profile: **Client PC**.
-4. Fill in the wizard pages:
-   | Page | Value | Notes |
+4. Fill in the wizard pages (3 pages, combined fields):
+
+   **Page 1 — Session Server — Connection Details**
+   | Field | Value | Notes |
    |---|---|---|
-   | Server Address | `192.168.x.x` | LAN IP of the server PC |
-   | Server Port | `8001` | Only change if server port was changed |
-   | Machine Name | `Computer 01` | Shown in admin Clients tab |
+   | Server IP address | `192.168.x.x` | LAN IP of the PC running SessionServer |
+   | Server port | `8001` | Only change if server port was changed |
+
+   **Page 2 — Session Client — Machine Identity**
+   | Field | Value | Notes |
+   |---|---|---|
+   | Machine name | `Computer 01` | Shown in SessionAdmin → Clients tab |
    | Location / Seat | `Row A – Seat 1` | Physical location of this PC |
-   | IT Admin PIN | `****` | Must match PIN set during server install |
+
+   **Page 3 — Session Client — IT Admin PIN**
+   | Field | Value | Notes |
+   |---|---|---|
+   | IT Admin PIN | `****` | Must match the PIN set during server install |
+
 5. Click **Install**. The installer will:
-   - Copy files to `C:\NetCafe\SessionClient\`
+   - Copy all files to `C:\ICSSMS\`
    - Write all wizard values to `SessionClient.exe.config`
    - Add SessionClient to the KioskUser startup folder
 
 ### Option B — Manual install (development / testing)
 
-1. Copy the `SessionClient\bin\Release\` folder to `C:\NetCafe\SessionClient\`
-2. Open `C:\NetCafe\SessionClient\SessionClient.exe.config` in Notepad as Administrator
+1. Copy the contents of `SessionClient\bin\Release\` to `C:\ICSSMS\`
+2. Open `C:\ICSSMS\SessionClient.exe.config` in Notepad as Administrator
 3. Set the following values:
    ```xml
    <add key="ServerAddress"     value="192.168.x.x"/>
@@ -111,7 +122,7 @@ Skip this step if you used the Inno Setup installer (it does this automatically)
    ```
    C:\Users\KioskUser\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup
    ```
-2. Create a shortcut to `C:\NetCafe\SessionClient\SessionClient.exe`
+2. Create a shortcut to `C:\ICSSMS\SessionClient.exe`
 3. Name the shortcut `SessionClient`
 
 **Test:** Log off your admin account → log in as KioskUser → SessionClient should
@@ -132,7 +143,7 @@ only need to remember one code.
 
 ### How to change the PIN
 
-Edit `C:\NetCafe\SessionClient\SessionClient.exe.config` (requires Windows admin
+Edit `C:\ICSSMS\SessionClient.exe.config` (requires Windows admin
 account — KioskUser cannot modify this file):
 
 ```xml
@@ -212,3 +223,4 @@ Run this checklist after setting up each client PC:
 | PIN dialog appears but correct PIN rejected | `AdminSettingsPin` mismatch | Check config value; ensure no leading/trailing spaces |
 | Webcam not capturing | No webcam attached or driver missing | Install webcam driver; `EnableImageCapture=false` to disable |
 | Session not appearing in admin | Client registered with wrong `ClientCode` | Check `ClientCode` in config; should be `CL001` sentinel |
+

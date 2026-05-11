@@ -14,18 +14,18 @@
 ;    3. Run this script from the solution root folder
 ; ============================================================
 
-#define AppName    "NetCafe Session Management"
-#define AppVersion "1.0"
-#define AppPublisher "BC240212887"
-#define InstallDir "C:\NetCafe\SessionManagement"
+#define AppName    "Intelligent Client-Server Session Management System"
+#define AppVersion "1.0.0.0"
+#define AppPublisher "Muzaffar Iqbal (BC240212887) — Virtual University of Pakistan"
+#define InstallDir "C:\\ICSSMS"
 
 [Setup]
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppPublisher={#AppPublisher}
-AppId={{F25PROJECT8E326-CAFE-0001-0000-000000000001}
+AppId={{F25PROJECT8E326-0C55-0001-0000-000000000001}
 DefaultDirName={#InstallDir}
-DefaultGroupName=NetCafe
+DefaultGroupName=ICSSMS
 OutputDir=Output
 OutputBaseFilename=SessionManagement-Setup-v{#AppVersion}
 Compression=lzma2/ultra64
@@ -33,7 +33,11 @@ SolidCompression=yes
 WizardStyle=modern
 DisableProgramGroupPage=yes
 PrivilegesRequired=admin
+CloseApplications=yes
+VersionInfoVersion=1.0.0.0
 SetupIconFile=SessionClient\app.ico
+UninstallDisplayIcon={app}\app.ico
+LicenseFile=LICENSE.txt
 
 ; ── Profile presets ─────────────────────────────────────────────────────────
 [Types]
@@ -54,6 +58,7 @@ Name: "client_ui";  Description: "Session Client  (kiosk app)";               Ty
 Name: "{commonappdata}\SessionManagement\Images";     Components: server_svc
 Name: "{commonappdata}\SessionManagement\ProfilePics"; Components: server_svc
 Name: "{commonappdata}\SessionManagement\Logs";        Components: server_svc
+Name: "{app}\Logs";                                    Components: server_svc
 
 ; Client image / log folders
 Name: "{app}\Images"; Components: client_ui
@@ -72,8 +77,10 @@ Source: "SessionManagement.Shared\bin\Release\System.Buffers.dll";           Des
 Source: "SessionManagement.Shared\bin\Release\System.Memory.dll";            DestDir: "{app}"; Flags: ignoreversion; Components: server_svc admin_ui client_ui
 Source: "SessionManagement.Shared\bin\Release\System.Runtime.CompilerServices.Unsafe.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: server_svc admin_ui client_ui
 
-; ── Server-only DLL ──────────────────────────────────────────────────────────
-Source: "SessionServer\bin\Release\System.Numerics.Vectors.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: server_svc
+; ── Server-only DLLs ─────────────────────────────────────────────────────────
+Source: "SessionServer\bin\Release\System.Numerics.Vectors.dll";           DestDir: "{app}"; Flags: ignoreversion; Components: server_svc
+Source: "SessionManagement.Shared\bin\Release\System.Data.SqlClient.dll";  DestDir: "{app}"; Flags: ignoreversion; Components: server_svc
+Source: "SessionManagement.Shared\bin\Release\System.Drawing.Common.dll";  DestDir: "{app}"; Flags: ignoreversion; Components: server_svc
 
 ; ── Admin + Client DLL ───────────────────────────────────────────────────────
 Source: "SessionAdmin\bin\Release\System.Configuration.ConfigurationManager.dll"; DestDir: "{app}"; Flags: ignoreversion; Components: admin_ui client_ui
@@ -101,77 +108,78 @@ Source: "SessionManagement_Setup.sql"; DestDir: "{app}"; Flags: ignoreversion; C
 Name: "{group}\Session Admin";   Filename: "{app}\SessionAdmin.exe";  Components: admin_ui
 Name: "{group}\Session Server";  Filename: "{app}\SessionServer.exe"; Components: server_svc
 Name: "{group}\Session Client";  Filename: "{app}\SessionClient.exe"; Components: client_ui
-Name: "{commondesktop}\Session Admin"; Filename: "{app}\SessionAdmin.exe"; Components: admin_ui
+Name: "{commondesktop}\Session Admin";  Filename: "{app}\SessionAdmin.exe";  Components: admin_ui
+Name: "{commondesktop}\Session Server"; Filename: "{app}\SessionServer.exe"; Components: server_svc
+Name: "{commondesktop}\Session Client"; Filename: "{app}\SessionClient.exe"; Components: client_ui
 
 ; ── Post-install actions ────────────────────────────────────────────────────
 [Run]
 
-; 1. Create the database (server only)
-Filename: "{sys}\cmd.exe";
-  Parameters: "/c sqlcmd -S ""{code:GetSqlInstance}"" -E -i ""{app}\SessionManagement_Setup.sql"" > ""{app}\Logs\db_setup.log"" 2>&1";
-  StatusMsg: "Creating database...";
-  Components: server_svc;
-  Flags: runhidden waituntilterminated
+; 1. Create database, tables, stored procedures, and seed data.
+Filename: "{sys}\cmd.exe"; Parameters: "/c sqlcmd -S ""{code:GetSqlInstance}"" -E -i ""{app}\SessionManagement_Setup.sql"" > ""{app}\Logs\db_setup.log"" 2>&1"; StatusMsg: "Setting up database..."; Components: server_svc; Flags: runhidden waituntilterminated; Check: ShouldCreateDatabase
 
 ; 2. Open firewall port (server only)
-Filename: "{sys}\netsh.exe";
-  Parameters: "advfirewall firewall add rule name=""NetCafe SessionService"" dir=in action=allow protocol=TCP localport={code:GetServerPort}";
-  StatusMsg: "Configuring firewall...";
-  Components: server_svc;
-  Flags: runhidden
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall add rule name=""ICSSMS SessionService"" dir=in action=allow protocol=TCP localport={code:GetServerPort}"; StatusMsg: "Configuring firewall..."; Components: server_svc; Flags: runhidden
 
 ; 3. Register SessionServer as a scheduled task for auto-start (server only)
-Filename: "{sys}\schtasks.exe";
-  Parameters: "/create /tn ""NetCafe\SessionServer"" /tr ""{app}\SessionServer.exe"" /sc onstart /ru SYSTEM /rl HIGHEST /f";
-  StatusMsg: "Registering auto-start...";
-  Components: server_svc;
-  Flags: runhidden
+Filename: "{sys}\schtasks.exe"; Parameters: "/create /tn ""ICSSMS\SessionServer"" /tr ""{app}\SessionServer.exe"" /sc onstart /ru SYSTEM /rl HIGHEST /f"; StatusMsg: "Registering auto-start..."; Components: server_svc; Flags: runhidden
 
 ; 4. Add SessionClient to KioskUser startup folder (client only)
-Filename: "{sys}\cmd.exe";
-  Parameters: "/c mklink ""{userappdata}\Microsoft\Windows\Start Menu\Programs\Startup\SessionClient.lnk"" ""{app}\SessionClient.exe""";
-  StatusMsg: "Configuring auto-start for kiosk user...";
-  Components: client_ui;
-  Flags: runhidden
+Filename: "{sys}\cmd.exe"; Parameters: "/c mklink ""{userappdata}\Microsoft\Windows\Start Menu\Programs\Startup\SessionClient.lnk"" ""{app}\SessionClient.exe"""; StatusMsg: "Configuring auto-start for kiosk user..."; Components: client_ui; Flags: runhidden
 
-; 5. Launch Session Admin after install (server/admin profiles)
-Filename: "{app}\SessionAdmin.exe";
-  Description: "Launch Session Admin now";
-  Components: admin_ui;
-  Flags: nowait postinstall skipifsilent
+; 5. Launch Session Server after install (server profile)
+Filename: "{app}\SessionServer.exe"; Description: "Launch Session Server now"; Components: server_svc; Flags: nowait postinstall skipifsilent
+
+; 6. Launch Session Admin after install (server/admin profiles)
+Filename: "{app}\SessionAdmin.exe"; Description: "Launch Session Admin now"; Components: admin_ui; Flags: nowait postinstall skipifsilent
+
+; 7. Launch Session Client after install (client profile)
+Filename: "{app}\SessionClient.exe"; Description: "Launch Session Client now"; Components: client_ui; Flags: nowait postinstall skipifsilent
+
+; ── Uninstall: stop scheduled task and firewall rule (server only) ───────────
+[UninstallRun]
+Filename: "{sys}\schtasks.exe"; Parameters: "/delete /tn ""ICSSMS\SessionServer"" /f"; Flags: runhidden; RunOnceId: "DelTask"; Components: server_svc
+Filename: "{sys}\netsh.exe"; Parameters: "advfirewall firewall delete rule name=""ICSSMS SessionService"""; Flags: runhidden; RunOnceId: "DelFirewall"; Components: server_svc
+
+; ── Uninstall: remove leftover files and folders not tracked by installer ────
+[UninstallDelete]
+Type: filesandordirs; Name: "{app}\Logs";                                                                              Components: server_svc
+Type: filesandordirs; Name: "{app}\Images";                                                                            Components: client_ui
+Type: filesandordirs; Name: "{commonappdata}\SessionManagement";                                                       Components: server_svc
+Type: files;          Name: "{userappdata}\Microsoft\Windows\Start Menu\Programs\Startup\SessionClient.lnk";          Components: client_ui
+Type: filesandordirs; Name: "{app}"
 
 ; ── Pascal code section ──────────────────────────────────────────────────────
 [Code]
 
 { ── Shared variables ─────────────────────────────────────────────────────── }
 var
-  { Server wizard pages }
+  { Page 1 — Server PC: SQL instance (field 0) + WCF port (field 1) }
   SqlInstancePage  : TInputQueryWizardPage;
-  ServerPortPage   : TInputQueryWizardPage;
-  AdminPinPageSrv  : TInputQueryWizardPage;
+  AdminPinPageSrv  : TInputQueryWizardPage;   { Page 3 — Session Admin PIN }
+  CreateDbCheckBox : TNewCheckBox;
 
-  { Client wizard pages }
+  { Page 2 — Admin-only / Client: Server IP (field 0) + port (field 1) }
   ServerAddrPage   : TInputQueryWizardPage;
-  MachineNamePage  : TInputQueryWizardPage;
-  LocationPage     : TInputQueryWizardPage;
-  AdminPinPageCli  : TInputQueryWizardPage;
+  { Page 4 — Client: machine name (field 0) + location (field 1) }
+  MachineInfoPage  : TInputQueryWizardPage;
+  AdminPinPageCli  : TInputQueryWizardPage;   { Page 5 — Session Client PIN }
 
 
-{ ── Helpers ──────────────────────────────────────────────────────────────── }
-function GetSqlInstance(Param: String): String;
+{ ── Component helpers (declared first — called by helpers below) ─────────── }
+function IsServerComponentSelected(): Boolean;
 begin
-  if SqlInstancePage <> nil then
-    Result := SqlInstancePage.Values[0]
-  else
-    Result := 'localhost\SQLEXPRESS';
+  Result := IsComponentSelected('server_svc');
 end;
 
-function GetServerPort(Param: String): String;
+function IsClientComponentSelected(): Boolean;
 begin
-  if ServerPortPage <> nil then
-    Result := ServerPortPage.Values[0]
-  else
-    Result := '8001';
+  Result := IsComponentSelected('client_ui');
+end;
+
+function IsAdminComponentSelected(): Boolean;
+begin
+  Result := IsComponentSelected('admin_ui');
 end;
 
 
@@ -192,14 +200,28 @@ begin
          or FileExists('C:\Program Files\Microsoft SQL Server\110\Tools\Binn\sqlcmd.exe');
 end;
 
-function IsServerComponentSelected(): Boolean;
+
+{ ── Helpers ──────────────────────────────────────────────────────────────── }
+function ShouldCreateDatabase(): Boolean;
 begin
-  Result := IsComponentSelected('server_svc');
+  Result := IsServerComponentSelected() and
+            ((CreateDbCheckBox = nil) or CreateDbCheckBox.Checked);
 end;
 
-function IsClientComponentSelected(): Boolean;
+function GetSqlInstance(Param: String): String;
 begin
-  Result := IsComponentSelected('client_ui');
+  if SqlInstancePage <> nil then
+    Result := SqlInstancePage.Values[0]
+  else
+    Result := 'localhost\SQLEXPRESS';
+end;
+
+function GetServerPort(Param: String): String;
+begin
+  if SqlInstancePage <> nil then
+    Result := SqlInstancePage.Values[1]
+  else
+    Result := '8001';
 end;
 
 
@@ -222,58 +244,68 @@ end;
 
 
 { ── InitializeWizard — create all conditional pages ─────────────────────── }
+{ Page chain (all profiles share one linear chain; ShouldSkipPage hides inapplicable pages):
+    SqlInstancePage → ServerAddrPage → AdminPinPageSrv → MachineInfoPage → AdminPinPageCli
+  This guarantees Server → Admin → Client order regardless of which pages are visible. }
 procedure InitializeWizard();
 begin
-  { ── Server pages ───────────────────────────────────────────────────────── }
+  { ── Page 1: Session Server — Database & Port (server_svc only) ──────────── }
   SqlInstancePage := CreateInputQueryPage(wpSelectComponents,
-    'SQL Server Instance',
-    'Enter the SQL Server instance name for this PC.',
-    'Example: localhost\SQLEXPRESS  or  localhost  (for full SQL Server)');
+    'Session Server — Database & Port',
+    'Configure the SQL Server connection and WCF service port for Session Server.',
+    'SQL instance example: localhost\SQLEXPRESS  or  localhost' + #13#10 +
+    'Leave port as 8001 unless that port is already in use.');
   SqlInstancePage.Add('SQL Server instance:', False);
+  SqlInstancePage.Add('WCF service port:', False);
   SqlInstancePage.Values[0] := 'localhost\SQLEXPRESS';
+  SqlInstancePage.Values[1] := '8001';
 
-  ServerPortPage := CreateInputQueryPage(SqlInstancePage.ID,
-    'WCF Service Port',
-    'Enter the port SessionServer will listen on.',
-    'Default is 8001. Only change if that port is already in use.');
-  ServerPortPage.Add('Server port:', False);
-  ServerPortPage.Values[0] := '8001';
+  CreateDbCheckBox := TNewCheckBox.Create(SqlInstancePage);
+  CreateDbCheckBox.Parent  := SqlInstancePage.Surface;
+  CreateDbCheckBox.Caption := 'Create fresh database during installation' + #13#10 +
+    'Uncheck if you are restoring an existing backup from your old server.';
+  CreateDbCheckBox.Checked := True;
+  CreateDbCheckBox.Left    := 0;
+  CreateDbCheckBox.Top     := SqlInstancePage.Edits[1].Top +
+                               SqlInstancePage.Edits[1].Height + 16;
+  CreateDbCheckBox.Width   := SqlInstancePage.SurfaceWidth;
+  CreateDbCheckBox.Height  := 40;
 
-  AdminPinPageSrv := CreateInputQueryPage(ServerPortPage.ID,
-    'IT Admin PIN',
-    'Set the PIN that protects the hidden network settings dialog (Ctrl+Alt+Shift+S).',
+  { ── Page 2: Session Server — Connection Details (admin-only / client-only) ─ }
+  ServerAddrPage := CreateInputQueryPage(SqlInstancePage.ID,
+    'Session Server — Connection Details',
+    'Enter the IP address and port of the PC running Session Server.',
+    'IP example: 192.168.1.10   Port default: 8001' + #13#10 +
+    'For development on the same PC use: localhost');
+  ServerAddrPage.Add('Server IP address:', False);
+  ServerAddrPage.Add('Server port:', False);
+  ServerAddrPage.Values[0] := 'localhost';
+  ServerAddrPage.Values[1] := '8001';
+
+  { ── Page 3: Session Admin — IT Admin PIN (admin_ui) ─────────────────────── }
+  AdminPinPageSrv := CreateInputQueryPage(ServerAddrPage.ID,
+    'Session Admin — IT Admin PIN',
+    'Set the PIN that protects the hidden admin settings dialog in Session Admin (Ctrl+Alt+Shift+S).',
     'Use the same PIN on all client PCs so you only need to remember one code.' + #13#10 +
     'Minimum 4 characters. Default "1234" — you MUST change this.');
   AdminPinPageSrv.Add('IT Admin PIN:', True);
   AdminPinPageSrv.Values[0] := '';
 
-  { ── Client pages ───────────────────────────────────────────────────────── }
-  ServerAddrPage := CreateInputQueryPage(wpSelectComponents,
-    'Server Address',
-    'Enter the LAN IP address of the PC running SessionServer.',
-    'Example: 192.168.1.10' + #13#10 +
-    'For development on the same PC, use: localhost');
-  ServerAddrPage.Add('Server IP address:', False);
-  ServerAddrPage.Values[0] := 'localhost';
+  { ── Page 4: Session Client — Machine Identity (client_ui) ───────────────── }
+  MachineInfoPage := CreateInputQueryPage(AdminPinPageSrv.ID,
+    'Session Client — Machine Identity',
+    'Enter the display name and seat location for this kiosk PC.',
+    'These details appear in the Session Admin → Clients tab.' + #13#10 +
+    'Example name: Computer 01   Example location: Row A - Seat 1');
+  MachineInfoPage.Add('Machine name:', False);
+  MachineInfoPage.Add('Location / Seat:', False);
+  MachineInfoPage.Values[0] := 'Computer 01';
+  MachineInfoPage.Values[1] := 'Row A - Seat 1';
 
-  MachineNamePage := CreateInputQueryPage(ServerAddrPage.ID,
-    'Machine Name',
-    'Enter a display name for this kiosk PC.',
-    'This name appears in the SessionAdmin Clients tab.' + #13#10 +
-    'Example: Computer 01');
-  MachineNamePage.Add('Machine name:', False);
-  MachineNamePage.Values[0] := 'Computer 01';
-
-  LocationPage := CreateInputQueryPage(MachineNamePage.ID,
-    'Seat Location',
-    'Enter the physical location of this kiosk seat.',
-    'Example: Row A - Seat 1');
-  LocationPage.Add('Location / Seat:', False);
-  LocationPage.Values[0] := 'Row A - Seat 1';
-
-  AdminPinPageCli := CreateInputQueryPage(LocationPage.ID,
-    'IT Admin PIN',
-    'Set the PIN that protects the hidden network settings dialog (Ctrl+Alt+Shift+S).',
+  { ── Page 5: Session Client — IT Admin PIN (client_ui) ───────────────────── }
+  AdminPinPageCli := CreateInputQueryPage(MachineInfoPage.ID,
+    'Session Client — IT Admin PIN',
+    'Set the PIN that protects the hidden admin settings dialog in Session Client (Ctrl+Alt+Shift+S).',
     'Use the same PIN as set on the server PC.' + #13#10 +
     'Minimum 4 characters. Default "1234" — you MUST change this.');
   AdminPinPageCli.Add('IT Admin PIN:', True);
@@ -286,16 +318,24 @@ function ShouldSkipPage(PageID: Integer): Boolean;
 begin
   Result := False;
 
-  { Server-only pages }
-  if (PageID = SqlInstancePage.ID) or
-     (PageID = ServerPortPage.ID)  or
-     (PageID = AdminPinPageSrv.ID) then
+  { DB + Port: server PC only — database lives on server }
+  if PageID = SqlInstancePage.ID then
     Result := not IsServerComponentSelected();
 
-  { Client-only pages }
-  if (PageID = ServerAddrPage.ID)  or
-     (PageID = MachineNamePage.ID) or
-     (PageID = LocationPage.ID)    or
+  { Server IP + Port: needed when server is NOT on this PC
+    — Admin-only (separate laptop needs server IP)
+    — Client-only (kiosk needs server IP)
+    — Skip for Server PC and Full (server is local → localhost used automatically) }
+  if PageID = ServerAddrPage.ID then
+    Result := IsServerComponentSelected() or
+              not (IsClientComponentSelected() or IsAdminComponentSelected());
+
+  { Admin PIN: shown whenever admin_ui is installed (Server PC + Admin Only + Full) }
+  if PageID = AdminPinPageSrv.ID then
+    Result := not IsAdminComponentSelected();
+
+  { Machine identity + Client PIN: kiosk client only }
+  if (PageID = MachineInfoPage.ID) or
      (PageID = AdminPinPageCli.ID) then
     Result := not IsClientComponentSelected();
 end;
@@ -308,65 +348,22 @@ var
 begin
   Result := True;
 
-  { Validate server port }
-  if CurPageID = ServerPortPage.ID then
+  { Validate server configuration page (SQL instance + port) }
+  if CurPageID = SqlInstancePage.ID then
   begin
-    if not TryStrToInt(ServerPortPage.Values[0], Port)
-       or (Port < 1) or (Port > 65535) then
+    if Trim(SqlInstancePage.Values[0]) = '' then
+    begin
+      MsgBox('SQL Server instance cannot be empty.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    Port := StrToIntDef(SqlInstancePage.Values[1], 0);
+    if (Port < 1) or (Port > 65535) then
     begin
       MsgBox('Port must be a number between 1 and 65535.', mbError, MB_OK);
       Result := False;
       Exit;
     end;
-  end;
-
-  { Validate server admin PIN }
-  if CurPageID = AdminPinPageSrv.ID then
-  begin
-    if Length(AdminPinPageSrv.Values[0]) < 4 then
-    begin
-      MsgBox('IT Admin PIN must be at least 4 characters.', mbError, MB_OK);
-      Result := False;
-      Exit;
-    end;
-  end;
-
-  { Validate server address (client page) }
-  if CurPageID = ServerAddrPage.ID then
-  begin
-    if Trim(ServerAddrPage.Values[0]) = '' then
-    begin
-      MsgBox('Server address cannot be empty.', mbError, MB_OK);
-      Result := False;
-      Exit;
-    end;
-  end;
-
-  { Validate machine name }
-  if CurPageID = MachineNamePage.ID then
-  begin
-    if Trim(MachineNamePage.Values[0]) = '' then
-    begin
-      MsgBox('Machine name cannot be empty.', mbError, MB_OK);
-      Result := False;
-      Exit;
-    end;
-  end;
-
-  { Validate client admin PIN }
-  if CurPageID = AdminPinPageCli.ID then
-  begin
-    if Length(AdminPinPageCli.Values[0]) < 4 then
-    begin
-      MsgBox('IT Admin PIN must be at least 4 characters.', mbError, MB_OK);
-      Result := False;
-      Exit;
-    end;
-  end;
-
-  { Warn if SQL Server not found when server component selected }
-  if (CurPageID = SqlInstancePage.ID) and IsServerComponentSelected() then
-  begin
     if not IsSqlCmdAvailable() then
     begin
       if MsgBox(
@@ -380,29 +377,86 @@ begin
       end;
     end;
   end;
+
+  { Validate server address + port (admin-only / client page) }
+  if CurPageID = ServerAddrPage.ID then
+  begin
+    if Trim(ServerAddrPage.Values[0]) = '' then
+    begin
+      MsgBox('Server address cannot be empty.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    Port := StrToIntDef(ServerAddrPage.Values[1], 0);
+    if (Port < 1) or (Port > 65535) then
+    begin
+      MsgBox('Port must be a number between 1 and 65535.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+  end;
+
+  { Validate Session Admin PIN }
+  if CurPageID = AdminPinPageSrv.ID then
+  begin
+    if Length(AdminPinPageSrv.Values[0]) < 4 then
+    begin
+      MsgBox('IT Admin PIN must be at least 4 characters.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+  end;
+
+  { Validate machine name + location }
+  if CurPageID = MachineInfoPage.ID then
+  begin
+    if Trim(MachineInfoPage.Values[0]) = '' then
+    begin
+      MsgBox('Machine name cannot be empty.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+    if Trim(MachineInfoPage.Values[1]) = '' then
+    begin
+      MsgBox('Location / Seat cannot be empty.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+  end;
+
+  { Validate Session Client PIN }
+  if CurPageID = AdminPinPageCli.ID then
+  begin
+    if Length(AdminPinPageCli.Values[0]) < 4 then
+    begin
+      MsgBox('IT Admin PIN must be at least 4 characters.', mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+  end;
 end;
 
 
-{ ── WriteConfigValue — replaces a key value in a .exe.config XML file ────── }
-procedure WriteConfigValue(ConfigFile, Key, Value: String);
+{ ── SetConfigValue — sets a key=value pair in a .exe.config appSettings XML ─ }
+procedure SetConfigValue(ConfigFile, Key, NewValue: String);
 var
-  Content: String;
-  OldStr, NewStr: String;
+  Raw: AnsiString;
+  S, Tag, Left, Right: String;
+  P, Q: Integer;
 begin
-  if not LoadStringFromFile(ConfigFile, Content) then Exit;
-
-  OldStr := 'key="' + Key + '" value="';
-  { Find existing value and replace it }
-  if Pos(OldStr, Content) > 0 then
-  begin
-    NewStr := OldStr + Value + '"';
-    { Replace old key="X" value="oldValue" with new value }
-    StringChangeEx(Content, OldStr,
-                   '<<PLACEHOLDER_' + Key + '>>', False);
-    { Now we need a smarter replacement — find the full attribute pair }
-  end;
-  { Use SetIniValue which handles .config files (XML with ini-like appSettings) }
-  SetIniValue(ConfigFile, 'appSettings', Key, Value);
+  if not FileExists(ConfigFile) then Exit;
+  if not LoadStringFromFile(ConfigFile, Raw) then Exit;
+  S   := String(Raw);
+  Tag := 'key="' + Key + '" value="';
+  P   := Pos(Tag, S);
+  if P = 0 then Exit;
+  P := P + Length(Tag);
+  Q := P;
+  while (Q <= Length(S)) and (S[Q] <> '"') do
+    Q := Q + 1;
+  Left  := Copy(S, 1, P - 1);
+  Right := Copy(S, Q, Length(S));
+  SaveStringToFile(ConfigFile, AnsiString(Left + NewValue + Right), False);
 end;
 
 
@@ -411,6 +465,8 @@ procedure CurStepChanged(CurStep: TSetupStep);
 var
   ServerConfig, AdminConfig, ClientConfig: String;
   Pin: String;
+  RawContent: AnsiString;
+  Content: String;
 begin
   if CurStep <> ssPostInstall then Exit;
 
@@ -418,42 +474,71 @@ begin
   AdminConfig  := ExpandConstant('{app}\SessionAdmin.exe.config');
   ClientConfig := ExpandConstant('{app}\SessionClient.exe.config');
 
-  { ── Write server / admin settings ──────────────────────────────────────── }
+  { ── Write server settings (server_svc only) ─────────────────────────────── }
   if IsServerComponentSelected() then
   begin
-    { Connection string: replace SQLEXPRESS instance name }
     if FileExists(ServerConfig) then
     begin
-      var Content: String;
-      if LoadStringFromFile(ServerConfig, Content) then
+      if LoadStringFromFile(ServerConfig, RawContent) then
       begin
+        Content := String(RawContent);
         StringChangeEx(Content, 'localhost\SQLEXPRESS',
                        SqlInstancePage.Values[0], False);
         StringChangeEx(Content, 'value="8001"',
-                       'value="' + ServerPortPage.Values[0] + '"', False);
-        SaveStringToFile(ServerConfig, Content, False);
+                       'value="' + SqlInstancePage.Values[1] + '"', False);
+        SaveStringToFile(ServerConfig, AnsiString(Content), False);
       end;
     end;
-
-    Pin := AdminPinPageSrv.Values[0];
-    if (Pin <> '') and FileExists(AdminConfig) then
-      SetIniValue(AdminConfig, 'appSettings', 'AdminSettingsPin', Pin);
   end;
 
-  { ── Write client settings ───────────────────────────────────────────────── }
+  { ── Write admin settings (admin_ui — Server PC + Admin Only + Full) ──────── }
+  if IsAdminComponentSelected() and FileExists(AdminConfig) then
+  begin
+    Pin := AdminPinPageSrv.Values[0];
+    if Pin <> '' then
+      SetConfigValue(AdminConfig, 'AdminSettingsPin', Pin);
+
+    { Admin-only on separate laptop: must point to remote server IP }
+    if not IsServerComponentSelected() then
+    begin
+      SetConfigValue(AdminConfig, 'ServerAddress', ServerAddrPage.Values[0]);
+      SetConfigValue(AdminConfig, 'ServerPort',    ServerAddrPage.Values[1]);
+    end;
+  end;
+
+  { ── Write client settings (client_ui) ───────────────────────────────────── }
   if IsClientComponentSelected() and FileExists(ClientConfig) then
   begin
-    SetIniValue(ClientConfig, 'appSettings', 'ServerAddress',
-                ServerAddrPage.Values[0]);
-    SetIniValue(ClientConfig, 'appSettings', 'ServerPort',
-                ServerPortPage.Values[0]);
-    SetIniValue(ClientConfig, 'appSettings', 'ClientMachineName',
-                MachineNamePage.Values[0]);
-    SetIniValue(ClientConfig, 'appSettings', 'ClientLocation',
-                LocationPage.Values[0]);
+    { Full install: server on same PC — always use localhost }
+    if IsServerComponentSelected() then
+    begin
+      SetConfigValue(ClientConfig, 'ServerAddress', 'localhost');
+      SetConfigValue(ClientConfig, 'ServerPort',    SqlInstancePage.Values[1]);
+    end
+    else
+    begin
+      SetConfigValue(ClientConfig, 'ServerAddress', ServerAddrPage.Values[0]);
+      SetConfigValue(ClientConfig, 'ServerPort',    ServerAddrPage.Values[1]);
+    end;
+    SetConfigValue(ClientConfig, 'ClientMachineName', MachineInfoPage.Values[0]);
+    SetConfigValue(ClientConfig, 'ClientLocation',    MachineInfoPage.Values[1]);
 
     Pin := AdminPinPageCli.Values[0];
     if Pin <> '' then
-      SetIniValue(ClientConfig, 'appSettings', 'AdminSettingsPin', Pin);
+      SetConfigValue(ClientConfig, 'AdminSettingsPin', Pin);
+  end;
+end;
+
+
+{ ── CurUninstallStepChanged — force-close all apps before files are removed ─ }
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  ResultCode: Integer;
+begin
+  if CurUninstallStep = usUninstall then
+  begin
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/f /im SessionServer.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/f /im SessionAdmin.exe',  '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/f /im SessionClient.exe', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 end;

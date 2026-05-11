@@ -90,15 +90,11 @@ namespace SessionManagement.Client
                 _factory.Endpoint.Address =
                     new EndpointAddress(ServiceConfiguration.GetServiceAddress());
 
-                // Match server security mode: None in DEBUG (dev), Transport in Release (LAN encryption).
+                // SecurityMode.None — this is a closed LAN system (no Windows domain,
+                // no certificates). Transport security requires Windows auth across machines
+                // which fails between non-domain PCs. Data stays on the local network.
                 if (_factory.Endpoint.Binding is System.ServiceModel.NetTcpBinding tcpBinding)
-                {
-#if DEBUG
                     tcpBinding.Security.Mode = System.ServiceModel.SecurityMode.None;
-#else
-                    tcpBinding.Security.Mode = System.ServiceModel.SecurityMode.Transport;
-#endif
-                }
 
                 // Cap Open() — default is 1 minute, freezes UI thread when server unreachable.
                 _factory.Endpoint.Binding.OpenTimeout = TimeSpan.FromSeconds(ConnectTimeoutSeconds);
@@ -414,6 +410,14 @@ namespace SessionManagement.Client
             try { return _proxy.GetSessionReport(fromDate, toDate); }
             catch (Exception ex)
             { Log($"GetSessionReport: {ex.Message}"); return new WCF.ReportData(); }
+        }
+
+        public WCF.AlertInfo[] GetAllAlertsForDateRange(DateTime from, DateTime to)
+        {
+            if (!EnsureConnection()) return Array.Empty<WCF.AlertInfo>();
+            try { return _proxy.GetAllAlertsForDateRange(from, to); }
+            catch (Exception ex)
+            { Log($"GetAllAlertsForDateRange: {ex.Message}"); return Array.Empty<WCF.AlertInfo>(); }
         }
 
 

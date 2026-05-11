@@ -1,4 +1,4 @@
-# Server Setup Guide — SessionManagement
+﻿# Server Setup Guide — SessionManagement
 
 Step-by-step instructions to get `SessionServer` running on a fresh Windows PC.
 Follow sections in order: Dependencies → Database → Configuration → Firewall → Run.
@@ -18,7 +18,7 @@ Install these on the **server PC only** before doing anything else.
 | SQL Server Standard / Enterprise | Paid | Large deployment | — |
 
 > **Recommended for this project:** SQL Server Express 2019 — free, no licence,
-> sufficient for a cyber café with tens of machines and months of billing data.
+> sufficient for a shared computer environment with tens of machines and months of billing data.
 
 During installation:
 - Choose **"New SQL Server stand-alone installation"**
@@ -50,14 +50,14 @@ Value `461808` or higher = 4.7.2 or later. ✓
 
 ## Step 2 — Create the Database
 
-The file `SessionManagement.sql` (project root) creates the database, all
-tables, stored procedures, and seed data from scratch. It is safe to re-run —
-it drops and recreates everything.
+The file `SessionManagement_Setup.sql` (project root) creates the database,
+all tables, stored procedures, and seed data. It is safe to re-run — all
+statements use `IF NOT EXISTS` guards so existing data is never lost.
 
 ### Option A — SSMS (recommended)
 
 1. Open SSMS → connect to `localhost\SQLEXPRESS` using Windows Authentication.
-2. File → Open → `SessionManagement.sql`.
+2. File → Open → `SessionManagement_Setup.sql`.
 3. Click **Execute** (or press `F5`).
 4. Confirm the Messages pane shows no errors.
 5. In Object Explorer refresh and verify `ClientServerSessionDB` appears.
@@ -65,7 +65,7 @@ it drops and recreates everything.
 ### Option B — Command line (sqlcmd)
 
 ```bat
-sqlcmd -S localhost\SQLEXPRESS -E -i "C:\Path\To\SessionManagement.sql"
+sqlcmd -S localhost\SQLEXPRESS -E -i "C:\Path\To\SessionManagement_Setup.sql"
 ```
 
 `-E` = Windows Authentication (no username/password needed).
@@ -178,6 +178,20 @@ schtasks /create /tn "SessionServer" /tr "C:\Path\To\SessionServer.exe" ^
 
 Or use NSSM (Non-Sucking Service Manager) to wrap it as a proper Windows Service.
 
+### Auto-restart on crash (recommended for production)
+
+The scheduled task above starts the server on boot but does not restart it if it crashes.
+To configure automatic restart on failure via Task Scheduler:
+
+1. Open **Task Scheduler** (`taskschd.msc`)
+2. Find `ICSSMS\SessionServer` under Task Scheduler Library
+3. Right-click → **Properties** → **Settings** tab
+4. Check **"If the task fails, restart every:"** → set to `1 minute`
+5. Set **"Attempt to restart up to:"** → `3 times`
+6. Click **OK**
+
+> This ensures the café stays operational even if the server process crashes unexpectedly.
+
 ---
 
 ## Step 6 — Verify Everything Works
@@ -193,13 +207,127 @@ Run this checklist after first setup:
 
 ---
 
+## Replacing the Server PC (Migrating Existing Data)
+
+If the server PC is being replaced but the café already has an existing database
+with user accounts, session history, and billing records, follow these steps to
+migrate the data to the new PC without losing anything.
+
+### Step 1 — Back up the database on the old PC
+
+Open SSMS on the **old** server PC and run:
+
+```sql
+BACKUP DATABASE ClientServerSessionDB
+TO DISK = 'C:\Backup\ClientServerSessionDB.bak'
+WITH FORMAT, INIT, NAME = 'ICSSMS Full Backup';
+```
+
+Or via SSMS GUI: right-click `ClientServerSessionDB` → Tasks → Back Up → Full → OK.
+
+Copy `ClientServerSessionDB.bak` to a USB drive or network share.
+
+### Step 2 — Install on the new PC (skip database creation)
+
+Run the Inno Setup installer (`SessionManagement-Setup.exe`) on the new PC with
+the **Server PC** profile. On the **Session Server — Database & Port** wizard page:
+
+- Set the SQL Server instance name as normal
+- **Uncheck** "Create fresh database during installation"
+
+The installer will configure everything except the database — no empty database
+will be created.
+
+### Step 3 — Restore the backup on the new PC
+
+Open SSMS on the **new** server PC and run:
+
+```sql
+RESTORE DATABASE ClientServerSessionDB
+FROM DISK = 'C:\Backup\ClientServerSessionDB.bak'
+WITH MOVE 'ClientServerSessionDB'
+     TO 'C:\Program Files\Microsoft SQL Server\MSSQL15.SQLEXPRESS\MSSQL\DATA\ClientServerSessionDB.mdf',
+MOVE 'ClientServerSessionDB_log'
+     TO 'C:\Program Files\Microsoft SQL Server\MSSQL15.SQLEXPRESS\MSSQL\DATA\ClientServerSessionDB_log.ldf',
+REPLACE;
+```
+
+Or via SSMS GUI: right-click `Databases` → Restore Database → Device → select
+your `.bak` file → OK.
+
+### Step 4 — Update stored procedures (optional but recommended)
+
+Run the SQL setup script once to update all stored procedures to the latest
+version without touching any table data:
+
+```bat
+sqlcmd -S localhost\SQLEXPRESS -E -i "C:\ICSSMS\SessionManagement\SessionManagement_Setup.sql"
+```
+
+Since all tables use `IF NOT EXISTS` guards and all procedures use
+`CREATE OR ALTER`, this is fully safe — **no data will be lost**.
+
+### Step 5 — Start the server
+
+Run `SessionServer.exe`. If the database is not yet restored when the server
+starts, it will display clear instructions and exit gracefully — no crash.
+
+### Step 6 — Update client PCs
+
+On each client PC, press `Ctrl+Alt+Shift+S` → enter IT admin PIN → update the
+**Server Address** to the new server PC's LAN IP → Save & Restart.
+
+---
+
 ## Troubleshooting
 
 | Error | Likely cause | Fix |
 |---|---|---|
-| `Cannot open database "ClientServerSessionDB"` | SQL script not run | Run `SessionManagement.sql` (Step 2) |
+| `Cannot open database "ClientServerSessionDB"` | SQL script not run | Run `SessionManagement_Setup.sql` (Step 2) |
 | `A network-related error occurred` | Wrong instance name in connection string | Check `Data Source=` (Step 3) |
 | `Login failed for user 'NT AUTHORITY\SYSTEM'` | Service account has no SQL access | Grant login in SSMS → Security → Logins |
 | `AddressAlreadyInUseException` on port 8001 | Another app using the port | Change `ServerPort` in App.config and update firewall rule |
 | Client gets `EndpointNotFoundException` | Firewall blocking port 8001 | Re-run netsh command in Step 4 |
 | `System.UriFormatException` | `ListenAddress` set to `"+"` | Keep `ListenAddress=localhost` — do not change it |
+
+---
+
+## Admin Password Recovery (Locked-Out)
+
+If the admin forgets their password and cannot log in to `SessionAdmin`, the only
+recovery path is a direct database update via SSMS or sqlcmd.
+
+### Step 1 — Open SSMS and connect
+
+Connect to `localhost\SQLEXPRESS` using Windows Authentication.
+
+### Step 2 — Reset to the factory default password
+
+Run the following query to restore the password to `Admin@123`:
+
+```sql
+USE ClientServerSessionDB;
+
+UPDATE dbo.tblUser
+SET    PasswordHash = '$2a$12$cidj..ohW.bgKXVPBdVyH.VbvmIrOxVmFGqV3Y/lZDGC0utA685vm'
+WHERE  Username = 'Admin' AND Role = 'Admin';
+```
+
+> This hash is the BCrypt (work factor 12) hash of `Admin@123` — the same value
+> seeded by `SessionManagement_Setup.sql` on first install.
+
+### Step 3 — Log in and change immediately
+
+1. Open `SessionAdmin.exe` and log in with `Admin` / `Admin@123`
+2. Click **🔐 Change Password** in the title bar
+3. Set a new strong password and confirm
+
+### Notes
+
+- Never leave the default password `Admin@123` in production — change it immediately after recovery
+- If sqlcmd is available, the same UPDATE can be run from the command line:
+  ```bat
+  sqlcmd -S localhost\SQLEXPRESS -E -d ClientServerSessionDB -Q "UPDATE dbo.tblUser SET PasswordHash='$2a$12$cidj..ohW.bgKXVPBdVyH.VbvmIrOxVmFGqV3Y/lZDGC0utA685vm' WHERE Username='Admin' AND Role='Admin'"
+  ```
+
+

@@ -283,14 +283,10 @@ namespace SessionManagement.WCF
                 return new SessionStartResponse
                 { Success = false, ErrorMessage = "Invalid input." };
 
-            // Atomically validate + consume token — TryRemove prevents replay attacks
-            if (!_tokenStore.TryRemove(sessionToken ?? string.Empty, out int tokenUserId)
-                || tokenUserId != userId)
-                return new SessionStartResponse
-                { Success = false, ErrorMessage = "SESSION_TOKEN_EXPIRED" };
-
             try
             {
+                // Machine checks first — token is only consumed after these pass,
+                // so a failed machine lookup does not burn the one-shot token.
                 int machineId = _db.GetClientMachineIdByCode(clientCode);
                 if (machineId == 0)
                 {
@@ -310,6 +306,13 @@ namespace SessionManagement.WCF
                     return new SessionStartResponse
                     { Success = false, ErrorMessage = "This machine is not available for use. Please contact your administrator." };
                 }
+
+                // Atomically validate + consume token — only reached after machine checks pass.
+                // TryRemove prevents replay attacks.
+                if (!_tokenStore.TryRemove(sessionToken ?? string.Empty, out int tokenUserId)
+                    || tokenUserId != userId)
+                    return new SessionStartResponse
+                    { Success = false, ErrorMessage = "SESSION_TOKEN_EXPIRED" };
 
                 // SEQ-02 step 2: INSERT tblSession via sp_StartSession.
                 // SP returns: positive = new SessionId, -1 = user conflict, -2 = machine conflict, 0 = error.
@@ -735,10 +738,11 @@ namespace SessionManagement.WCF
                                       ? (int?)Convert.ToInt32(r["SessionId"]) : null,
                         Username    = r["Username"]?.ToString(),
                         ClientCode  = r["ClientCode"]?.ToString(),
-                        AlertType   = r["ActivityTypeName"].ToString(),
-                        Description = r["Details"].ToString(),
-                        Timestamp   = Convert.ToDateTime(r["DetectedAt"]),
-                        Severity    = r["Severity"].ToString()
+                        AlertType      = r["ActivityTypeName"].ToString(),
+                        Description    = r["Details"].ToString(),
+                        Timestamp      = Convert.ToDateTime(r["DetectedAt"]),
+                        Severity       = r["Severity"].ToString(),
+                        IsAcknowledged = r["IsAcknowledged"] != DBNull.Value && Convert.ToBoolean(r["IsAcknowledged"])
                     });
                 }
                 return list.ToArray();
@@ -746,6 +750,37 @@ namespace SessionManagement.WCF
             catch (Exception ex)
             {
                 _db.LogSystemEvent(null, null, null, "GetAlertsErr", ex.Message, "Error");
+                return Array.Empty<AlertInfo>();
+            }
+        }
+
+        public AlertInfo[] GetAllAlertsForDateRange(DateTime from, DateTime to)
+        {
+            try
+            {
+                DataTable dt   = _db.GetAlertsForDateRange(from, to);
+                var list = new List<AlertInfo>();
+                foreach (DataRow r in dt.Rows)
+                {
+                    list.Add(new AlertInfo
+                    {
+                        AlertId     = Convert.ToInt32(r["AlertId"]),
+                        SessionId   = r["SessionId"] != DBNull.Value
+                                      ? (int?)Convert.ToInt32(r["SessionId"]) : null,
+                        Username    = r["Username"]?.ToString(),
+                        ClientCode  = r["ClientCode"]?.ToString(),
+                        AlertType      = r["ActivityTypeName"].ToString(),
+                        Description    = r["Details"].ToString(),
+                        Timestamp      = Convert.ToDateTime(r["DetectedAt"]),
+                        Severity       = r["Severity"].ToString(),
+                        IsAcknowledged = r["IsAcknowledged"] != DBNull.Value && Convert.ToBoolean(r["IsAcknowledged"])
+                    });
+                }
+                return list.ToArray();
+            }
+            catch (Exception ex)
+            {
+                _db.LogSystemEvent(null, null, null, "GetAlertsRangeErr", ex.Message, "Error");
                 return Array.Empty<AlertInfo>();
             }
         }
@@ -1423,6 +1458,40 @@ namespace SessionManagement.WCF
                     UserId = userId,
                     ErrorMessage = "Password reset failed. Please try again."
                 };
+            }
+        }
+
+        public AdminPasswordChangeResponse ChangeAdminPassword(int adminUserId,
+            string currentPassword, string newPassword)
+        {
+            try
+            {
+                string currentHash = _db.GetAdminPasswordHash(adminUserId);
+                if (currentHash == null)
+                    return new AdminPasswordChangeResponse
+                    { Success = false, ErrorMessage = "Admin account not found." };
+
+                if (!AuthenticationHelper.VerifyPassword(currentPassword, currentHash))
+                    return new AdminPasswordChangeResponse
+                    { Success = false, ErrorMessage = "Current password is incorrect." };
+
+                string newHash = AuthenticationHelper.HashPassword(newPassword);
+                bool ok = _db.ChangeAdminPassword(adminUserId, newHash);
+                if (!ok)
+                    return new AdminPasswordChangeResponse
+                    { Success = false, ErrorMessage = "Failed to update password." };
+
+                _db.WriteSystemLog(null, adminUserId, null, adminUserId,
+                    "Auth", "AdminPasswordChanged",
+                    $"Admin {adminUserId} changed their password", "Server");
+
+                return new AdminPasswordChangeResponse { Success = true };
+            }
+            catch (Exception ex)
+            {
+                _db.LogSystemEvent(null, null, null, "ChangeAdminPasswordErr", ex.Message, "Error");
+                return new AdminPasswordChangeResponse
+                { Success = false, ErrorMessage = "Server error. Please try again." };
             }
         }
 

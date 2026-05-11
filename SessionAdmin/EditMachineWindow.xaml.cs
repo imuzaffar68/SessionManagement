@@ -48,7 +48,7 @@ namespace SessionAdmin
                     // SP returned 0 — machine not found or sp not yet deployed.
                     ShowError(
                         "Could not save changes.\n" +
-                        "• Run SessionManagement.sql if sp_UpdateClientMachineInfo is missing.\n" +
+                        "• Run SessionManagement_Setup.sql if sp_UpdateClientMachineInfo is missing.\n" +
                         "• Refresh the Clients list and try again if the machine was removed.");
                 }
             }

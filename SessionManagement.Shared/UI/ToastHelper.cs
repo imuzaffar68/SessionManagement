@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -16,8 +16,8 @@ namespace SessionManagement.UI
     public static class ToastHelper
     {
         // ── App user-model IDs ────────────────────────────────────────
-        public const string AdminAppId  = "NetCafe.SessionManagement.Admin";
-        public const string ClientAppId = "NetCafe.SessionManagement.Client";
+        public const string AdminAppId  = "ICSSMS.SessionManagement.Admin";
+        public const string ClientAppId = "ICSSMS.SessionManagement.Client";
 
         // ── Public API ────────────────────────────────────────────────
 
@@ -71,7 +71,14 @@ namespace SessionManagement.UI
                     "</binding>" +
                   "</visual>" +
                 "</toast>",
-                Escape(title), Escape(body));
+                Escape(Truncate(title, 64)),
+                Escape(Truncate(body,  200)));
+        }
+
+        private static string Truncate(string s, int max)
+        {
+            if (string.IsNullOrEmpty(s) || s.Length <= max) return s;
+            return s.Substring(0, max - 1) + "…";
         }
 
         private static string Escape(string s)
@@ -189,3 +196,4 @@ namespace SessionManagement.UI
         }
     }
 }
+

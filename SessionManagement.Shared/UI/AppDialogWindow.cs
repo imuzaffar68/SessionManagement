@@ -23,7 +23,7 @@ namespace SessionManagement.UI
             AllowsTransparency    = false;
             Width                 = 400;
             SizeToContent         = SizeToContent.Height;
-            WindowStartupLocation = WindowStartupLocation.CenterOwner;
+            WindowStartupLocation = WindowStartupLocation.CenterScreen;
             ResizeMode            = ResizeMode.NoResize;
             Background            = Hex("#0F1117");
 

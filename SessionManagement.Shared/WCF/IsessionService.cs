@@ -130,6 +130,10 @@ namespace SessionManagement.WCF
         [OperationContract]
         PasswordResetResponse ResetClientUserPassword(int userId, string newPassword, int adminUserId);
 
+        /// <summary>Change the logged-in admin's own password (verifies current password first).</summary>
+        [OperationContract]
+        AdminPasswordChangeResponse ChangeAdminPassword(int adminUserId, string currentPassword, string newPassword);
+
         /// <summary>Toggle ClientUser account status (Active ↔ Disabled).</summary>
         [OperationContract]
         UserStatusToggleResponse ToggleUserStatus(int userId, int adminUserId);
@@ -146,6 +150,10 @@ namespace SessionManagement.WCF
         /// <summary>SEQ-17: All unacknowledged alerts for dashboard.</summary>
         [OperationContract]
         AlertInfo[] GetUnacknowledgedAlerts();
+
+        /// <summary>UC-18: All alerts (acknowledged + unacknowledged) within a date range for reports.</summary>
+        [OperationContract]
+        AlertInfo[] GetAllAlertsForDateRange(DateTime from, DateTime to);
 
         /// <summary>SEQ-17: Admin acknowledges; writes AcknowledgedByAdminUserId.</summary>
         [OperationContract]
@@ -335,14 +343,15 @@ namespace SessionManagement.WCF
     [DataContract]
     public class AlertInfo
     {
-        [DataMember] public int      AlertId     { get; set; }
-        [DataMember] public int?     SessionId   { get; set; }
-        [DataMember] public string   Username    { get; set; }
-        [DataMember] public string   ClientCode  { get; set; }
-        [DataMember] public string   AlertType   { get; set; }
-        [DataMember] public string   Description { get; set; }
-        [DataMember] public DateTime Timestamp   { get; set; }
-        [DataMember] public string   Severity    { get; set; }
+        [DataMember] public int      AlertId        { get; set; }
+        [DataMember] public int?     SessionId      { get; set; }
+        [DataMember] public string   Username       { get; set; }
+        [DataMember] public string   ClientCode     { get; set; }
+        [DataMember] public string   AlertType      { get; set; }
+        [DataMember] public string   Description    { get; set; }
+        [DataMember] public DateTime Timestamp      { get; set; }
+        [DataMember] public string   Severity       { get; set; }
+        [DataMember] public bool     IsAcknowledged { get; set; }
     }
 
     [DataContract]
@@ -448,6 +457,13 @@ namespace SessionManagement.WCF
     {
         [DataMember] public bool   Success      { get; set; }
         [DataMember] public int    UserId       { get; set; }
+        [DataMember] public string ErrorMessage { get; set; }
+    }
+
+    [DataContract]
+    public class AdminPasswordChangeResponse
+    {
+        [DataMember] public bool   Success      { get; set; }
         [DataMember] public string ErrorMessage { get; set; }
     }
 
