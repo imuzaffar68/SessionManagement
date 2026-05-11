@@ -71,7 +71,10 @@ namespace SessionClient
         // Selected duration from preset buttons
         private int _selectedDurationMinutes = 60;
 
-        private const int MAX_ATTEMPTS = 3;
+        private const int MAX_ATTEMPTS       = 3;
+        private const int LOCKOUT_SECONDS    = 120;
+        private int                _lockoutRemaining;
+        private DispatcherTimer    _lockoutTimer;
         private readonly bool _kioskMode;
 
         // Floating timer window
@@ -646,7 +649,13 @@ namespace SessionClient
             { ShowLoginError("Please enter both username and password."); return; }
 
             if (_failCount >= MAX_ATTEMPTS)
-            { ShowLoginError("Too many failed attempts. Contact the administrator."); return; }
+            {
+                if (_lockoutTimer != null && _lockoutTimer.IsEnabled)
+                    UpdateLockoutMessage();
+                else
+                    StartLockoutCountdown();
+                return;
+            }
 
             btnLogin.IsEnabled = false;
             btnLogin.Content   = "Signing in…";
@@ -735,6 +744,46 @@ namespace SessionClient
         }
 
         private void HideLoginError() => pnlLoginError.Visibility = Visibility.Collapsed;
+
+        private void StartLockoutCountdown()
+        {
+            _lockoutRemaining  = LOCKOUT_SECONDS;
+            btnLogin.IsEnabled = false;
+            btnLogin.Content   = "Locked";
+            UpdateLockoutMessage();
+
+            if (_lockoutTimer == null)
+            {
+                _lockoutTimer          = new DispatcherTimer();
+                _lockoutTimer.Interval = TimeSpan.FromSeconds(1);
+                _lockoutTimer.Tick    += LockoutTimer_Tick;
+            }
+            _lockoutTimer.Start();
+        }
+
+        private void LockoutTimer_Tick(object sender, EventArgs e)
+        {
+            _lockoutRemaining--;
+            if (_lockoutRemaining <= 0)
+            {
+                _lockoutTimer.Stop();
+                _failCount         = 0;
+                btnLogin.IsEnabled = true;
+                btnLogin.Content   = "Sign In →";
+                HideLoginError();
+            }
+            else
+            {
+                UpdateLockoutMessage();
+            }
+        }
+
+        private void UpdateLockoutMessage()
+        {
+            int m = _lockoutRemaining / 60;
+            int s = _lockoutRemaining % 60;
+            ShowLoginError($"Too many failed attempts. Try again in {m}:{s:D2}.");
+        }
 
         #endregion
 
@@ -1569,6 +1618,10 @@ namespace SessionClient
             txtPasswordPlain.Visibility = Visibility.Collapsed;
             btnShowPassword.Content = "👁";
             HideLoginError();
+            _lockoutTimer?.Stop();
+            _failCount         = 0;
+            btnLogin.IsEnabled = true;
+            btnLogin.Content   = "Sign In →";
         }
 
         private bool TryGetDuration(out int minutes)
