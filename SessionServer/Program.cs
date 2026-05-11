@@ -36,13 +36,6 @@ class Program
         Console.WriteLine("============================================================");
         Console.ResetColor();
 
-#if DEBUG
-        Console.ForegroundColor = ConsoleColor.Yellow;
-        Console.WriteLine("[WARN] DEBUG build — WCF transport security is DISABLED (SecurityMode.None).");
-        Console.WriteLine("       Do NOT deploy this build in production. Use Release mode.");
-        Console.ResetColor();
-        Console.WriteLine();
-#endif
 
         // ── Verify DB connection before opening WCF ───────────────
         try
@@ -98,12 +91,9 @@ class Program
         {
             try
             {
-                // NetTcpBinding — required for duplex (callback) channels
-#if DEBUG
+                // NetTcpBinding — required for duplex (callback) channels.
+                // SecurityMode.None: closed LAN system, no certificates/domain.
                 var binding = new NetTcpBinding(SecurityMode.None)
-#else
-                var binding = new NetTcpBinding(SecurityMode.Transport)
-#endif
                 {
                     MaxReceivedMessageSize = WcfMaxMessageBytes,
                     MaxBufferSize          = WcfMaxMessageBytes,
